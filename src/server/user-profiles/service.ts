@@ -227,6 +227,8 @@ export class UserProfileService {
   profileOfSession(sessionId: string): string {
     if (sessionId.startsWith('r~')) {
       const remote = this.#o.remoteSessions?.().find((session) => session.id === sessionId);
+      // Not known yet (no list from its computer): as before D172, Default's here; its own computer still scopes any request for it.
+      if (!remote) return DEFAULT_USER_PROFILE_ID;
       // D172: its computer's own id for the profile (its `default` is that computer's Default, not this one's).
       const machine = sessionId.split('~')[1] ?? '';
       return this.fromRemote(machine, profileOf(remote));
@@ -249,7 +251,7 @@ export class UserProfileService {
   }
 
   #view(record: UserProfileRecord, accounts: Record<string, Record<string, string>>): UserProfile {
-    return { id: record.id, name: record.name, color: userProfileColor(record.color) ?? 'blue', hasPassword: record.passwordHash !== null, isDefault: record.id === DEFAULT_USER_PROFILE_ID, defaultAccounts: { ...(accounts[record.id] ?? {}) } };
+    return { id: record.id, name: record.name, color: userProfileColor(record.color) ?? 'blue', hasPassword: record.passwordHash !== null, isDefault: record.id === DEFAULT_USER_PROFILE_ID, computerDefault: this.isAnyDefault(record.id), defaultAccounts: { ...(accounts[record.id] ?? {}) } };
   }
 
   /** The live profiles, Default first. */

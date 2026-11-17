@@ -340,6 +340,8 @@ export const api = {
   restoreBackup: (input: { readonly file: string; readonly passphrase: string; readonly map: Readonly<Record<string, string>>; readonly identity: 'keep' | 'new'; readonly replace: boolean; readonly allowMissing: boolean }) =>
     request<{ readonly restart: 'restarting' | 'manual' }>('POST', '/api/backup/restore', input),
   cancelRestore: () => request<void>('DELETE', '/api/backup/restore'),
+  mergeUserProfiles: (input: { readonly a: string; readonly b: string; readonly passwordA?: string; readonly passwordB?: string; readonly keep: { readonly name: 'a' | 'b'; readonly color: 'a' | 'b'; readonly password: 'a' | 'b' } }) =>
+    request<{ readonly survivor: UserProfile; readonly mergedAway: string }>('POST', '/api/user-profiles/merge', input),
   setStartUserProfile: (id: string) => request<{ readonly startId: string }>('PUT', '/api/user-profiles/start', { id }),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>

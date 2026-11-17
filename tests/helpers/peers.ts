@@ -154,6 +154,12 @@ export async function pairedNodes(
   env: Record<string, string> = {},
   /** D125: extra env of one node only (its own power reading). */
   perNode: { readonly a?: Record<string, string>; readonly b?: Record<string, string> } = {},
+  /**
+   * D172: two computers' Defaults are separate profiles unless merged. These tests' two nodes are one
+   * developer's computers, so their Defaults are merged after pairing (as the developer would, once);
+   * `separateDefaults` leaves them apart (the D172 tests).
+   */
+  options: { readonly separateDefaults?: boolean } = {},
 ): Promise<{ readonly a: PeerNode; readonly b: PeerNode; readonly aId: string; readonly bId: string }> {
   const a = await startPeerNode(root, 'a', { repo: true, env: { ...env, ...perNode.a } });
   let b: PeerNode;
@@ -170,11 +176,27 @@ export async function pairedNodes(
     const aId = await a.machineId();
     const bId = await b.machineId();
     await waitFor('both machines online', async () => (await machineOn(b, aId))?.state === 'online' && (await machineOn(a, bId))?.state === 'online');
+    if (!options.separateDefaults) await mergeDefaults(a, b);
     return { a, b, aId, bId };
   } catch (error) {
     await Promise.all([a.server.stop(), b.server.stop()]);
     throw error;
   }
+}
+
+/**
+ * D172: merges `b`'s Default with `a`'s (one developer's two computers): from then on both computers'
+ * Defaults are one profile (`b` keeps its own Default as the survivor; `a`'s adopts its id).
+ */
+export async function mergeDefaults(a: PeerNode, b: PeerNode): Promise<void> {
+  type View = { profiles: Array<{ id: string; isDefault: boolean; computerDefault?: boolean }> };
+  const otherDefault = (node: PeerNode) => async () => ((await node.call('GET', '/api/user-profiles')).body as View).profiles.find((profile) => !profile.isDefault && profile.computerDefault) ?? null;
+  // Both computers know the other's Default first (so "one Default on a" below means a took the merge).
+  await waitFor('the other computer’s Default on a', otherDefault(a), 30_000);
+  const theirs = await waitFor('the other computer’s Default on b', otherDefault(b), 30_000);
+  const merged = await b.call('POST', '/api/user-profiles/merge', { a: 'default', b: theirs.id, keep: { name: 'a', color: 'a', password: 'a' } });
+  if (merged.status !== 200) throw new Error(`merge Defaults: HTTP ${merged.status} ${JSON.stringify(merged.body)}`);
+  await waitFor('one Default on a', async () => (((await a.call('GET', '/api/user-profiles')).body as View).profiles.length === 1 ? true : null), 30_000);
 }
 
 /** Polls `check` until it returns a truthy value (returned) or `timeoutMs` passes (throws with `what`). */

@@ -2480,6 +2480,7 @@ GET /api/sessions/0b7c…/diff/count?scope=head        (a moment later)
 | PUT | /api/user-profiles/{id} | `{ name?, color?, password? (null removes), currentPassword?, defaultAccounts?: { <cli>: <account id> \| null } }` | `UserProfile` · 401 `wrong-password` · 429 `too-many-tries` |
 | DELETE | /api/user-profiles/{id} | `{ password? }` | `{ archived, failed }` (its open agents archived first) · 409 `default` / `archive-failed` |
 | POST | /api/user-profiles/switch | `{ id, password? }` | `UserProfile` + `Set-Cookie: sb_profile=…; Max-Age=34560000; HttpOnly; SameSite=Strict` (400 days) · 401 · 429 |
+| POST | /api/user-profiles/merge | `{ a, b, passwordA?, passwordB?, keep: { name: 'a'\|'b', color: 'a'\|'b', password: 'a'\|'b' } }` | D172: `{ survivor: UserProfile, mergedAway: string }` · 401 · 404 · 409 `name-taken` · 422 · 429 (`UserProfile.computerDefault`: some computer's Default; the peer exchange's records carry `homeOf` and, on a merged tombstone, `mergedInto`) |
 | PUT | /api/user-profiles/start | `{ id }` | `{ startId }`: the profile a browser opens in before it chose one (2026-11-16) · 404 |
 | PUT | /api/sessions/{id}/user-profile | `{ userProfileId, password? }` | `{ sessionId, userProfileId }` |
 | PUT | /api/devices/{id} | `{ userProfileId }` (with or without `name`) | `Device` (`userProfileId` added) |

@@ -23,7 +23,7 @@ export function ProfilesSection() {
       <Card>
         <ul className="v2-profile-list" data-testid="v2-profile-list">
           {(view?.profiles ?? []).map((profile) => (
-            <ProfileRow key={profile.id} profile={profile} active={profile.id === view?.activeId} onSwitch={() => ask(profile)} onChanged={reload} />
+            <ProfileRow key={profile.id} profile={profile} all={view?.profiles ?? []} active={profile.id === view?.activeId} onSwitch={() => ask(profile)} onChanged={reload} />
           ))}
         </ul>
       </Card>
@@ -74,9 +74,11 @@ function colorOptions() {
   return USER_PROFILE_COLORS.map((color) => ({ value: color, label: color[0]!.toUpperCase() + color.slice(1) }));
 }
 
-function ProfileRow({ profile, active, onSwitch, onChanged }: { readonly profile: UserProfile; readonly active: boolean; readonly onSwitch: () => void; readonly onChanged: () => void }) {
+function ProfileRow({ profile, all, active, onSwitch, onChanged }: { readonly profile: UserProfile; readonly all: readonly UserProfile[]; readonly active: boolean; readonly onSwitch: () => void; readonly onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const others = all.filter((other) => other.id !== profile.id);
   return (
     <li className="v2-profile-row" data-testid="v2-profile-row" data-profile={profile.id} data-active={active ? 'true' : undefined}>
       <ProfileDot color={profile.color} />
@@ -93,11 +95,17 @@ function ProfileRow({ profile, active, onSwitch, onChanged }: { readonly profile
       <Button size="sm" onClick={() => setEditing(true)} data-testid="v2-profile-edit">
         {W.rename}
       </Button>
-      {!profile.isDefault ? (
+      {others.length > 0 ? (
+        <Button size="sm" onClick={() => setMerging(true)} data-testid="v2-profile-merge" data-tour="v2-profile-merge">
+          {W.merge}
+        </Button>
+      ) : null}
+      {!profile.isDefault && !profile.computerDefault ? (
         <Button size="sm" variant="danger" onClick={() => setDeleting(true)} data-testid="v2-profile-delete">
           {W.delete}
         </Button>
       ) : null}
+      {merging ? <MergeProfileDialog profile={profile} others={others} onClose={() => setMerging(false)} onChanged={onChanged} /> : null}
       {editing ? <EditProfileDialog profile={profile} active={active} onClose={() => setEditing(false)} onChanged={onChanged} /> : null}
       {deleting ? <DeleteProfileDialog profile={profile} onClose={() => setDeleting(false)} onChanged={onChanged} /> : null}
     </li>
@@ -212,6 +220,67 @@ function EditProfileDialog({ profile, active, onClose, onChanged }: { readonly p
           onChange={(event) => setDefaults((now) => ({ ...now, [cli]: event.currentTarget.value === '' ? null : event.currentTarget.value }))}
         />
       ))}
+      {error ? (
+        <p className="v2-field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Dialog>
+  );
+}
+
+/**
+ * D172 · Merge… : `profile` and another one become one profile on every computer, on purpose. Both
+ * passwords (where set); the developer picks whose name, colour and password the merged one keeps.
+ */
+function MergeProfileDialog({ profile, others, onClose, onChanged }: { readonly profile: UserProfile; readonly others: readonly UserProfile[]; readonly onClose: () => void; readonly onChanged: () => void }) {
+  const toast = useToast();
+  const [otherId, setOtherId] = useState(others[0]?.id ?? '');
+  const other = others.find((candidate) => candidate.id === otherId) ?? null;
+  const [passwordA, setPasswordA] = useState('');
+  const [passwordB, setPasswordB] = useState('');
+  const [keep, setKeep] = useState<{ name: 'a' | 'b'; color: 'a' | 'b'; password: 'a' | 'b' }>({ name: 'a', color: 'a', password: 'a' });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pickOptions = (label: (p: UserProfile) => string) => (other ? [{ value: 'a', label: label(profile) }, { value: 'b', label: label(other) }] : []);
+  const merge = async (): Promise<void> => {
+    if (!other) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { survivor } = await api.mergeUserProfiles({ a: profile.id, b: other.id, ...(passwordA ? { passwordA } : {}), ...(passwordB ? { passwordB } : {}), keep });
+      toast({ text: W.merged(survivor.name) });
+      onChanged();
+      onClose();
+    } catch (caught) {
+      setError(errorText(caught));
+      setBusy(false);
+    }
+  };
+  const missing = (profile.hasPassword && !passwordA) || (other?.hasPassword === true && !passwordB);
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={W.mergeTitle(profile.name)}
+      icon="agents"
+      testId="v2-profile-merge-dialog"
+      footer={
+        <>
+          <Button onClick={onClose}>{W.cancel}</Button>
+          <Button variant="primary" disabled={busy || !other || missing} onClick={() => void merge()} data-testid="v2-profile-merge-go">
+            {W.mergeGo}
+          </Button>
+        </>
+      }
+    >
+      <p>{W.mergeText}</p>
+      <Select label={W.mergeWith} value={otherId} options={others.map((candidate) => ({ value: candidate.id, label: candidate.name }))} onChange={(event) => setOtherId(event.currentTarget.value)} data-testid="v2-profile-merge-other" />
+      {profile.hasPassword ? <Field label={W.passwordOf(profile.name)} type="password" value={passwordA} onChange={(event) => setPasswordA(event.currentTarget.value)} data-testid="v2-profile-merge-password-a" /> : null}
+      {other?.hasPassword ? <Field label={W.passwordOf(other.name)} type="password" value={passwordB} onChange={(event) => setPasswordB(event.currentTarget.value)} data-testid="v2-profile-merge-password-b" /> : null}
+      <Select label={W.mergeKeepName} value={keep.name} options={pickOptions((p) => p.name)} onChange={(event) => setKeep((now) => ({ ...now, name: event.currentTarget.value as 'a' | 'b' }))} data-testid="v2-profile-merge-name" />
+      <Select label={W.mergeKeepColor} value={keep.color} options={pickOptions((p) => `${p.name} (${p.color})`)} onChange={(event) => setKeep((now) => ({ ...now, color: event.currentTarget.value as 'a' | 'b' }))} />
+      <Select label={W.mergeKeepPassword} value={keep.password} options={pickOptions((p) => (p.hasPassword ? p.name : `${p.name} ${W.noPassword}`))} onChange={(event) => setKeep((now) => ({ ...now, password: event.currentTarget.value as 'a' | 'b' }))} />
       {error ? (
         <p className="v2-field-error" role="alert">
           {error}

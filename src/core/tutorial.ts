@@ -1930,6 +1930,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  {
+    id: 'profile-merge',
+    decision: 'D172',
+    version: V2_4_44,
+    title: 'Profiles keep their own identity; merge on purpose',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'merge',
+        title: 'Each computer’s profiles stay their own',
+        what: 'Profiles of paired computers are no longer joined by themselves: each computer’s Default stays its own, even with the same or a new name. To make two profiles one (yours on this PC and yours on the Mac), use Merge… in Settings → Profiles: both passwords, and you pick the name, colour and password it keeps. If a pairing renamed your Default before this update, give it its name back in Settings → Profiles.',
+        todo: ['Open Settings → Profiles.', 'Merge… joins two profiles on purpose.'],
+        anchors: ['v2-profile-merge', 'v2-nav-settings', 'v2-tab-more'],
+        v2Route: '/settings/profiles',
+        missing: 'Settings → Profiles: Merge… is on each profile once there are two.',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

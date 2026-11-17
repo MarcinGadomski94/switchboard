@@ -38,7 +38,7 @@ async function switchOn(node: PeerNode, id: string, password: string): Promise<n
 
 describe('D165 · profiles on paired computers', () => {
   it('a profile made on A shows on B with its password; a rename on B comes back; a delete goes everywhere', async () => {
-    const { a, b } = await pairedNodes(tmp);
+    const { a, b } = await pairedNodes(tmp, {}, {}, { separateDefaults: true });
     nodes.push(a, b);
     const ann = (await a.call('POST', '/api/user-profiles', { name: 'Ann', password: 'ann-secret' })).body as UserProfile;
     const bo = (await a.call('POST', '/api/user-profiles', { name: 'Bo' })).body as UserProfile;
@@ -56,7 +56,7 @@ describe('D165 · profiles on paired computers', () => {
   }, 120_000);
 
   it('D172: each computer keeps its own Default: renaming both differently keeps both names, on both computers; a merge on purpose makes one', async () => {
-    const { a, b } = await pairedNodes(tmp);
+    const { a, b } = await pairedNodes(tmp, {}, {}, { separateDefaults: true });
     nodes.push(a, b);
     const own = async (node: PeerNode): Promise<UserProfile> => ((await node.call('GET', '/api/user-profiles')).body as UserProfilesView).profiles.find((profile) => profile.isDefault) as UserProfile;
     // The 2026-11-17 report: A's Default renamed "Marcin", B's "Claudiu" → before D172 the newer rename won on both.

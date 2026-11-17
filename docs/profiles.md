@@ -48,6 +48,25 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 - A move between computers keeps the agent's profile: the move runs in the initiating request's profile, which is the agent's (strict scope).
 - Sidebar folders carry their profile in the D71 records (`userProfileId`; an older computer's arrive as Default's).
 
+## Identity across computers (D172)
+
+The D165 sync matched profiles by id, and every install seeds its Default as `default`: two paired computers' Defaults were one record, so renaming either renamed both (the 2026-11-17 report: a Default renamed "Claudiu" on the other PC renamed this one). Now profiles of different computers are **never** the same unless you merge them (below), not even with equal names.
+
+- **Local id vs peer-link id.** Each computer keeps its Default under the local id `default` (cookies, phones, agents, folders, settings unchanged: no data re-keyed). On the peer link it travels as that computer's own id, `default-<machine id>` (`homeDefaultId`), with `homeOf: <machine id>`. Other profiles' ids are UUIDs, the same everywhere.
+- **Translated on receive** (`UserProfileService.fromRemote(machine, id)`): every profile id a paired computer sends: its profile records, its sessions' `userProfileId` (`profileOfSession` of `r~<machine>~…`), the profile header of its forwarded requests (`PeerService.api`) and terminal sockets, its crews (team sync) and its sidebar folders (D71). Its `default` is **its** Default here (`userProfiles.peerDefaults[<machine>]`, else `default-<machine>`); this computer's own peer-link id (`userProfiles.defaultWireId`, else `default-<self>`) is the local `default`; a merged-away id is its survivor. Senders always send their own local ids, so every version can talk to every version.
+- **Mixed versions.** An older (D165) computer sends its Default as `default`: here it becomes `default-<that machine>`, a profile of its own (no collision). The older computer still merges this computer's Default into its own by id unless it is updated too (it never sees `default` from this one any more, but its own copy stays as before): update both.
+- **A computer's own Default is never sent back to it** (an older one would list it twice); a Default (any computer's) can't be deleted, only merged.
+- **Before the update**: a Default already renamed by the bug keeps the name it has (there is no record of which write was local): rename it back in Settings → Profiles. Folders and crews of the two Defaults that were synced under `default` stay in this computer's Default.
+
+## Merging profiles (D172)
+
+Settings → Profiles → **Merge…** on a profile: pick the other one (this computer's or a paired computer's), give both passwords (where set) and pick whose **name**, **colour** and **password** the merged profile keeps (`POST /api/user-profiles/merge { a, b, passwordA?, passwordB?, keep: { name, color, password } }`, each `'a'` or `'b'`; wrong passwords: 401 / 429 as switching).
+
+- **The survivor's id**: this computer's Default when it is one of the two, else the older profile (then the id). The other one becomes a tombstone with `merged_into` (migration 0059) = the survivor's peer-link id.
+- **Its data moves here**: sessions, phones, schedules, sidebar folders, bound saved folders (D169), crews (team.db), open terminals, default accounts (the survivor's win per CLI), the Open-in profile; the session index is rebuilt.
+- **On the paired computers**: the two records travel (the survivor's new name / colour / hash, the tombstone naming it); each computer moves its own data of the merged-away id to the survivor. When the merged-away profile is **that computer's own Default**, it can't go: that computer's Default **adopts** the survivor's peer-link id (`userProfiles.defaultWireId`), takes its name / colour / password, and its local copy of the survivor folds into it. So merging this PC's Default with the Mac's makes one profile that is both computers' Default.
+- **Browsers and phones**: a browser whose cookie names the merged-away profile is in no profile any more (its cookie no longer matches a live profile): it lands in the Open-in profile, or asks for the survivor's password. Phones of it are moved to the survivor.
+
 ## Also scoped (closed before the first release of D165)
 
 - **History** (`GET /api/history`): a conversation that is a Switchboard session shows only in its profile; `POST /api/history/{claudeSessionId}/continue` answers 404 for one another profile holds.

@@ -4,7 +4,7 @@ import type { Session } from '../../src/core/api.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
 import { seedFolderInDataDir } from './folders.ts';
 import { stopServersUnder } from './server-registry.ts';
-import { enableListener, gitEnv, machineOn, type PeerNode, startPeerNode, pair, waitFor } from './peers.ts';
+import { enableListener, gitEnv, machineOn, mergeDefaults, type PeerNode, startPeerNode, pair, waitFor } from './peers.ts';
 
 /**
  * D65 test worlds: two real Switchboard processes ("pc" = a, "mac" = b), each with
@@ -176,6 +176,8 @@ async function startWorld(root: string, options: { readonly aRepos?: NodeRepos; 
     const aId = await a.machineId();
     const bId = await b.machineId();
     await waitFor('both machines online', async () => (await machineOn(b, aId))?.state === 'online' && (await machineOn(a, bId))?.state === 'online');
+    // D172: the pc and the mac are one developer's: their Defaults are merged (as the developer would, once).
+    await mergeDefaults(a, b);
     return { root, a, b, aId, bId, remotes, env, logs, paths, folders, git: (cwd, ...args) => gitIn(root, cwd, ...args) };
   } catch (error) {
     await Promise.all([a.server.stop(), b.server.stop()]);

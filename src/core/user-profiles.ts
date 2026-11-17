@@ -51,6 +51,8 @@ export interface UserProfile {
   readonly hasPassword: boolean;
   /** `true` for {@link DEFAULT_USER_PROFILE_ID} (cannot be deleted). */
   readonly isDefault: boolean;
+  /** D172: some computer's Default (this one's or a paired one's): never deleted, only merged. Absent from an older server. */
+  readonly computerDefault?: boolean;
   /** Its default account per CLI on this computer (`{ claude: <cli profile id> }`); absent = the CLI's own default. */
   readonly defaultAccounts: Readonly<Record<string, string>>;
 }
