@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.44 (2026-11-17)
+
+### Terminals
+- **A terminal in Switchboard:** PowerShell or your shell on this PC or a paired PC, from this PC's browser, the paired PC or your phone (+ New → Terminal, the ⌘K palette, More → Terminals). A terminal keeps running when you leave it and shows its recent output when you come back; it belongs to the profile that opened it; up to 16 per computer, one nobody is looking at closes after 12 hours. Switchboard's own tokens are kept out of the shell. The phone gets a key bar (Esc, Tab, Ctrl, arrows, ^C). See `docs/terminals.md` (D170).
+- **An agent's CLI tab:** a Claude Code agent's **CLI** tab runs its conversation as the real interactive `claude` (every slash command and key), with the same account, model and settings; the Chat tab keeps following it and questions still reach Needs you. **Back to chat mode** returns it to Switchboard's headless mode, same conversation. A running turn can finish first or be stopped. Codex and OpenCode agents: not yet. Database migration. See `docs/terminals.md` → *CLI mode* (D171).
+
+### Profiles
+- **Fix: paired computers' profiles no longer join up by themselves.** Every computer's Default had the same id, so pairing made the two Defaults one profile and a rename on either computer renamed both. Now each computer's profiles stay its own until you link them: **Settings → Profiles → Merge…** (both passwords where set; you pick the name, colour and password kept; everything of both ends up in it on both computers). After updating, your two computers' Defaults show separately: merge them once if they are both yours, and rename a profile the bug renamed. Update both computers. See `docs/profiles.md` (D172).
+
 ## 2.4.43 (2026-11-17)
 
 ### Backup and restore
