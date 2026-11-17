@@ -201,6 +201,16 @@ test('the Changes tab, and Undo from here restores the files', async ({ page }) 
   const changes = page.getByTestId('v2-agent-changes');
   await expect(changes).toBeVisible();
   await expect(changes.getByTestId('v2-agent-changes-scope')).toContainText('Since last save point');
+  // D174: waiting for review, the tab opens on For review; Side by side shows the file in two columns (remembered).
+  await expect(changes).toHaveAttribute('data-scope', 'review');
+  await expect(changes.getByTestId('v2-agent-change-file')).toContainText('notes.txt');
+  await expect(changes.getByTestId('v2-agent-diff')).toHaveAttribute('data-layout', 'unified');
+  await changes.getByTestId('v2-agent-diff-layout').locator('[data-value="split"]').click();
+  await expect(changes.getByTestId('v2-agent-diff')).toHaveAttribute('data-layout', 'split');
+  await expect(changes.getByTestId('v2-agent-split-right').first()).toHaveAttribute('data-tone', 'add');
+  await expect(changes.getByTestId('v2-agent-split-left').first()).toHaveAttribute('data-tone', 'empty');
+  await page.reload();
+  await expect(page.getByTestId('v2-agent-diff')).toHaveAttribute('data-layout', 'split');
 
   // Undo from here, on the reply that wrote the file.
   await page.getByTestId('v2-agent-tabs').getByRole('tab', { name: 'Chat' }).click();

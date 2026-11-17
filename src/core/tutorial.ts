@@ -190,6 +190,8 @@ const V2_4_43 = '2.4.43';
 const V2_4_44 = '2.4.44';
 /** The version D173 (admins and computer access) ships in (the next release after 2.4.45; adjust if it ships later). */
 const V2_4_46 = '2.4.46';
+/** The version D174 (For review and side by side) ships in (the next release after 2.4.46; adjust if it ships later). */
+const V2_4_47 = '2.4.47';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -1965,6 +1967,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-profile-access', 'v2-nav-settings', 'v2-tab-more'],
         v2Route: '/settings/profiles',
         missing: 'Settings → Profiles: each profile lists the computers it may use.',
+      },
+    ],
+  },
+  {
+    id: 'review-diff',
+    decision: 'D174',
+    version: V2_4_47,
+    title: 'For review shows everything to review, side by side if you like',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'layout',
+        title: 'For review, and a side-by-side diff',
+        what: 'While an agent waits for your review, its Changes tab opens on For review: everything its turns changed since you last reviewed, even work it already committed (before, a committed change could leave the tab empty). Side by side shows the file before and after in two columns; Unified is the single column. Your pick is remembered in this browser; narrow screens show one column.',
+        todo: ['Open an agent that changed files and its Changes tab.', 'Switch Unified / Side by side above the diff.'],
+        anchors: ['v2-agent-diff-layout', 'v2-agent-review'],
+        v2Route: '/agents',
+        missing: 'An agent’s Changes tab shows the Unified / Side by side switch once it has changed files.',
       },
     ],
   },

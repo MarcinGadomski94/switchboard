@@ -12,9 +12,9 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
 | POST | /api/sessions/{id}/pause · /resume | — | Session |
 | POST | /api/sessions/{id}/detach · /attach | — | { resumeCommand } |
 | GET | /api/sessions/{id}/events | ?since=ts · D95 (additive): ?limit=n · ?before=eventId · ?agent=agentId | Event[] |
-| GET | /api/sessions/{id}/diff | ?file= · ?scope=head\|branch\|repo (D90, default head) | FileDiff[] |
+| GET | /api/sessions/{id}/diff | ?file= · ?scope=head\|branch\|repo\|review (D90, D174; default head) | FileDiff[] |
 | GET | /api/sessions/{id}/diff/targets | — (D90) | DiffTargets |
-| GET | /api/sessions/{id}/diff/count | ?scope=head\|branch\|repo (D90 ruling, default head) | DiffCount |
+| GET | /api/sessions/{id}/diff/count | ?scope=head\|branch\|repo\|review (D90 ruling, D174; default head) | DiffCount |
 | GET | /api/inbox | — | InboxItem[] |
 | POST | /api/questions/batch/{batchId}/answers | { answers: [{questionId, answerIndex}] } | 204 (400 unless all are answered) |
 | POST | /api/inbox/{id}/actions/{action} | — | 204 |
@@ -1608,6 +1608,7 @@ Developer ruling D90 (`docs/decisions.md`; details `docs/worktrees.md` → *Diff
 - **`FileDiff.lines`** now also carries each hunk's `@@ -a,b +c,d @@` header line before its body (a new untracked file: `@@ -0,0 +1,N @@`). A reader that knows only `+` / `-` / space may show it as context.
 - **`DiffTargets`:** `{ worktrees: [{ solution, branch, base: string | null, commits: number }], inPlace: [{ solution, branch: string | null }] }`: the working trees the diff reads; `base` = the worktree's base ref, `commits` = commits on its branch since the merge-base with it (0 when it does not resolve). The tab offers Whole branch with a worktree and All uncommitted changes with an in-place solution.
 - **`DiffCount` (ruling 2026-10-09):** `{ scope, files }`: how many files the Diff tab's view lists, for the session tab's **Diff · n** (file names only, no patches). `scope` is the view counted: the asked one when the session offers it (`branch` with a worktree, `repo` with an in-place solution), else `head`, which is what the tab shows then. `files` equals the length of `GET …/diff?scope=<that scope>`.
+- **`scope=review` (D174, additive):** offered while the session has a pending D166 review (`DiffTargets.review: { since }`, absent otherwise): everything the review's turns changed, committed or not: each working tree from where the review's first turn started (its D80 checkpoint; else the newest first-parent commit from before that turn; else the empty tree) to the files now (a throw-away index; nothing of the developer's is written), in place only the files the session touched. `FileDiff.uncommitted` = the file still differs from HEAD (or is untracked). Without a pending review it answers as `head` (and the count's `scope` says `head`). The UI shows it first while a review is pending; a peer before D174 answers 422 to it (the tab count then reads `SessionDetail.files`) and never sends `review` in its targets, so the UI does not offer it there. `Session.review` (D166) gains additive `turn` and `startedAt` (where the review started).
 - **Peers (D48):** the query passes through; `GET …/diff/targets` and `GET …/diff/count` are on `PEER_API_ALLOW`. A peer before D90 answers its old diff whatever the `scope` and refuses the targets (403 `peer-forbidden`): the UI then offers only the default view. A peer before the count refuses it: the tab count then reads `SessionDetail.files` (the whole branch). **Devices (D73):** all three routes are allowed.
 
 ```json
