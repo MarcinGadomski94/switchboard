@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.48 (2026-11-17)
+
+### Profiles
+- **A computer checklist no longer locks a profile out of computers the admin can't see:** an admin's checklist now decides only for the computers it showed. Any other computer stays allowed, such as one paired only with another of your computers (before, the list reached it through that computer and blocked the profile there). The checklist also shows computers known through a paired one ("· through Mac Studio"), and a computer not decided yet reads "not decided yet: allowed". Every computer in the chain needs 2.4.48. Database migration. See `docs/profiles.md` (D176).
 ## 2.4.47 (2026-11-17)
 
 ### Agents
