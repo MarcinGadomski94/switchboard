@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionListItem } from '../../src/core/api.ts';
 import { crewOfPin, crewPinId, isCrewPinId } from '../../src/core/crew-pins.ts';
 import { HybridClock } from '../../src/core/hlc.ts';
+import { recentAgents } from '../../src/web/v2/shared/recent-model.ts';
 import { type SidebarLayout, placeSession } from '../../src/core/sidebar-layout.ts';
 import { EMPTY_RECORDS, layoutFromRecords, mergeRecords, recordsAfter } from '../../src/core/sidebar-records.ts';
 import { fromWire, sessionIdOf, sessionKey, toWire } from '../../src/core/sidebar-sync.ts';
@@ -78,6 +79,15 @@ describe('the Pinned list', () => {
     const sessions = [session('s1'), session('s2', { closedAt: '2026-10-28T10:00:00Z' }), session('s3')];
     const entries = pinnedEntries(['s3', 'crew~m', 's2', 'crew~gone', 'nope', 's1'], sessions, [mobile], new Map());
     expect(entries.map((entry) => `${entry.kind}:${entry.id}`)).toEqual(['agent:s3', 'crew:crew~m', 'agent:s1']);
+  });
+
+  it('D175: a pinned conversation (a chat) is a row like an agent, in its place; it leaves Recent like one', () => {
+    const sessions = [session('s1'), session('c1', { kind: 'chat' }), session('c2', { kind: 'chat', closedAt: '2026-11-17T10:00:00Z' })];
+    const entries = pinnedEntries(['c1', 's1', 'c2'], sessions, [], new Map());
+    expect(entries.map((entry) => `${entry.kind}:${entry.id}`)).toEqual(['agent:c1', 'agent:s1']);
+    const chat = entries[0];
+    expect(chat?.kind === 'agent' ? chat.session.kind : null).toBe('chat');
+    expect(recentAgents([{ id: 'c1', at: 2 }, { id: 's9', at: 1 }], [session('c1', { kind: 'chat' }), session('s9')], ['c1']).map((s) => s.id)).toEqual(['s9']);
   });
 
   it("a crew's teammates in its order, archived ones hidden (counted), each with its status and Needs-you count", () => {

@@ -152,6 +152,9 @@ A project (a plan) is pinned the same way (`docs/decisions.md` → D161): the id
 - **The row** (`shell/Rail.tsx` → `PinnedProject`, model `pinnedProjectOf` in `shared/pinned-model.ts`): the status badge, the title, a short line and the steps that need you, by the Projects list's own rules (`projectStatus`, `projectCounts`): running → Working (the pulse) or Waiting, with done/total ("3/7"); a step that needs you (a question, needs you, stopped, ready for approval or to confirm) in a running or paused project → amber with the count; paused → "Paused"; draft → "Draft"; done → the check; cancelled → "Cancelled". It opens the project; it follows `planChanged` through the Projects store. A deleted project's pin stays hidden, as a crew's.
 - **The Projects item's pulse:** the rail's Projects item shows the live dot while any listed project (this computer's and the paired ones') is working: running with a step running (`anyProjectWorking`, the list's "Working"). Its needs-you count stays as it was.
 
+## Pinned conversations (D175)
+
+A conversation (a D106 chat) is pinned like an agent (`docs/decisions.md` → D175): its own session id in `pinned`, the same route, rules and sync. **Pin to sidebar / Unpin from sidebar** is in the conversation's ⋯ (its page) and its row ⋯ in Agents, with Undo. In the v2 rail its row carries a chat mark after the name (`data-kind="conversation"`); it leaves Recent while pinned. The classic UI's CHATS section keeps no pins (D106): a conversation pinned in v2 is still listed there, not under the classic PINNED.
 ## API (additive; `contracts/local-api.md` → *Sidebar pins and folders (D54)* and *Subfolders in the sidebar (D58)*)
 | Method | Path | Body | Returns |
 |---|---|---|---|

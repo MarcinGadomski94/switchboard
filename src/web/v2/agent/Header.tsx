@@ -672,8 +672,9 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
     }
   };
   // 2026-11-11: Pin / Unpin in the agent's own ⋯ menu (the Agents list's rule: pinned ↔ not in a folder; Undo puts it back where it was).
+  // D175: a conversation (D106 chat) too, as the Agents list's row ⋯ already offered it; it shows in Pinned with a chat mark.
   const pinItems: MenuItem[] =
-    session && layout && !data.conversation
+    session && layout
       ? [
           {
             id: 'pin',

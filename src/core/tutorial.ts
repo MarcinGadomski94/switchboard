@@ -190,7 +190,7 @@ const V2_4_43 = '2.4.43';
 const V2_4_44 = '2.4.44';
 /** The version D173 (admins and computer access) ships in (the next release after 2.4.45; adjust if it ships later). */
 const V2_4_46 = '2.4.46';
-/** The version D174 (For review and side by side) ships in (the next release after 2.4.46; adjust if it ships later). */
+/** The version D174 (For review and side by side) and D175 (pinned conversations) ship in (the next release after 2.4.46; adjust if it ships later). */
 const V2_4_47 = '2.4.47';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -1985,6 +1985,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-agent-diff-layout', 'v2-agent-review'],
         v2Route: '/agents',
         missing: 'An agent’s Changes tab shows the Unified / Side by side switch once it has changed files.',
+      },
+    ],
+  },
+  // D175: a conversation pinned to the sidebar like an agent (docs/sidebar.md → Pinned conversations (D175)).
+  {
+    id: 'pinned-conversations',
+    decision: 'D175',
+    version: V2_4_47,
+    title: 'Pin a conversation to the sidebar',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'pin',
+        title: 'Pin a conversation',
+        what: 'A conversation’s ⋯ menu (on its page, or its row in Agents) has Pin to sidebar, like an agent’s. It sits in the sidebar’s Pinned list with a chat mark and leaves Recent while pinned. Unpin from the same menu; Undo puts it back.',
+        todo: ['Open a conversation, then ⋯ › Pin to sidebar.'],
+        anchors: ['v2-pin-conversation', 'v2-agent-menu', 'v2-rail-pins', 'v2-nav-agents', 'v2-tab-more'],
+        v2Route: '/agents',
+        missing: 'Start a conversation first (+ New › Conversation), then pin it from its ⋯ menu.',
       },
     ],
   },

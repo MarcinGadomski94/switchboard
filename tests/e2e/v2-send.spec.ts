@@ -149,6 +149,27 @@ test('the agent page ⋯ menu pins the agent to the sidebar and unpins it (with 
   await expect.poll(pinnedIds).toContain(id);
 });
 
+test('D175: a conversation is pinned from its ⋯ like an agent and shows in Pinned with a chat mark', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const id = await page.evaluate(async () => {
+    const answer = await fetch('/api/chats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'pin-conversation-marker: which queue?' }) });
+    return ((await answer.json()) as { id: string }).id;
+  });
+  await settled(page, id);
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  const pinnedIds = (): Promise<string[]> => page.evaluate(async () => ((await (await fetch('/api/sidebar')).json()) as { pinned: string[] }).pinned);
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await expect.poll(pinnedIds).toContain(id);
+  const row = page.getByTestId('v2-rail-pins').locator('[data-testid="v2-pin-agent"][data-kind="conversation"]');
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('[data-icon="chat"]')).toBeVisible();
+  await page.getByTestId('v2-agent-menu').click();
+  await page.getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
+  await expect.poll(pinnedIds).not.toContain(id);
+  await expect(row).toHaveCount(0);
+});
+
 test('working: the bubble shows at once with its Queued note, stays one, and leaving and coming back keeps it', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'v2-send-working', '[fake:hold 10] Think it through.');

@@ -70,7 +70,7 @@ What is VERIFIED and what is ASSUMED:
 
 ## Sidebar
 
-The **CHATS** section sits above SESSIONS (after the Team entry) and **always shows** (ruling 2026-10-14), also with no chats: its header with a ▾ / ▸ toggle, the count and **+ New chat**, then one row per open chat (newest first): dot, title, age, and *plan mode* (· *N folders*) or *continued as <session>*; the row's × closes it and its **⋯** has **Rename…** (on a touch screen also Close, as the × needs a hover); a double-click on the title renames it too (see *Rename*). SESSIONS never lists chats, nor does any folder or pin of the sidebar layout. The list is at most a third of the window high and scrolls.
+The **CHATS** section sits above SESSIONS (after the Team entry) and **always shows** (ruling 2026-10-14), also with no chats: its header with a ▾ / ▸ toggle, the count and **+ New chat**, then one row per open chat (newest first): dot, title, age, and *plan mode* (· *N folders*) or *continued as <session>*; the row's × closes it and its **⋯** has **Rename…** (on a touch screen also Close, as the × needs a hover); a double-click on the title renames it too (see *Rename*). SESSIONS never lists chats, nor does any folder or pin of the sidebar layout. (v2, D175: a conversation can be pinned from its ⋯ and shows in the v2 rail's Pinned; the classic sidebar is unchanged: `docs/sidebar.md` → *Pinned conversations (D175)*.) The list is at most a third of the window high and scrolls.
 
 **Folding:** the CHATS and SESSIONS headers each fold their list (▾ / ▸, the count stays), kept per install as `ui.chatsCollapsed` / `ui.sessionsCollapsed` like D101's TOOLS, default expanded (`docs/sidebar.md` → *SESSIONS and CHATS (D106)*). The visual oracle changes by design: `docs/visual/README.md` → *D106*.
 

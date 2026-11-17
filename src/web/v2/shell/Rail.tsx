@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Icon, StatusBadge } from '../components/index.ts';
-import { PROJECT_WORDS, RAIL_LABELS, STATUS, WORDS, railTasksLabel, sessionStatusToV2 } from '../glossary.ts';
+import { isChat } from '../../../core/chats.ts';
+import { PROJECT_WORDS, RAIL_LABELS, STATUS, TERMS, WORDS, railTasksLabel, sessionStatusToV2 } from '../glossary.ts';
 import { agentStatusOf } from '../shared/agent-line.ts';
 import { V2Link } from '../nav.tsx';
 import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.ts';
@@ -116,10 +117,22 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
           const session = entry.session;
           const status = agentStatusOf(session);
           const name = agentDisplayName(session, members);
+          // D175: a pinned conversation (D106 chat) reads as one: a chat mark after its name.
+          const conversation = isChat(session);
           return (
-            <V2Link key={session.id} to={{ area: 'agent', id: session.id, tab: 'chat' }} className="v2-pin-item" title={`${name} · ${STATUS[status].label}`} aria-current={route.area === 'agent' && route.id === session.id ? 'page' : undefined}>
+            <V2Link
+              key={session.id}
+              to={{ area: 'agent', id: session.id, tab: 'chat' }}
+              className="v2-pin-item"
+              title={`${name}${conversation ? ` · ${TERMS.conversation.one}` : ''} · ${STATUS[status].label}`}
+              aria-current={route.area === 'agent' && route.id === session.id ? 'page' : undefined}
+              data-testid="v2-pin-agent"
+              data-kind={conversation ? 'conversation' : 'agent'}
+              data-tour={conversation ? 'v2-pin-conversation' : undefined}
+            >
               <StatusBadge status={status} compact />
               <span className="v2-pin-name">{name}</span>
+              {conversation ? <Icon name="chat" size="s" className="v2-pin-kind" label={TERMS.conversation.one} /> : null}
             </V2Link>
           );
         })}
