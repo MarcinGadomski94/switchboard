@@ -2483,3 +2483,18 @@ GET /api/sessions/0b7c…/diff/count?scope=head        (a moment later)
 | PUT | /api/devices/{id} | `{ userProfileId }` (with or without `name`) | `Device` (`userProfileId` added) |
 
 Scope: the lists answer only the request's profile; a route keyed by another profile's agent, plan, crew, member, Inbox item, batch, artifact, schedule, move or folder answers 404. Hub: `userProfilesChanged { profiles }`; each client gets only its profile's events. Peer API: `POST /peer/v1/user-profiles { v: 1, full, profiles: [{ id, name, color, passwordHash, clock, createdAt, deletedAt }] }` → `{ v: 1, profiles }` (every record on a full exchange). Paired phones: only `GET /api/user-profiles`.
+## Backup (D168, 2026-11-17, additive)
+
+`docs/backup.md`. Types in `src/core/backup.ts`. Errors: `{ error, message, detail? }`, `cache-control: no-store`. Local only: refused to paired phones (`DEVICE_REFUSED`), never on the peer API.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/backup | — | `BackupStatus` `{ auto: { enabled, folder, keep, hasKey }, folder, defaultFolder, running: 'backup' \| 'restore' \| null, last: BackupLastRun \| null, files: [{ name, size, at }], lastRestore: RestoreReport \| null, restartsItself }` |
+| POST | /api/backup | `{ passphrase }` (8–1024 characters) | `BackupLastRun` `{ at, ok, trigger: 'manual' \| 'automatic', file, size, error }` · 409 `busy` · 422 `invalid` |
+| PUT | /api/backup/auto | `{ enabled?, folder? (absolute; null = the default), keep? (1–100), passphrase? }` | `BackupStatus` · 422 `invalid` / `needs-passphrase` · 503 `keychain-unavailable` |
+| GET | /api/backup/files/{name} | — | the file (`application/octet-stream`, `attachment`) · 404 `not-found` (only the backup folder's backups) |
+| POST | /api/backup/inspect | `{ file (a name in the folder or a full path), passphrase, map?: { <old folder>: <new folder> } }` | `BackupInspection` `{ preview, refusal: string \| null, agentsHere, missingFolders: [{ from, to }] }` · 401 `wrong-passphrase` · 404 · 422 `damaged` / `not-a-backup` / `unsupported` |
+| POST | /api/backup/restore | `{ file, passphrase, map, identity: 'keep' \| 'new', replace?, allowMissing? }` | `{ restart: 'restarting' \| 'manual' }` (prepared into `restore-pending/`, applied at the next start) · 401 · 409 `busy` / `newer-backup` / `not-fresh` / `missing-folders` (`detail`: the folders) · 422 |
+| DELETE | /api/backup/restore | — | 204: a prepared restore not applied yet is dropped |
+
+`RestoreReport` `{ at, ok, error, fromVersion, fromMachine, agents, folders, remapped, missingFolders, conversations, conversationsMissing, secrets, secretsFailed, identity, previousData, todo }` (also `<dataDir>/restore-report.json`).
