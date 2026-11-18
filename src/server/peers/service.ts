@@ -34,6 +34,7 @@ import {
   normalizePairingCode,
   parseIPv4,
   parsePeerAddress,
+  parseRemoteId,
 } from '../../core/peers.ts';
 import type { ServerConfig } from '../config.ts';
 import type { MachineRecord } from '../db/repos/machines.ts';
@@ -41,7 +42,7 @@ import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
 import type { RecordChanges } from '../../core/sidebar-records.ts';
 import { KEEPALIVE_FRAME, SSE_CONTENT_TYPE, formatEvent } from '../hub/hub.ts';
-import { inboxCount } from '../inbox/wire.ts';
+import { inboxChangedPayload, inboxCount } from '../inbox/wire.ts';
 import { TOKEN_COOKIE } from '../security.ts';
 import { PEER_RAW_HEADERS, PeerConnection, type PeerConnectionStatus, PeerUnreachableError } from './client.ts';
 import { type PeerApiAnswer, type PeerHandlers, buildPeerApp, listenPeer } from './listener.ts';
@@ -55,6 +56,7 @@ import { labelInboxItems } from '../team/hooks.ts';
 import { memoryPeerChanged } from '../memory/hooks.ts';
 import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
 import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
+import { runOutsideProfileScope } from '../user-profiles/context.ts';
 import { INTERNAL_SCOPE_HEADER, INTERNAL_SECRET, USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
 
 /**
@@ -1227,7 +1229,10 @@ export class PeerService implements PeerHandlers {
 
   async #publishInboxCount(): Promise<void> {
     try {
-      this.#publishFromPeer('inboxChanged', { count: (await inboxCount(this.#store)) + this.remoteInbox().length });
+      // D178: with the per-profile map (the hub gives each client its profile's number; before, every profile got the whole count).
+      const local = await inboxChangedPayload(this.#store);
+      const payload = { ...local, count: local.count + this.remoteInbox().length };
+      this.#publishFromPeer('inboxChanged', payload);
     } catch (error) {
       this.#onError(error);
     }
@@ -1276,6 +1281,18 @@ export class PeerService implements PeerHandlers {
   }
 
   /** The reachable machines' Inbox items, namespaced and tagged. */
+  /**
+   * D178: the profile a paired computer named for its agent `sessionId` (`r~<machine>~<id>`) on its
+   * last known Inbox items (that computer's own id for it), `null` when none of them says.
+   */
+  remoteProfileHint(sessionId: string): string | null {
+    const parsed = parseRemoteId(sessionId);
+    const connection = parsed ? this.#connections.get(parsed.machineId) : undefined;
+    if (!parsed || !connection) return null;
+    const item = connection.inbox.find((candidate) => candidate.sessionId === parsed.id && typeof candidate.userProfileId === 'string');
+    return item?.userProfileId ?? null;
+  }
+
   remoteInbox(): InboxItem[] {
     const out: InboxItem[] = [];
     for (const [id, connection] of this.#connections) {
@@ -1354,7 +1371,8 @@ export class PeerService implements PeerHandlers {
     const key = `${id} ${kind}`;
     const running = this.#listRefresh.get(key);
     if (running) return running;
-    const run = (async (): Promise<boolean> => {
+    // D178: the copy every profile here shares: fetched naming no profile, whatever request asked for it.
+    const run = runOutsideProfileScope(async (): Promise<boolean> => {
       const connection = this.#connections.get(id);
       if (!connection || connection.state !== 'online' || this.#closed) return false;
       this.#listFetched.set(key, Date.now());
@@ -1382,7 +1400,7 @@ export class PeerService implements PeerHandlers {
       } finally {
         if (synced) this.#setListSync(id, synced, false, arrived);
       }
-    })().finally(() => this.#listRefresh.delete(key));
+    }).finally(() => this.#listRefresh.delete(key));
     this.#listRefresh.set(key, run);
     return run;
   }

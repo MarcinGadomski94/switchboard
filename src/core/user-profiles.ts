@@ -130,6 +130,23 @@ export function scopeSees(scope: ProfileScope, profileId: string): boolean {
   return scope === '*' || (scope !== null && scope === profileId);
 }
 
+/** A paired computer's session id prefix (`r~<machine>~<id>`, as `core/peers.ts` makes them). */
+const REMOTE_SESSION_PREFIX = 'r~';
+
+/**
+ * D178 (`docs/profiles.md` → *Scope*): the agent session an Inbox item belongs to, which decides the
+ * profiles that see it: its own session; for a failed move (D154) of a paired computer's agent (no
+ * session here) the move's source session (`r~<machine>~<id>` unless the source is this computer
+ * `selfId`); `null` = the item of no agent (an update, an account, Project memory): every profile's.
+ */
+export function inboxItemSession(item: { readonly sessionId: string | null; readonly move?: { readonly source: { readonly id: string; readonly sessionId: string | null } } }, selfId: string | null): string | null {
+  if (item.sessionId !== null) return item.sessionId;
+  const source = item.move?.source;
+  if (!source || source.sessionId === null || source.sessionId === '') return null;
+  if (source.sessionId.startsWith(REMOTE_SESSION_PREFIX)) return source.sessionId;
+  return selfId !== null && source.id === selfId ? source.sessionId : `${REMOTE_SESSION_PREFIX}${source.id}~${source.sessionId}`;
+}
+
 /**
  * D173 (`docs/profiles.md` → *Admins and computer access*): whether a profile whose access list is
  * `computers` may be used on computer `machineId`. `null` (or absent) = every computer, the default;

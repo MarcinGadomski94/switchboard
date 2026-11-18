@@ -6,6 +6,7 @@ import { encryptPayload, generateVapidKeys, validVapidKeys, vapidAuthorization }
 import { isAllowedPushEndpoint, validSubscription } from '../../../src/server/devices/push/sender.ts';
 import { PUSH_GONE_MAX, PUSH_GONE_SETTING, PUSH_GONE_TTL_MS, addGoneEndpoint, hashEndpoint, isGoneEndpoint, readGoneEndpoints } from '../../../src/server/devices/push/gone.ts';
 import { VAPID_FILE, loadOrCreateVapidKeys } from '../../../src/server/devices/service.ts';
+import { homeDefaultId } from '../../../src/server/user-profiles/service.ts';
 import { type DeviceWorld, startDeviceWorld } from '../../helpers/devices.ts';
 import { type FakePushService, decryptPush, startFakePush, verifyVapid } from '../../helpers/fake-push.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -174,12 +175,15 @@ describe('D73 push delivery', () => {
     w.bus.publish('sessionUpdated', session('s1', 'idle'));
     const turn = (await fake.waitFor(2))[1];
     // D87: with the happening's id (the same one the `/hub` `notice` carries).
-    expect(turn?.payload).toEqual({ kind: 'turnFinished', title: 'web finished', body: 'The turn is done; the session is waiting for you.', url: '/sessions/s1', tag: 'session-s1', id: expect.stringMatching(/^session-s1:/) });
+    // D178: and its agent (what decides the profile whose phones get it).
+    expect(turn?.payload).toEqual({ kind: 'turnFinished', title: 'web finished', body: 'The turn is done; the session is waiting for you.', url: '/sessions/s1', tag: 'session-s1', id: expect.stringMatching(/^session-s1:/), sessionId: 's1' });
     // An error.
     w.bus.publish('sessionUpdated', session('s1', 'fail'));
     expect((await fake.waitFor(3))[2]?.payload).toMatchObject({ kind: 'errors', url: '/sessions/s1' });
     // A paired machine's session (its events come through the peer stream) notifies too, with the machine named and the remote link.
-    const remote = { ...session('r~abcdefghijkl~s9', 'run'), machine: { id: 'abcdefghijkl', name: 'pc-office', state: 'online' } } as Session;
+    // D178: in this phone's profile (the two computers' Defaults merged: that computer names this one's Default by its link id).
+    const self = ((await w.store.settings.get('peers.self')) as { id?: string } | null)?.id ?? 'local';
+    const remote = { ...session('r~abcdefghijkl~s9', 'run'), machine: { id: 'abcdefghijkl', name: 'pc-office', state: 'online' }, userProfileId: homeDefaultId(self) } as Session;
     w.bus.publish('sessionUpdated', remote);
     w.bus.publish('sessionUpdated', { ...remote, status: 'idle' });
     expect((await fake.waitFor(4))[3]?.payload).toMatchObject({ kind: 'turnFinished', title: 'web · pc-office finished', url: '/sessions/r~abcdefghijkl~s9' });

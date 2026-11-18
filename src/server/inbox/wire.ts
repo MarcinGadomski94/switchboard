@@ -369,7 +369,10 @@ export async function listInbox(store: Store): Promise<InboxItem[]> {
   const system = (await store.systemItems.list(['open'])).reverse();
   for (const record of system) items.push(systemItem(record));
   // Team (D100) hook: member sessions' items carry the role name (docs/team-removal.md).
-  return labelInboxItems(store, items);
+  const labelled = labelInboxItems(store, items);
+  // D178: each agent's item names the agent's profile (a paired computer that does not know the session yet scopes it by this).
+  const profileOf = store.userProfiles.sessionProfiles();
+  return labelled.map((item) => (item.sessionId === null ? item : { ...item, userProfileId: profileOf.get(item.sessionId) ?? 'default' }));
 }
 
 /**

@@ -296,6 +296,8 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
         { id: 'remove-worktree', label: 'Remove worktree' },
         { id: 'keep', label: 'Keep' },
       ],
+      // D178: the agent's profile.
+      userProfileId: 'default',
     });
     expect((await r.w.store.systemItems.get(item!.id))?.worktreeId).toBe(record.id);
     expect(inboxCounts(r)).toEqual([1]);

@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
-import type { FolderBindPreview, Session } from '../../core/api.ts';
+import type { FolderBindPreview, InboxItem, Session } from '../../core/api.ts';
+import type { PushPayload } from '../../core/devices.ts';
 import { HybridClock } from '../../core/hlc.ts';
 import {
   DEFAULT_USER_PROFILE_ID,
@@ -12,6 +13,7 @@ import {
   USER_PROFILE_SWITCH_WINDOW_MS,
   adminChangeProblem,
   type ComputerThrough,
+  inboxItemSession,
   mayManageAccess,
   mergedAccess,
   profileAllowedOn,
@@ -99,7 +101,18 @@ export interface UserProfileServiceOptions {
   readonly knownComputers?: () => readonly string[];
   /** D176: the computers known only through a paired computer (for the access checklist). */
   readonly otherComputers?: () => readonly ComputerThrough[];
+  /**
+   * D178: a paired computer's agent's profile as that computer named it on its Inbox items (its
+   * last known items), for a remote session not in its last known list yet; `null`: none says.
+   */
+  readonly remoteProfileHint?: (sessionId: string) => string | null;
   readonly now?: () => number;
+}
+
+/** The session a notice's deep link opens (`/sessions/<id>`, `/agents/<id>`), else `null`. */
+function sessionOfUrl(url: string): string | null {
+  const match = /^\/(?:sessions|agents)\/([^/?#]+)/.exec(url);
+  return match ? decodeURIComponent(match[1] as string) : null;
 }
 
 /**
@@ -238,15 +251,18 @@ export class UserProfileService {
 
   /**
    * The profile of a session, this computer's or a paired one's (`r~<machine>~<id>`, from its last
-   * known list; an older computer's sessions and unknown ones are Default's).
+   * known list; an older computer's sessions are its Default's). D178: a paired computer's session
+   * not in its last known list yet takes the profile its computer named (`hint`, an Inbox item's or a
+   * notice's `userProfileId`, else {@link UserProfileServiceOptions.remoteProfileHint}), else that
+   * computer's Default: never this computer's own Default (before D178 it was, so this computer's
+   * Default saw a new agent's items of any profile there until its list came).
    */
-  profileOfSession(sessionId: string): string {
+  profileOfSession(sessionId: string, hint?: string | null): string {
     if (sessionId.startsWith('r~')) {
-      const remote = this.#o.remoteSessions?.().find((session) => session.id === sessionId);
-      // Not known yet (no list from its computer): as before D172, Default's here; its own computer still scopes any request for it.
-      if (!remote) return DEFAULT_USER_PROFILE_ID;
-      // D172: its computer's own id for the profile (its `default` is that computer's Default, not this one's).
       const machine = sessionId.split('~')[1] ?? '';
+      const remote = this.#o.remoteSessions?.().find((session) => session.id === sessionId);
+      if (!remote) return this.fromRemote(machine, hint ?? this.#o.remoteProfileHint?.(sessionId) ?? null);
+      // D172: its computer's own id for the profile (its `default` is that computer's Default, not this one's).
       return this.fromRemote(machine, profileOf(remote));
     }
     const own = this.#index().get(sessionId);
@@ -259,11 +275,35 @@ export class UserProfileService {
    * computer the session runs on (this one, or the paired one of an `r~<machine>~…` id): a profile
    * not allowed there does not see its agents there (they keep running, hidden).
    */
-  sees(scope: ProfileScope, sessionId: string): boolean {
-    if (!scopeSees(scope, this.profileOfSession(sessionId))) return false;
+  sees(scope: ProfileScope, sessionId: string, hint?: string | null): boolean {
+    if (!scopeSees(scope, this.profileOfSession(sessionId, hint))) return false;
     if (scope === '*' || scope === null) return scope === '*';
     const machine = sessionId.startsWith('r~') ? (sessionId.split('~')[1] ?? null) : this.#self;
     return this.allowedOn(scope, machine);
+  }
+
+  /**
+   * D178: whether scope `scope` sees an Inbox item (`/api/inbox`, Home's and Needs you's cards, the
+   * counts): the item of an agent by that agent ({@link inboxItemSession}: a failed move's by the moved
+   * agent), a paired computer's by the profile it named while its session is not known here; the item
+   * of no agent (an update, an account, Project memory) is every profile's.
+   */
+  seesInboxItem(scope: ProfileScope, item: Pick<InboxItem, 'sessionId' | 'move' | 'userProfileId'>): boolean {
+    const session = this.inboxItemAgent(item);
+    if (session === null) return true;
+    // The hint is the item's own agent's (its sessionId), never a moved agent's on a third computer.
+    return this.sees(scope, session, item.sessionId !== null ? (item.userProfileId ?? null) : null);
+  }
+
+  /** D178: the agent session an Inbox item belongs to ({@link inboxItemSession} with this computer's id); `null` = no agent's. */
+  inboxItemAgent(item: Pick<InboxItem, 'sessionId' | 'move'>): string | null {
+    return inboxItemSession(item, this.#self);
+  }
+
+  /** D178: whether scope `scope` gets a notice (a `/hub` toast, a phone's push): by its agent; one of no agent: everyone's. */
+  seesNotice(scope: ProfileScope, notice: Pick<PushPayload, 'sessionId' | 'userProfileId' | 'url'>): boolean {
+    const session = notice.sessionId ?? sessionOfUrl(notice.url);
+    return session === null || this.sees(scope, session, notice.userProfileId ?? null);
   }
 
   // ── D173 · admins and computer access ───────────────────────────────────

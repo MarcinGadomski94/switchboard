@@ -1,4 +1,5 @@
 import { currentProfileForCreate } from '../user-profiles/context.ts';
+import { runOutsideProfileScope } from '../user-profiles/context.ts';
 import { USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
 import type { HubEventName, HubEvents, InboxItem, Session } from '../../core/api.ts';
 import { HUB_EVENT_NAMES } from '../../core/api.ts';
@@ -240,9 +241,13 @@ export class PeerConnection {
   /** Starts the connect loop (idempotent). */
   start(): void {
     if (this.#closed || this.#running) return;
-    if (this.#state === 'reconnecting' && this.#graceTimer === undefined) this.#startGrace();
-    this.#running = this.#loop().finally(() => {
-      this.#running = null;
+    // D178: the connection is Switchboard's own work, whatever request started it (pairing, Reconnect):
+    // its stream, its timers and its list fetches name no profile (the peer answers every profile's).
+    runOutsideProfileScope(() => {
+      if (this.#state === 'reconnecting' && this.#graceTimer === undefined) this.#startGrace();
+      this.#running = this.#loop().finally(() => {
+        this.#running = null;
+      });
     });
   }
 
@@ -613,7 +618,8 @@ export class PeerConnection {
     // D113: the page that merges the Inbox says "Syncing with …" while this runs.
     let arrived = false;
     this.#options.onInboxSync?.(true, false);
-    this.#inboxRefresh = (async () => {
+    // D178: the copy every profile here shares: fetched naming no profile (a browser's action that asked for it does not cut it).
+    this.#inboxRefresh = runOutsideProfileScope(async () => {
       do {
         this.#inboxAgain = false;
         try {
@@ -629,7 +635,7 @@ export class PeerConnection {
           if (!this.#closed) this.#options.onError?.(error);
         }
       } while (this.#inboxAgain && !this.#closed);
-    })().finally(() => {
+    }).finally(() => {
       this.#inboxRefresh = null;
       if (!this.#closed) this.#options.onInboxSync?.(false, arrived);
     });

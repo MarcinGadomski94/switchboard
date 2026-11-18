@@ -25,8 +25,10 @@ Every request gets a scope right after the security guard (`scope.ts`): the brow
 
 - **Lists** (`onSend` filter): `GET /api/sessions`, `/api/inbox`, `/api/todos`, `/api/artifacts`, `/api/moves`, `/api/plans`, `/api/processes`, `/api/schedules`, `/api/search`, `/api/team/teams`, every `/api/sidebar*` answer, and D159's `GET /agent/v1/plans` keep only what the scope sees.
 - **Ids** (`preHandler`): every route keyed by a session, chat, plan (also `/agent/v1/plans/{planId}`), crew member, crew, Inbox item, question batch, artifact, schedule, move or sidebar folder answers **404** for one of another profile; `GET /api/team` and `/api/team/activity` too for the crew they name (none = the first crew); `POST /api/sidebar/place` and `POST /api/team/members` for a session of another profile.
-- **The hub:** each `/hub` client gets only its profile's events (a per-client transform in `SseHub`): session events by session, the sidebar layout cut to the profile's, `notice` toasts by the session they open. Events about no session pass.
-- **Pushes:** a phone gets only the notices of its profile's agents.
+- **The hub:** each `/hub` client gets only its profile's events (a per-client transform in `SseHub`): session events by session, the sidebar layout cut to the profile's, `notice` toasts by their agent (D178: the notice's `sessionId`; only a notice that names no agent by the session its link opens). Events about no session pass.
+- **Pushes:** a phone gets only the notices of its profile's agents (D178: by the notice's agent too, not only its link: an Inbox notice links to `/inbox`).
+- **Needs you (Home, the Needs you page, the counts; D178):** an Inbox item belongs to its **agent** (`inboxItemSession`: its session; a failed move's moved agent, a paired computer's `r~<machine>~<id>` when it is not this computer's) and shows only in that agent's profile. **An item of no agent is every profile's:** an update available, an account's credits or sign-in, Project memory proposals, a crew member's memory copy (the computer's, like Project memory itself).
+- **Switchboard's own work runs in no profile** (D178, `runOutsideProfileScope`): a paired computer's connection and the copies of its lists every profile shares are fetched naming no profile, whatever browser request started or refreshed them.
 - **Not protection against the machine's OS user:** transcripts and the database are files on disk. Settings → Profiles says so.
 
 ## Creating
@@ -44,7 +46,7 @@ A new agent takes, in order: an explicit `userProfileId`; its source's (`continu
 ## Paired computers
 
 - The profiles (id, name, colour, password hash, clock, deletion; D173 admin and access, D176 `decidedFor`) sync with **every** paired computer over `POST /peer/v1/user-profiles` (bearer auth on the Tailscale-only peer listener): a full exchange each time a connection comes (back) online, the changed records on every change; D176: the records a paired computer's exchange wrote go on to the other paired computers. Last write wins per profile (a hybrid clock; equal clocks by value). Default is never deleted by a peer. A hash of another shape is dropped. Each computer's default accounts stay its own.
-- A paired computer's agents show in their own profile (`Session.userProfileId` on the wire; an older computer's are Default's).
+- A paired computer's agents show in their own profile (`Session.userProfileId` on the wire; an older computer's are its Default's). D178: an agent of a paired computer not in its last known list yet takes the profile its Inbox items or notices name (`InboxItem.userProfileId`, a notice's `userProfileId`), else that computer's Default: never this computer's own Default (before D178 it was, so this computer's Default got a new agent's items there).
 - A move between computers keeps the agent's profile: the move runs in the initiating request's profile, which is the agent's (strict scope).
 - Sidebar folders carry their profile in the D71 records (`userProfileId`; an older computer's arrive as Default's).
 
@@ -124,6 +126,8 @@ A saved folder (D14) may be **bound** to one profile (`folders.user_profile_id`,
 | `tests/server/user-profiles/profiles.test.ts` | three profiles (Default, Ann with a password, Bo): the lists, the password switch (wrong, 429, a forged cookie, a new password), 404 for another profile's agent, folders per profile, move, delete (archive), a locked Default, a new agent's profile, the hub transform, the peers' merge |
 | `tests/server/peers/user-profiles.test.ts` | two real Switchboards: a profile and its password sync, a rename comes back, a delete goes everywhere |
 | `tests/server/user-profiles/scope-holes.test.ts` | three profiles: History and its continue, Insights / usage rows and the per-profile answer, crews' needs-you / state / suggestions, Plans' state, terminal sessions and hooking, the hub's Inbox count, plan and crew events, a sidebar position |
+| `tests/server/user-profiles/home-scope.test.ts` | D178: Home's list per profile (an item linking to the Inbox too; the items of no agent everyone's), the toast and the push of an item that links to the Inbox, a paired computer's failed move and an agent not known yet |
+| `tests/server/peers/user-profile-inbox.test.ts` | D178 with two real Switchboards: Ann's agent's question on A shows on B only in Ann, named with its profile; the pairing request's profile does not stay on the connection |
 | `tests/core/user-profiles-access.test.ts` | D173: the access rule, the bootstrap, the admin rules |
 | `tests/server/peers/user-profile-access.test.ts` | D173 with two real Switchboards: the bootstrap, a non-admin refused, the last admin, Bo limited to A (refused on B, B's agents hidden on A, forwards and moves refused, its agent kept), syncing both ways |
 | `tests/e2e/v2-profiles.spec.ts` | the rail switcher with three profiles and a password |

@@ -223,6 +223,7 @@ export class DeviceService {
       inbox: async () => [...(await listInbox(this.#store)), ...(options.remoteInbox?.() ?? [])],
       now: this.#now,
       deliver: (notice) => this.deliver(notice),
+      agentOf: (item) => (this.#noticeAgent ? this.#noticeAgent(item) : item.sessionId),
       onError: (error) => this.#onError(error),
     });
   }
@@ -761,11 +762,18 @@ export class DeviceService {
     return this.#presence.connect(device.id, client);
   }
 
-  #noticeScope: ((profileId: string, sessionId: string) => boolean) | null = null;
+  #noticeScope: ((profileId: string, notice: PushPayload) => boolean) | null = null;
 
-  /** D165: who sees a session (`profile sees session`); set by the app once the profiles exist. */
-  useNoticeScope(scope: ((profileId: string, sessionId: string) => boolean) | null): void {
+  /** D165: who gets a notice (`profile sees its agent`; D178: by the notice's `sessionId`, not only its link); set by the app once the profiles exist. */
+  useNoticeScope(scope: ((profileId: string, notice: PushPayload) => boolean) | null): void {
     this.#noticeScope = scope;
+  }
+
+  #noticeAgent: ((item: InboxItem) => string | null) | null = null;
+
+  /** D178: the agent an Inbox item's notice belongs to (a failed move's: the moved agent); set by the app. */
+  useNoticeAgent(agentOf: ((item: InboxItem) => string | null) | null): void {
+    this.#noticeAgent = agentOf;
   }
 
   /** `true` while the device has Switchboard open in front (D87). */
@@ -782,10 +790,13 @@ export class DeviceService {
   async deliver(notice: PushNotice): Promise<void> {
     if (!(await this.#accessSetting()).enabled) return;
     const subscriptions = await this.#store.devices.pushList();
-    // D165: a phone gets only its profile's notices (the session the notice opens).
+    // D165: a phone gets only its profile's notices. D178: by the notice's agent (`sessionId`), not only the session its link opens
+    // (an Inbox notice links to /inbox: before, every phone got another profile's).
     const profileOf = new Map((await this.#store.devices.list()).map((device) => [device.id, device.userProfileId ?? 'default']));
-    const sessionId = sessionOfNoticeUrl(notice.payload.url);
-    const seen = (deviceId: string): boolean => sessionId === null || !this.#noticeScope || this.#noticeScope(profileOf.get(deviceId) ?? 'default', sessionId);
+    const seen = (deviceId: string): boolean => {
+      if (this.#noticeScope) return this.#noticeScope(profileOf.get(deviceId) ?? 'default', notice.payload);
+      return true;
+    };
     await Promise.all(
       subscriptions
         .filter((record) => readPushEvents(record.events)[notice.kind] && !this.#presence.inFront(record.deviceId) && seen(record.deviceId))

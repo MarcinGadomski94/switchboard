@@ -16,6 +16,16 @@ export function runInProfileScope<T>(scope: ProfileScope, work: () => T): T {
   return storage.run({ scope }, work);
 }
 
+/**
+ * D178: runs `work` outside any profile scope (Switchboard's own work), even when called from a
+ * request: what it starts (a paired computer's connection, the copies of its lists every profile
+ * shares) must not keep that request's profile (before, a connection a browser in one profile
+ * started fetched that computer's Inbox and lists cut to that profile, for every profile here).
+ */
+export function runOutsideProfileScope<T>(work: () => T): T {
+  return storage.exit(work);
+}
+
 /** The current profile scope; `undefined` outside any request (Switchboard's own work). */
 export function currentProfileScope(): ProfileScope | undefined {
   return storage.getStore()?.scope;

@@ -336,12 +336,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     // D176: the computers known here (paired, and known through a paired one) for the access checklist.
     knownComputers: () => peersRef?.knownComputers() ?? [],
     otherComputers: () => peersRef?.computersThrough() ?? [],
+    // D178: a paired computer's new agent (not in its list yet) takes the profile its Inbox items name.
+    remoteProfileHint: (sessionId) => peersRef?.remoteProfileHint(sessionId) ?? null,
     rekeyOutside: async (from, to) => {
       await teamServiceOf(app)?.rekeyProfile(from, to);
       terminalsRef?.rekeyProfile(from, to);
     },
   });
-  deviceService.useNoticeScope?.((profileId, sessionId) => userProfiles.sees(profileId, sessionId));
+  deviceService.useNoticeScope?.((profileId, notice) => userProfiles.seesNotice(profileId, notice));
+  deviceService.useNoticeAgent?.((item) => userProfiles.inboxItemAgent(item));
   const offProfileIndex = bus.subscribe((message) => {
     if (message.name === 'sessionUpdated') userProfiles.noteSession(message.payload.id, message.payload.userProfileId);
   });

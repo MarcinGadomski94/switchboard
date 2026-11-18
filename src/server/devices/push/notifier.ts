@@ -54,6 +54,8 @@ export interface PushNotifierOptions {
   readonly now?: () => number;
   /** Sends a notice to the devices that want its kind. */
   readonly deliver: (notice: PushNotice) => Promise<void>;
+  /** D178: the agent an Inbox item belongs to (a failed move's: the moved agent); default its own session. */
+  readonly agentOf?: (item: InboxItem) => string | null;
   readonly onError?: (error: unknown) => void;
 }
 
@@ -64,8 +66,19 @@ function sessionName(session: Session): string {
   return session.machine ? `${name} · ${session.machine.name}` : name;
 }
 
-/** The notice of a new Inbox item. */
-export function inboxNotice(item: InboxItem): PushNotice {
+/**
+ * The notice of a new Inbox item. D178: it names the item's agent (`sessionId`: `agent`, else the
+ * item's own session) and that agent's profile as the item's computer named it, so only that
+ * profile's pages and phones get it, whatever page it links to (`docs/profiles.md` → *Scope*).
+ */
+export function inboxNotice(item: InboxItem, agent: string | null = item.sessionId): PushNotice {
+  const notice = inboxNoticeOf(item);
+  if (agent === null) return notice;
+  const hint = item.sessionId !== null && item.userProfileId ? { userProfileId: item.userProfileId } : {};
+  return { ...notice, payload: { ...notice.payload, sessionId: agent, ...hint } };
+}
+
+function inboxNoticeOf(item: InboxItem): PushNotice {
   const source = item.sourceTitle ?? item.source;
   const who = item.machine ? `${source} · ${item.machine.name}` : source;
   const url = item.sessionId ? `/sessions/${encodeURIComponent(item.sessionId)}` : '/inbox';
@@ -165,10 +178,12 @@ export class PushNotifier {
     if (before === undefined || before === session.status) return;
     const name = sessionName(session);
     const url = `/sessions/${encodeURIComponent(session.id)}`;
+    // D178: the agent and its profile (a paired computer's names it as that computer does).
+    const owner = { sessionId: session.id, ...(session.userProfileId ? { userProfileId: session.userProfileId } : {}) };
     if (session.status === 'fail') {
-      this.#send({ kind: 'errors', urgency: 'normal', payload: { kind: 'errors', title: shortText(`${name} failed`, 80), body: 'The session stopped with an error.', url, tag: `session-${session.id}` } });
+      this.#send({ kind: 'errors', urgency: 'normal', payload: { kind: 'errors', title: shortText(`${name} failed`, 80), body: 'The session stopped with an error.', url, tag: `session-${session.id}`, ...owner } });
     } else if (before === 'run' && (session.status === 'idle' || session.status === 'done')) {
-      this.#send({ kind: 'turnFinished', urgency: 'normal', payload: { kind: 'turnFinished', title: shortText(`${name} finished`, 80), body: 'The turn is done; the session is waiting for you.', url, tag: `session-${session.id}` } });
+      this.#send({ kind: 'turnFinished', urgency: 'normal', payload: { kind: 'turnFinished', title: shortText(`${name} finished`, 80), body: 'The turn is done; the session is waiting for you.', url, tag: `session-${session.id}`, ...owner } });
     }
   }
 
@@ -204,7 +219,7 @@ export class PushNotifier {
       const created = Date.parse(item.createdAt);
       // Not news: made before the notifier started, or older than the fresh window (a reconnecting machine's backlog).
       if (Number.isFinite(created) && (created < this.#startedAt - SLACK_MS || created < now - FRESH_MS)) continue;
-      this.#send(inboxNotice(item));
+      this.#send(inboxNotice(item, this.#options.agentOf ? this.#options.agentOf(item) : item.sessionId));
     }
   }
 

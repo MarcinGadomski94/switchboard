@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { InboxItem } from '../../core/api.ts';
 import { type ProfileScope, scopeSees } from '../../core/user-profiles.ts';
 import type { SidebarLayout } from '../../core/sidebar-layout.ts';
 import type { HubMessage } from '../hub/bus.ts';
@@ -271,7 +272,8 @@ function str(value: unknown): string | null {
 /** The scoped `GET` lists, by route URL (exported for the tests). */
 export const LIST_FILTERS: Readonly<Record<string, ListFilter>> = {
   '/api/sessions': (body, sees) => arr(body)?.filter((session) => sees(str(session['id']))) ?? body,
-  '/api/inbox': (body, sees) => arr(body)?.filter((item) => sees(str(item['sessionId']))) ?? body,
+  // D178: by the item's agent (a failed move's by the moved agent; a paired computer's by the profile it named while its session is not known here).
+  '/api/inbox': (body, _sees, { scope, profiles }) => arr(body)?.filter((item) => profiles.seesInboxItem(scope, item as unknown as InboxItem)) ?? body,
   '/api/todos': (body, sees) => arr(body)?.filter((group) => sees(str(group['sessionId']))) ?? body,
   '/api/artifacts': (body, sees) => arr(body)?.filter((artifact) => sees(str(artifact['sessionId']))) ?? body,
   '/api/moves': (body, sees) => arr(body)?.filter((move) => sees(str(move['agentSessionId']))) ?? body,
@@ -382,11 +384,14 @@ export function hubTransform(profiles: UserProfileService, scope: ProfileScope):
       const move = payload?.['move'] as Record<string, unknown> | undefined;
       return sees(str(move?.['agentSessionId']) ?? null) ? message : null;
     }
+    // D178: a toast goes to its agent's profile (`sessionId`, else the session its link opens): an Inbox notice links to /inbox, so the link alone let every profile's pages show another's.
     if (message.name === 'notice') {
-      const match = /^\/(?:sessions|agents)\/([^/?#]+)/.exec(str(payload?.['url']) ?? '');
-      return match && !sees(decodeURIComponent(match[1] as string)) ? null : message;
+      const notice = (payload ?? {}) as { sessionId?: unknown; userProfileId?: unknown; url?: unknown };
+      const seen = profiles.seesNotice(scope, { sessionId: str(notice.sessionId) ?? undefined, userProfileId: str(notice.userProfileId) ?? undefined, url: str(notice.url) ?? '' });
+      return seen ? message : null;
     }
-    // The Inbox count of this client's profile (the map never leaves the server).
+    // The Inbox count of this client's profile (the map never leaves the server). D178: every publisher sends the map
+    // (a paired computer's change too, before it sent the whole count to every profile).
     if (message.name === 'inboxChanged') {
       const byProfile = payload?.['byProfile'] as Record<string, number> | undefined;
       const count = scope === null ? 0 : (byProfile?.[scope] ?? (typeof payload?.['count'] === 'number' ? payload['count'] : 0));

@@ -1669,6 +1669,12 @@ export interface InboxItem {
    * item names the move by its remote id. Absent on every other item.
    */
   readonly move?: Pick<MoveRecord, 'id' | 'kind' | 'title' | 'member' | 'source' | 'target' | 'choices'>;
+  /**
+   * Additive (D178): the user profile of the item's agent ({@link sessionId}'s), as the computer that
+   * serves the item names it (its own Default is `default`); absent for an item of no agent. A
+   * paired computer uses it when it does not know that agent's session yet (`docs/profiles.md`).
+   */
+  readonly userProfileId?: string;
 }
 
 /**

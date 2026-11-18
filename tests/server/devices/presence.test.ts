@@ -4,6 +4,7 @@ import type { HubMessage } from '../../../src/server/hub/bus.ts';
 import type { Session } from '../../../src/core/api.ts';
 import { PRESENCE_HEARTBEAT_MS, PRESENCE_LAPSE_MS } from '../../../src/core/devices.ts';
 import { DevicePresence, MAX_CLIENTS } from '../../../src/server/devices/presence.ts';
+import { homeDefaultId } from '../../../src/server/user-profiles/service.ts';
 import { type DeviceWorld, startDeviceWorld } from '../../helpers/devices.ts';
 import { type FakePushService, startFakePush } from '../../helpers/fake-push.ts';
 import { freeTestPorts } from '../../helpers/net.ts';
@@ -149,10 +150,13 @@ describe('D87 no system notification while Switchboard is open on the device', (
     expect(notices[0]?.payload).toMatchObject({ kind: 'turnFinished', url: '/sessions/s1', title: 'web finished' });
     expect((first?.payload as { id: string }).id).toBe((notices[0]?.payload as { id: string }).id);
 
-    // A paired machine's session: the same rule.
+    // A paired machine's session: the same rule. D178: in the profile these phones work in (the two computers' Defaults merged:
+    // that computer names this one's Default by its link id); an unknown paired agent is no longer this computer's Default's.
     const machine = { id: 'abcdefghijkl', name: 'pc-office', state: 'online' as const };
-    w.bus.publish('sessionUpdated', session('r~abcdefghijkl~s9', 'run', { machine } as Partial<Session>));
-    w.bus.publish('sessionUpdated', session('r~abcdefghijkl~s9', 'fail', { machine } as Partial<Session>));
+    const self = ((await w.store.settings.get('peers.self')) as { id?: string } | null)?.id ?? 'local';
+    const merged = { machine, userProfileId: homeDefaultId(self) } as Partial<Session>;
+    w.bus.publish('sessionUpdated', session('r~abcdefghijkl~s9', 'run', merged));
+    w.bus.publish('sessionUpdated', session('r~abcdefghijkl~s9', 'fail', merged));
     const second = (await fake.waitFor(2))[1];
     expect(second?.path).toBe(pathOf(subB.endpoint));
     expect(second?.payload).toMatchObject({ kind: 'errors', url: '/sessions/r~abcdefghijkl~s9' });

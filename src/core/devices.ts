@@ -156,6 +156,14 @@ export interface PushPayload {
    * Absent on the test notification.
    */
   readonly id?: string;
+  /**
+   * D178: the agent the happening belongs to (its session id, `r~<machine>~<id>` for a paired
+   * computer's); absent when it belongs to no agent (an update, an account). Decides which profile's
+   * pages and phones get it (`docs/profiles.md` → *Scope*), whatever {@link url} opens.
+   */
+  readonly sessionId?: string;
+  /** D178: the agent's profile as a paired computer named it (used while that session is not known here). */
+  readonly userProfileId?: string;
 }
 
 /**
