@@ -766,6 +766,8 @@ export const PROFILE_WORDS = {
   adminPassword: (name: string): string => `${name}'s password (the admin's)`,
   accessSaved: (name: string): string => `${name} saved.`,
   notHere: 'Not on this computer',
+  /** The switcher's greyed-out entry: why it can't be picked here, and where an admin changes it. */
+  notHereReason: 'Not allowed on this computer. An admin can change it in Settings → Profiles → Computers…',
 } as const;
 
 /** The theme switch's words (both UIs show them). */

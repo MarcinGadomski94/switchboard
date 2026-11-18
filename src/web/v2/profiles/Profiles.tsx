@@ -107,11 +107,13 @@ export function ProfileSwitcher() {
   const items: MenuItem[] = useMemo(
     () => [
       // D173: a profile an admin did not allow on this computer can't be switched to here.
-      ...(view?.profiles ?? []).filter((profile) => profile.allowedHere !== false).map(
+      // 2026-11-18: it is listed greyed out with the reason (hidden, it read as missing).
+      ...(view?.profiles ?? []).map(
         (profile): MenuItem => ({
           id: `profile-${profile.id}`,
           label: `${profile.name}${profile.hasPassword ? ' 🔒' : ''}`,
           icon: profile.id === view?.activeId ? 'check' : 'dot',
+          ...(profile.allowedHere === false ? { disabledReason: W.notHereReason } : {}),
           onSelect: () => {
             if (profile.id !== view?.activeId) ask(profile);
           },
