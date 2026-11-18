@@ -10,6 +10,7 @@ import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { registerPlanHooks } from '../../../src/server/plans/hooks.ts';
 import { registerTeamHooks } from '../../../src/server/team/hooks.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { USER_PROFILE_PEER_DEFAULTS_SETTING } from '../../../src/server/user-profiles/service.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -32,6 +33,9 @@ let published: HubMessage[];
 beforeEach(async () => {
   tmp = await makeTempDir('api-sidebar');
   store = await openTempStore(tmp);
+  // D178: the paired machine is one person's other computer: its Default merged with this one's (an agent of a
+  // paired computer not listed here yet is that computer's Default's, never this one's otherwise).
+  await store.settings.set(USER_PROFILE_PEER_DEFAULTS_SETTING, { [MACHINE]: 'default' });
   token = generateToken();
   const bus = new HubBus();
   published = [];

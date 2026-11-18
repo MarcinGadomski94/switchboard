@@ -42,6 +42,7 @@ import { agentMcpLaunch, claudeMcpConfig, codexMcpArgs } from '../../../src/serv
 import { configContent } from '../../../src/server/cli/opencode/bridge.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { USER_PROFILE_PEER_DEFAULTS_SETTING } from '../../../src/server/user-profiles/service.ts';
 import { REPO_ROOT, makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -75,10 +76,20 @@ afterEach(async () => {
   }
 });
 
+/** A rig's machine id by its port (12 characters of a-z / 2-7). */
+function rigId(port: number): string {
+  return `rig${'abcdefghijklmnop'.charAt(port % 16)}`.padEnd(12, 'z');
+}
+
 async function setup(port = 4961): Promise<Rig> {
   const root = await makeTempDir('team-access');
   const dataDir = path.join(root, 'data');
   const store = await openTempStore(dataDir);
+  // D178: the paired rigs ('a', 'b', 'c') are one person's computers: their Defaults merged with this one's
+  // (an agent of a paired computer not listed here yet is that computer's Default's, never this one's otherwise).
+  // Each rig has a fixed machine id (by its port), so the others can name it.
+  await store.settings.set('peers.self', { id: rigId(port) });
+  await store.settings.set(USER_PROFILE_PEER_DEFAULTS_SETTING, Object.fromEntries([4961, 4962, 4963, 4964].map((p) => [rigId(p), 'default'])));
   const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: dataDir }, platform: 'linux', home: root, cwd: root }), port };
   const token = generateToken();
   const app = await buildApp({ config, token, store, webRoot: root, agentTools: false });
