@@ -1685,7 +1685,12 @@ export class PeerService implements PeerHandlers {
     for (const id of this.#records.keys()) void this.#exchangeProfiles(id, false, records);
   }
 
-  async #exchangeProfiles(machineId: string, full: boolean, records?: readonly UserProfileWire[]): Promise<void> {
+  #exchangeProfiles(machineId: string, full: boolean, records?: readonly UserProfileWire[]): Promise<void> {
+    // D179: Switchboard's own work, never in the profile of the browser request that changed a profile.
+    return runOutsideProfileScope(() => this.#exchangeProfilesNow(machineId, full, records));
+  }
+
+  async #exchangeProfilesNow(machineId: string, full: boolean, records?: readonly UserProfileWire[]): Promise<void> {
     const service = this.#userProfiles;
     const connection = this.#connections.get(machineId);
     if (!service || !connection || connection.state !== 'online') return;

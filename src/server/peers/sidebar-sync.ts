@@ -7,6 +7,7 @@ import { SIDEBAR_SYNC_VERSION, type SidebarSyncAnswer, type SidebarSyncMessage, 
 import type { SidebarWrite } from '../db/repos/sidebar.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus } from '../hub/bus.ts';
+import { runOutsideProfileScope } from '../user-profiles/context.ts';
 import { PeerUnreachableError } from './client.ts';
 
 /** Settings key of the D71 switches: `{ [machineId]: { enabled, mergedAt } }`. */
@@ -185,7 +186,8 @@ export class SidebarSync {
     if (noChanges(changes)) return;
     for (const machineId of this.#options.machines()) {
       if (machineId === origin || !this.enabled(machineId)) continue;
-      void this.#send(machineId, changes);
+      // D179: Switchboard's own work, whatever browser request changed the layout (no profile header, no profile fallback).
+      void runOutsideProfileScope(() => this.#send(machineId, changes));
     }
   }
 
@@ -251,7 +253,8 @@ export class SidebarSync {
   exchange(machineId: string): Promise<void> {
     const running = this.#exchanges.get(machineId);
     if (running) return running.then(() => this.exchange(machineId));
-    const run = this.#exchange(machineId).finally(() => this.#exchanges.delete(machineId));
+    // D179: never in the profile of the browser request that turned sharing on.
+    const run = runOutsideProfileScope(() => this.#exchange(machineId)).finally(() => this.#exchanges.delete(machineId));
     this.#exchanges.set(machineId, run);
     return run;
   }

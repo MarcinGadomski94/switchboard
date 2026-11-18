@@ -6,6 +6,7 @@ import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus, type HubMessage } from '../../../src/server/hub/bus.ts';
 import { PeerUnreachableError } from '../../../src/server/peers/client.ts';
 import { SIDEBAR_SYNC_PATH, SidebarSync, type SyncConnection } from '../../../src/server/peers/sidebar-sync.ts';
+import { currentProfileScope, runInProfileScope } from '../../../src/server/user-profiles/context.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -109,6 +110,31 @@ describe('D71 sync service', () => {
     expect(answer).toEqual({ status: 200, body: { v: 1, enabled: true } });
     expect((await b.store.sidebar.read()).folders.map((f) => f.id)).toEqual(['f1']);
     expect(b.published.filter((m) => m.name === 'sidebarLayoutChanged')).toHaveLength(1);
+  });
+
+  it('D179: an exchange started from a browser in another profile runs in no profile; an older computer’s folder (no profile) is stored as Default’s, not that browser’s', async () => {
+    const a = await side(A, B);
+    const b = await side(B, A);
+    await b.store.sidebar.change((l) => addFolder(l, 'fb', 'Shared'));
+    await b.sync.setEnabled(A, true);
+    const scopes: unknown[] = [];
+    const toB = wire(b, A);
+    a.connection = {
+      state: 'online',
+      request: async (method, path, body) => {
+        scopes.push(currentProfileScope());
+        const answer = await toB.request(method, path, body);
+        // An older computer: its folders carry no profile.
+        const answerBody = answer.body as { folders?: Array<Record<string, unknown>> } | null;
+        if (answerBody?.folders) for (const folder of answerBody.folders) delete folder['userProfileId'];
+        return answer;
+      },
+    };
+    await runInProfileScope('team', () => a.sync.setEnabled(B, true));
+    expect(scopes.length).toBeGreaterThan(0);
+    expect(scopes.every((scope) => scope === undefined)).toBe(true);
+    const folder = (await a.store.sidebar.records()).folders.find((f) => f.id === 'fb');
+    expect(folder?.userProfileId ?? 'default').toBe('default');
   });
 
   it('the full exchange: both layouts merged on both sides, the first merge combines same-named folders; later changes go live', async () => {
