@@ -122,6 +122,8 @@ describe('M2.4 crash recovery (server child process + fake-claude, SIGKILL and r
 
     // Session processes only: `agents --json` checks log their argv too.
     const sessionProcesses = async () => (await spawnedArgv(logFile)).filter((line) => line.argv?.includes('-p'));
+    // Both processes logged their argv (a loaded runner can write the second line a moment after its status shows: the 2.4.49 CI flake).
+    await until(async () => (await sessionProcesses()).length >= 2, 'both session processes logged');
     const first = await sessionProcesses();
     expect(first).toHaveLength(2);
     const pidOf = (lines: typeof first, claudeId: string, flag: string) => lines.find((l) => l.argv?.[l.argv.indexOf(flag) + 1] === claudeId && l.argv.includes(flag))?.pid;
