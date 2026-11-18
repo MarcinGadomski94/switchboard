@@ -68,7 +68,9 @@ export interface ChatMoveServiceOptions {
 interface SourceChatOp {
   readonly chatId: string;
   readonly startedAt: number;
-  readonly files: Map<string, { readonly abs: string } | { readonly bytes: Buffer }>;
+  readonly files: Map<string, { readonly abs: string }>;
+  /** 2026-11-18: the text artifact versions, written out for the move (not held in memory); removed with the operation. */
+  readonly spool: string;
 }
 
 /** What the target keeps of a chat move in progress. */
@@ -346,7 +348,11 @@ export class ChatMoveService {
   async #data(opId: string, chatId: string): Promise<OpAnswer<{ readonly files: readonly ChatDataFile[] }>> {
     const record = await this.#store.sessions.get(chatId);
     if (!record || record.kind !== 'chat') throw new TakeoverError(404, 'not-found', `no chat ${chatId}`);
-    const op: SourceChatOp = { chatId, startedAt: Date.now(), files: new Map() };
+    const spool = path.join(this.#dataDir, 'tmp', 'chat-move', opId.replace(/[^A-Za-z0-9-]/g, '_'));
+    this.#dropSource(opId);
+    await rm(spool, { recursive: true, force: true });
+    await mkdir(spool, { recursive: true, mode: 0o700 });
+    const op: SourceChatOp = { chatId, startedAt: Date.now(), files: new Map(), spool };
     const out: ChatDataFile[] = [];
     const addFile = async (part: ChatDataPart, name: string, abs: string): Promise<void> => {
       const info = await stat(abs);
@@ -371,9 +377,10 @@ export class ChatMoveService {
         if (!full) continue;
         const name = `${artifact.id}/${version.n}`;
         if (full.content !== null) {
-          const bytes = Buffer.from(full.content, 'utf8');
-          op.files.set(keyOf('artifact', name), { bytes });
-          out.push({ part: 'artifact', name, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+          // D177: a text version may be 100 MB: written out and served from disk like the other files.
+          const abs = path.join(spool, `${artifact.id.replace(/[^A-Za-z0-9-]/g, '_')}-${version.n}.txt`);
+          await writeFile(abs, full.content, { encoding: 'utf8', mode: 0o600 });
+          await addFile('artifact', name, abs);
         } else if (full.file !== null) {
           const abs = path.resolve(this.#dataDir, full.file);
           if (!abs.startsWith(`${path.join(this.#dataDir, 'artifacts')}${path.sep}`)) continue;
@@ -392,10 +399,6 @@ export class ChatMoveService {
     const entry = op.files.get(keyOf(part, name));
     if (!entry) throw new TakeoverError(404, 'unknown-file', `${part} ${name} is not part of this move`);
     if (!Number.isInteger(offset) || offset < 0) throw new TakeoverError(422, 'invalid', 'offset must be a whole number of bytes');
-    if ('bytes' in entry) {
-      const slice = entry.bytes.subarray(offset, offset + TAKEOVER_CHUNK_BYTES);
-      return { name, size: entry.bytes.length, offset, length: slice.length, data: slice.toString('base64'), eof: offset + slice.length >= entry.bytes.length };
-    }
     const handle: FileHandle = await open(entry.abs, 'r');
     try {
       const size = (await handle.stat()).size;
@@ -409,11 +412,20 @@ export class ChatMoveService {
 
   /** Forgets a source operation (after the finish or the undo). */
   release(opId: string): { readonly released: boolean } {
-    return { released: this.#sources.delete(opId) };
+    return { released: this.#dropSource(opId) };
+  }
+
+  /** Forgets a source operation and removes its spooled text versions (in the background). */
+  #dropSource(opId: string): boolean {
+    const op = this.#sources.get(opId);
+    if (!op) return false;
+    this.#sources.delete(opId);
+    void rm(op.spool, { recursive: true, force: true }).catch(() => undefined);
+    return true;
   }
 
   #expireStale(): void {
-    for (const [opId, op] of [...this.#sources.entries()]) if (Date.now() - op.startedAt > OP_TTL_MS) this.#sources.delete(opId);
+    for (const [opId, op] of [...this.#sources.entries()]) if (Date.now() - op.startedAt > OP_TTL_MS) this.#dropSource(opId);
   }
 
   // ═══ target ═══════════════════════════════════════════════════════════

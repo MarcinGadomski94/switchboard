@@ -36,8 +36,11 @@ export const CHAT_MOVE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 /** Most bytes one artifact version (an image, a PDF, a long text) may have on the move. D177: 100 MiB (was 20 MiB), the artifacts' own limit. */
 export const CHAT_MOVE_ARTIFACT_MAX_BYTES = 100 * 1024 * 1024;
 
-/** Most bytes a chat move copies besides its conversation (attachments, scratch files, artifacts). */
-export const CHAT_MOVE_DATA_MAX_BYTES = 200 * 1024 * 1024;
+/**
+ * Most bytes a chat move copies besides its conversation (attachments, scratch files, artifacts).
+ * 2026-11-18 (D177 follow-up): 1 GiB (was 200 MiB): both ends stream it through files, never all in memory.
+ */
+export const CHAT_MOVE_DATA_MAX_BYTES = 1024 * 1024 * 1024;
 
 /** Most attachments / artifact versions one move copies (the description stays far below the peer API's 1 MiB body limit). */
 export const CHAT_MOVE_ATTACHMENTS_MAX = 500;
