@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.51 (2026-11-18)
+
+### Profiles
+- **Blocked profiles show in the switcher:** a profile not allowed on this computer is listed greyed out with "Not allowed on this computer" and where an admin changes it, instead of missing from the list.
 ## 2.4.50 (2026-11-18)
 
 ### Profiles
