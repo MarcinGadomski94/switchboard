@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.50 (2026-11-18)
+
+### Profiles
+- **Home and notifications per profile:** an item in Needs you, its toast and its phone push go only to the profile of the agent it belongs to. Before, a plan, scheduled-run or move item could reach every profile, and so could an item from a paired computer's new agent. Items that belong to no agent (updates, account sign-ins) still show in every profile. See `docs/profiles.md` (D178).
+- **Shared layout per profile, synced at once:** Settings → Computers → Shared layout now switches sharing for the profile you're in, and a profile shares with a computer only when it's on for that profile on both. Folders travel with their profile, so one person's folders and moves never touch another person's agents or conversations. Deleting a folder with its agents archived archives only your own. Turning sharing on syncs at once, and every change after that goes out right away. Your existing switch now counts for Default. See `docs/sidebar.md` (D179).
+- **Nothing stays hidden after a merge:** agents and conversations still on a profile that was merged away or deleted move to the surviving profile (or Default) when Switchboard starts, and an agent in a folder its profile can't see shows outside the folder instead of disappearing.
 ## 2.4.49 (2026-11-18)
 
 ### Artifacts
