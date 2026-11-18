@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   ARTIFACT_IMAGE_MAX,
   ARTIFACT_KINDS,
+  ARTIFACT_LONG_COMPARE_NOTE,
+  ARTIFACT_LONG_NOTE,
   ARTIFACT_PDF_MAX,
   ARTIFACT_PDF_TYPE,
   ARTIFACT_TEXT_MAX,
   ARTIFACT_TOOLS,
+  ARTIFACT_VIEW_MAX,
+  artifactTooLongToView,
+  artifactViewText,
   artifactExtension,
   artifactFileName,
   artifactLine,
@@ -42,10 +47,12 @@ describe('D89 · fields', () => {
     expect(checkArtifactLanguage('rm -rf').ok).toBe(false);
   });
 
-  it('text content: not empty, at most 2 MB, svg must be SVG', () => {
+  it('text content: not empty, at most 100 MB (D177), svg must be SVG', () => {
     expect(textContentProblem('markdown', '# x')).toBeNull();
     expect(textContentProblem('markdown', ' \n ')).toContain('empty');
-    expect(textContentProblem('markdown', 'é'.repeat(ARTIFACT_TEXT_MAX / 2 + 1))).toContain('at most 2 MB');
+    expect(textContentProblem('markdown', 'é'.repeat(ARTIFACT_TEXT_MAX / 2 + 1))).toContain('at most 100 MB');
+    // D177: well over the old 2 MB is fine.
+    expect(textContentProblem('markdown', 'x'.repeat(5 * 1024 * 1024))).toBeNull();
     expect(textContentProblem('svg', '<svg viewBox="0 0 1 1"/>')).toBeNull();
     expect(textContentProblem('svg', '<html>')).toContain('SVG');
   });
@@ -82,8 +89,10 @@ describe('D126 · pdf artifacts', () => {
     expect(artifactExtension('pdf', null, 'application/octet-stream')).toBe('pdf');
     expect(ARTIFACT_PDF_TYPE).toBe('application/pdf');
     expect(kindTag({ kind: 'pdf', language: null })).toBe('PDF');
-    expect(ARTIFACT_PDF_MAX).toBe(25 * 1024 * 1024);
-    expect(ARTIFACT_PDF_MAX).toBeGreaterThan(ARTIFACT_IMAGE_MAX);
+    // D177: 100 MB for every kind (still three constants, D126).
+    expect(ARTIFACT_PDF_MAX).toBe(100 * 1024 * 1024);
+    expect(ARTIFACT_IMAGE_MAX).toBe(100 * 1024 * 1024);
+    expect(ARTIFACT_TEXT_MAX).toBe(100 * 1024 * 1024);
   });
 
   it('artifact_save offers pdf and tells the agent to save a PDF as it is', () => {
@@ -161,5 +170,27 @@ describe('D89 · the MCP tools', () => {
     const artifact = { id: 'a1b2c3d4e5', title: 'Plan', kind: 'code' as const, language: 'ts', versions: 3, size: 2048, createdBy: 'developer' as const };
     expect(artifactLine(artifact)).toBe('[a1b2c3d4e5] Plan · code (ts) · v3 · 2.0 KB · saved by the developer');
     expect(artifactListText([])).toBe('This session has no artifacts yet.');
+  });
+});
+
+describe('D177 · the viewers draw at most ARTIFACT_VIEW_MAX', () => {
+  it('a long version is cut to its start for the view; a short one is drawn whole', () => {
+    expect(ARTIFACT_VIEW_MAX).toBe(2 * 1024 * 1024);
+    const short = '# fine\n'.repeat(1000);
+    expect(artifactTooLongToView(short)).toBe(false);
+    expect(artifactViewText(short)).toBe(short);
+    expect(artifactTooLongToView(null)).toBe(false);
+    const long = 'y'.repeat(ARTIFACT_VIEW_MAX + 10);
+    expect(artifactTooLongToView(long)).toBe(true);
+    expect(artifactViewText(long)).toHaveLength(ARTIFACT_VIEW_MAX);
+    expect(artifactTooLongToView('y'.repeat(ARTIFACT_VIEW_MAX))).toBe(false);
+    expect(ARTIFACT_LONG_NOTE).toContain('first 2 MB');
+    expect(ARTIFACT_LONG_COMPARE_NOTE).toContain('Too long to compare');
+  });
+
+  it('artifact_save points the agent at path for a long text', () => {
+    const save = ARTIFACT_TOOLS.find((tool) => tool.name === 'artifact_save')!;
+    expect(JSON.stringify(save)).toContain('at most 100 MB');
+    expect(JSON.stringify(save)).toContain('give path instead');
   });
 });

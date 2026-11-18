@@ -25,18 +25,41 @@ export function isTextKind(kind: ArtifactKind): boolean {
   return kind !== 'image' && kind !== 'pdf';
 }
 
-/** D89: the largest text version (UTF-8 bytes): 2 MiB. */
-export const ARTIFACT_TEXT_MAX = 2 * 1024 * 1024;
+/** D89: the largest text version (UTF-8 bytes). D177: 100 MiB (was 2 MiB). */
+export const ARTIFACT_TEXT_MAX = 100 * 1024 * 1024;
 
-/** D89: the largest image version (bytes): 10 MiB. */
-export const ARTIFACT_IMAGE_MAX = 10 * 1024 * 1024;
+/** D89: the largest image version (bytes). D177: 100 MiB (was 10 MiB). */
+export const ARTIFACT_IMAGE_MAX = 100 * 1024 * 1024;
 
 /**
- * D126: the largest PDF version (bytes): 25 MiB. Its own limit, not the image's
- * (10 MiB): a report with screenshots or scans passes 10 MB easily, and the file is
- * copied from `path`, never sent in a save's body.
+ * D126: the largest PDF version (bytes). Its own limit, not the image's (D126 kept
+ * them apart); D177: 100 MiB (was 25 MiB). The file is copied from `path`, never
+ * sent in a save's body.
  */
-export const ARTIFACT_PDF_MAX = 25 * 1024 * 1024;
+export const ARTIFACT_PDF_MAX = 100 * 1024 * 1024;
+
+/**
+ * D177: the most text the viewers draw (UTF-16 code units, ≈2 MB): a longer version shows its
+ * start as plain text with "Download for all of it"; Markdown / HTML / CSV / Mermaid / SVG are
+ * drawn as such only up to here. Compare between versions is offered only when both are under it.
+ */
+export const ARTIFACT_VIEW_MAX = 2 * 1024 * 1024;
+
+/** D177: whether a text version is too long to draw whole (see {@link ARTIFACT_VIEW_MAX}). */
+export function artifactTooLongToView(content: string | null | undefined): boolean {
+  return typeof content === 'string' && content.length > ARTIFACT_VIEW_MAX;
+}
+
+/** D177: the note above a long version's start (a Download link follows it). */
+export const ARTIFACT_LONG_NOTE = `Showing the first ${ARTIFACT_VIEW_MAX / 1024 / 1024} MB as plain text: this version is longer.`;
+
+/** D177: why Compare is not drawn for a long version. */
+export const ARTIFACT_LONG_COMPARE_NOTE = `Too long to compare here (over ${ARTIFACT_VIEW_MAX / 1024 / 1024} MB): download both versions to compare them.`;
+
+/** D177: the start of a text version the viewers draw (the whole text when it is short enough). */
+export function artifactViewText(content: string): string {
+  return content.length > ARTIFACT_VIEW_MAX ? content.slice(0, ARTIFACT_VIEW_MAX) : content;
+}
 
 /** D126: the media type of a `pdf` version. */
 export const ARTIFACT_PDF_TYPE = 'application/pdf';
@@ -47,7 +70,13 @@ export function isPdfBytes(bytes: Uint8Array): boolean {
   return bytes.length >= magic.length && magic.every((byte, index) => bytes[index] === byte);
 }
 
-/** D89: the body limit of a save (`POST`): a 2 MiB text as JSON, escapes included, with room to spare. */
+/**
+ * D89: the body limit of a save (`POST`): the largest text as JSON, escapes included, with room to
+ * spare. D177: ≈300 MiB for a 100 MiB text. It is only a bound (the body takes what it really
+ * is): every route with it is behind a token (the UI's, an agent's or a paired computer's). A
+ * text whose JSON escapes would pass it (mostly quotes, backslashes or control characters) is
+ * saved from a file instead (`path`).
+ */
 export const ARTIFACT_SAVE_BODY_MAX = 3 * ARTIFACT_TEXT_MAX + 64 * 1024;
 
 /** D89: the longest title (characters, one line). */
@@ -403,7 +432,7 @@ export const ARTIFACT_TOOLS: readonly TodoToolDefinition[] = [
           enum: [...ARTIFACT_KINDS],
           description: 'markdown (docs, reports, plans), code (one source file; give language), html (a self-contained page or mockup: it runs sandboxed, without network), mermaid (diagram source), svg, image (png / jpg / gif / webp, by path), pdf (give path to a PDF file the session made), csv (a table).',
         },
-        content: { type: 'string', description: `The artifact's text (at most ${ARTIFACT_TEXT_MAX / 1024 / 1024} MB). Give content or path.` },
+        content: { type: 'string', description: `The artifact's text (at most ${ARTIFACT_TEXT_MAX / 1024 / 1024} MB). Give content or path; for a long text (more than a few MB) write it to a file and give path instead.` },
         path: { type: 'string', description: `A file to copy in instead of content (absolute, or relative to the session's working folder; it must be inside the session's working folders). Text up to ${ARTIFACT_TEXT_MAX / 1024 / 1024} MB, images up to ${ARTIFACT_IMAGE_MAX / 1024 / 1024} MB, PDFs up to ${ARTIFACT_PDF_MAX / 1024 / 1024} MB.` },
         language: { type: 'string', description: 'For kind code: the language (ts, python, sql, …).' },
         id: { ...ARTIFACT_ID, description: 'To save a new version of an existing artifact of this session: its id. Leave it out to create a new artifact.' },

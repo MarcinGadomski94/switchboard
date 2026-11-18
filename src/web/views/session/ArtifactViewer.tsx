@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Artifact, ArtifactDetail } from '../../../core/api.ts';
-import { ARTIFACT_CSV_ROWS_MAX, artifactSizeLabel, isTextKind, lineDiff, parseCsv } from '../../../core/artifacts.ts';
+import { ARTIFACT_CSV_ROWS_MAX, ARTIFACT_LONG_COMPARE_NOTE, ARTIFACT_LONG_NOTE, artifactSizeLabel, artifactTooLongToView, artifactViewText, isTextKind, lineDiff, parseCsv } from '../../../core/artifacts.ts';
 import { ApiError, api, artifactRawUrl } from '../../api/client.ts';
 import { formatAge } from '../../shell/format.ts';
 import { useCoarsePointer, useLayout } from '../../shell/useLayout.ts';
@@ -249,6 +249,11 @@ function ArtifactBody({ sessionId, artifact, n, mode, content, older, from, load
   const src = artifactRawUrl(sessionId, artifact.id, n);
   if (artifact.kind === 'image') return <img className="sb-artv-image" data-testid="artifact-image" src={src} alt={artifact.title} />;
   if (artifact.kind === 'pdf') return <PdfView src={src} title={artifact.title} />;
+  // D177: a version over ARTIFACT_VIEW_MAX shows its start as plain text (any mode): drawing it whole would stall the page.
+  if (content !== null && !loading && artifactTooLongToView(content)) {
+    return mode === 'diff' ? <LongNote text={ARTIFACT_LONG_COMPARE_NOTE} /> : <LongText content={content} href={artifactRawUrl(sessionId, artifact.id, n, true)} />;
+  }
+  if (mode === 'diff' && older !== null && artifactTooLongToView(older)) return <LongNote text={ARTIFACT_LONG_COMPARE_NOTE} />;
   if (artifact.kind === 'svg' && mode === 'rendered') return <img className="sb-artv-image" data-testid="artifact-svg" src={src} alt={artifact.title} />;
   if (artifact.kind === 'html' && mode === 'rendered') {
     // D89: scripts run, but in an opaque origin: no cookie, no storage, no API, no navigation of the app.
@@ -270,6 +275,32 @@ function ArtifactBody({ sessionId, artifact, n, mode, content, older, from, load
   if (artifact.kind === 'csv') return <CsvTable text={content} />;
   const markdown = renderedMarkdown(artifact.kind, artifact.language, content);
   return <ChatMarkdown text={markdown ?? content} testId="artifact-markdown" />;
+}
+
+/** D177: a note in place of a view too long to draw. */
+function LongNote({ text }: { readonly text: string }) {
+  return (
+    <p className="sb-artv-long" data-testid="artifact-long-note">
+      {text}
+    </p>
+  );
+}
+
+/** D177: a long version's start as plain text, with Download for all of it. */
+function LongText({ content, href }: { readonly content: string; readonly href: string }) {
+  return (
+    <div data-testid="artifact-long">
+      <p className="sb-artv-long" data-testid="artifact-long-note">
+        {ARTIFACT_LONG_NOTE}{' '}
+        <a href={href} download data-testid="artifact-long-download">
+          Download for all of it
+        </a>
+      </p>
+      <pre className="sb-artv-source" data-testid="artifact-source">
+        {artifactViewText(content)}
+      </pre>
+    </div>
+  );
 }
 
 /**

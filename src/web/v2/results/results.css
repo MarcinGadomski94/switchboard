@@ -637,3 +637,9 @@
     animation: none;
   }
 }
+
+/* D177: the note above a long version's start. */
+.v2-res-long {
+  margin: 0 0 8px;
+  font-size: 12px;
+}

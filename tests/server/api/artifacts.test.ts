@@ -1,9 +1,9 @@
-import { mkdir, readdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, symlink, truncate, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEvents } from '../../../src/core/api.ts';
-import { ARTIFACT_PDF_MAX, ARTIFACT_TEXT_MAX, ARTIFACT_VERSIONS_MAX } from '../../../src/core/artifacts.ts';
+import { ARTIFACT_IMAGE_MAX, ARTIFACT_PDF_MAX, ARTIFACT_TEXT_MAX, ARTIFACT_VERSIONS_MAX } from '../../../src/core/artifacts.ts';
 import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
 import { HTML_ARTIFACT_CSP, PDF_ARTIFACT_CSP, STATIC_ARTIFACT_CSP, filterArtifacts } from '../../../src/server/api/artifacts.ts';
 import { DEVICE_ALLOWED, matchesRule } from '../../../src/server/devices/local-only.ts';
@@ -73,8 +73,14 @@ beforeAll(async () => {
   await writeFile(path.join(work, 'report.pdf'), PDF);
   await writeFile(path.join(work, 'report-v2.pdf'), PDF_V2);
   await writeFile(path.join(work, 'fake.pdf'), '<!doctype html><script>alert(1)</script>');
-  // One byte over the PDF limit, with a real header (only the size refuses it).
-  await writeFile(path.join(work, 'huge.pdf'), Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(ARTIFACT_PDF_MAX + 1 - 9)]));
+  // One byte over the PDF limit, with a real header (only the size refuses it). D177: grown with truncate (no 100 MB buffer).
+  await writeFile(path.join(work, 'huge.pdf'), '%PDF-1.4\n');
+  await truncate(path.join(work, 'huge.pdf'), ARTIFACT_PDF_MAX + 1);
+  // D177: one byte over the text and image limits (refused by size before a byte is read).
+  await writeFile(path.join(work, 'huge.md'), '# big\n');
+  await truncate(path.join(work, 'huge.md'), ARTIFACT_TEXT_MAX + 1);
+  await writeFile(path.join(work, 'huge.png'), PNG);
+  await truncate(path.join(work, 'huge.png'), ARTIFACT_IMAGE_MAX + 1);
   await writeFile(path.join(tmp, 'secret.txt'), 'outside');
   await symlink(path.join(tmp, 'secret.txt'), path.join(work, 'link.txt'));
   store = await openTempStore(tmp, { now: () => new Date((clock += 60_000)) });
@@ -171,7 +177,16 @@ describe('D89 · saving', () => {
     ]) {
       expect((await ui('POST', `/api/sessions/${session}/artifacts`, body)).status, JSON.stringify(body)).toBe(422);
     }
-    expect((await ui('POST', `/api/sessions/${session}/artifacts`, { title: 'big', kind: 'markdown', content: 'x'.repeat(ARTIFACT_TEXT_MAX + 1) })).status).toBe(413);
+    // D177: 100 MB per version: a 5 MB text (over the old 2 MB) saves; one byte over the limit (a file, by path) is 413.
+    const five = await ui('POST', `/api/sessions/${session}/artifacts`, { title: 'big', kind: 'markdown', content: 'x'.repeat(5 * 1024 * 1024) });
+    expect(five.status, JSON.stringify(five.body).slice(0, 200)).toBe(201);
+    expect((five.body as ArtifactSaveResult).artifact.size).toBe(5 * 1024 * 1024);
+    for (const [body, words] of [[{ title: 'x', kind: 'markdown', path: 'huge.md' }, 'larger than 100 MB'], [{ title: 'x', kind: 'image', path: 'huge.png' }, 'larger than 100 MB']] as const) {
+      const refused = await agent('POST', '/agent/v1/artifacts', body);
+      expect(refused.status, JSON.stringify(body)).toBe(413);
+      expect(String((refused.body as { message: string }).message)).toContain(words);
+    }
+    await ui('DELETE', `/api/sessions/${session}/artifacts/${(five.body as ArtifactSaveResult).artifact.id}`);
     // A new version keeps the kind.
     const csv = (await ui('POST', `/api/sessions/${session}/artifacts`, { title: 'T', kind: 'csv', content: 'a,b\n1,2\n' })).body as ArtifactSaveResult;
     expect((await ui('POST', `/api/sessions/${session}/artifacts`, { id: csv.artifact.id, title: 'T', kind: 'markdown', content: 'x' })).status).toBe(422);
@@ -247,12 +262,12 @@ describe('D126 · pdf artifacts', () => {
     expect(item).toEqual({ title: 'Quarterly report', body: '' });
   });
 
-  it('refuses a PDF without path, a file that is not a PDF and one over 25 MB', async () => {
+  it('refuses a PDF without path, a file that is not a PDF and one over 100 MB', async () => {
     for (const [body, status, words] of [
       [{ title: 'x', kind: 'pdf', content: '%PDF-1.4' }, 422, 'needs path'],
       [{ title: 'x', kind: 'pdf', path: 'fake.pdf' }, 422, 'not a PDF'],
       [{ title: 'x', kind: 'pdf', path: 'shot.png' }, 422, 'not a PDF'],
-      [{ title: 'x', kind: 'pdf', path: 'huge.pdf' }, 413, 'larger than 25 MB'],
+      [{ title: 'x', kind: 'pdf', path: 'huge.pdf' }, 413, 'larger than 100 MB'],
     ] as const) {
       const refused = await agent('POST', '/agent/v1/artifacts', body);
       expect(refused.status, JSON.stringify(body)).toBe(status);

@@ -86,10 +86,11 @@ describe('D155: a chat moves to a paired computer', () => {
     await writeFile(path.join(scratch, '.env'), 'API_TOKEN=abcdefghijklmnopqrstuvwxyz123456\n');
     await writeFile(path.join(tmp, 'outside.txt'), 'outside the scratch folder\n');
     await symlink(path.join(tmp, 'outside.txt'), path.join(scratch, 'link.txt'));
-    // An artifact with two versions and a todo.
+    // An artifact with two versions and a todo. D177: version 2 is a 25 MB text (over the old 2 MB save and 20 MB move caps).
+    const bigText = `# v2\n${'x'.repeat(25 * 1024 * 1024)}`;
     const saved = await w.a.call('POST', `/api/sessions/${chat.id}/artifacts`, { title: 'Billing split', kind: 'markdown', content: '# v1\n' });
     expect(saved.status, JSON.stringify(saved.body)).toBe(201);
-    expect((await w.a.call('POST', `/api/sessions/${chat.id}/artifacts`, { id: saved.body.artifact.id, title: 'Billing split', kind: 'markdown', content: '# v2\n' })).status).toBe(201);
+    expect((await w.a.call('POST', `/api/sessions/${chat.id}/artifacts`, { id: saved.body.artifact.id, title: 'Billing split', kind: 'markdown', content: bigText })).status).toBe(201);
     expect((await w.a.call('POST', `/api/sessions/${chat.id}/todos`, { title: 'Decide the module boundary' })).status).toBe(201);
 
     // The preview: both computers' view; alpha found on the mac by its remote, the notes folder has no match there.
@@ -142,6 +143,10 @@ describe('D155: a chat moves to a paired computer', () => {
     // The artifact with both versions, the todo.
     const artifacts = (await w.b.call('GET', `/api/sessions/${moved.id}/artifacts`)).body as Array<{ id: string; title: string; versions: number }>;
     expect(artifacts).toEqual([expect.objectContaining({ title: 'Billing split', versions: 2 })]);
+    // D177: the 25 MB version arrived whole.
+    const big = (await w.b.call('GET', `/api/sessions/${moved.id}/artifacts/${artifacts[0]?.id}?version=2`)).body as { version: { size: number; content: string } };
+    expect(big.version.size).toBe(bigText.length);
+    expect(big.version.content === bigText).toBe(true);
     const todos = (await w.b.call('GET', `/api/sessions/${moved.id}/todos`)).body as { items?: Array<{ title: string }> } | Array<{ title: string }>;
     expect(JSON.stringify(todos)).toContain('Decide the module boundary');
     // Plan mode kept, the same conversation resumed in the new scratch folder, only the mapped folder readable.

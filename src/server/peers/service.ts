@@ -1407,7 +1407,9 @@ export class PeerService implements PeerHandlers {
       // D72: stopping a running terminal's claude takes up to its grace time plus the wait for it to leave the registry.
       path.split('?')[0]?.endsWith('/continue-in-switchboard') === true ||
       // D171: entering CLI mode may stop a turn; Back to chat mode waits for the CLI to exit, then D72's continue.
-      path.split('?')[0]?.endsWith('/cli-mode') === true;
+      path.split('?')[0]?.endsWith('/cli-mode') === true ||
+      // D177: an artifact's save and its detail carry up to 100 MB of text (the raw bytes take the long limit already).
+      ((method === 'POST' || method === 'GET') && /^\/api\/sessions\/[^/]+\/artifacts\/?[^/]*$/.test(path.split('?')[0] ?? ''));
     const kind = peerAnswerKind(method, path);
     // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.
     const snapshot = snapshotOf(method, path, kind);

@@ -841,6 +841,8 @@ export const RESULTS_WORDS = {
   copy: 'Copy',
   copied: (title: string): string => `Copied ${title}.`,
   download: 'Download',
+  /** D177: the link under a long version's start. */
+  downloadAll: 'Download for all of it',
   fullScreen: 'Full screen',
   exitFullScreen: 'Leave full screen',
   openAgent: 'Open agent',

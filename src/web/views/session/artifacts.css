@@ -464,3 +464,10 @@
   align-items: center;
   text-decoration: none;
 }
+
+/* D177: the note above a long version's start (or in place of Compare). */
+.sb-artv-long {
+  margin: 0 0 8px;
+  color: var(--sb-muted, inherit);
+  font-size: 12px;
+}

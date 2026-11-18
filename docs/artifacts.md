@@ -84,11 +84,18 @@ characters (the new default is 731).
 
 - **Title**: one line, at most 120 characters. **Language**: a short name
   (`ts`, `c++`, `f#`), lower-cased.
-- **Size**: text up to 2 MB (UTF-8), images up to 10 MB, PDFs up to 25 MB (D126:
-  their own limit, `ARTIFACT_PDF_MAX`, not the image one: a report with
-  screenshots or scans passes 10 MB easily, and a PDF only ever comes from
-  `path`, never in a save's body). A save's body is up to
-  about 6 MB of JSON (escapes included).
+- **Size** (D177): text up to 100 MB (UTF-8), images up to 100 MB, PDFs up to
+  100 MB (three constants, `ARTIFACT_TEXT_MAX` / `ARTIFACT_IMAGE_MAX` /
+  `ARTIFACT_PDF_MAX`: D126 kept them apart; until D177 they were 2, 10 and 25 MB).
+  A save's body is up to about 300 MB of JSON (`ARTIFACT_SAVE_BODY_MAX`: three times the
+  text, for its escapes; only a bound, every route with it is behind a token). For a long
+  text the agent writes a file and gives `path` (the tool's description says so): a
+  100 MB `content` travels through the MCP helper and the save as one JSON message.
+- **Viewing a long version** (D177): the viewers (the classic Artifacts viewer and the v2
+  result drawer) draw at most 2 MB (`ARTIFACT_VIEW_MAX`): a longer text version shows its
+  start as plain text, whatever its kind, with *Download for all of it*; Compare between
+  versions says it is too long to compare when either side is over it. Copy still copies
+  the whole version.
 - **Versions** are numbered from 1; a save with `id` adds the next one (its title
   and language may change, its kind may not). At most **100 versions** per
   artifact and **200 artifacts** per session (409 `too-many` past either).

@@ -33,8 +33,8 @@ export const MOVE_CHAT_LABEL = 'Move to computer…';
 /** Most bytes one attachment may have on the move (the D57 upload cap). */
 export const CHAT_MOVE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 
-/** Most bytes one artifact version (an image, a PDF, a long text) may have on the move. */
-export const CHAT_MOVE_ARTIFACT_MAX_BYTES = 20 * 1024 * 1024;
+/** Most bytes one artifact version (an image, a PDF, a long text) may have on the move. D177: 100 MiB (was 20 MiB), the artifacts' own limit. */
+export const CHAT_MOVE_ARTIFACT_MAX_BYTES = 100 * 1024 * 1024;
 
 /** Most bytes a chat move copies besides its conversation (attachments, scratch files, artifacts). */
 export const CHAT_MOVE_DATA_MAX_BYTES = 200 * 1024 * 1024;

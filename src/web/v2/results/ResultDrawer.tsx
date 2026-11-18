@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ArtifactDetail, ArtifactListItem } from '../../../core/api.ts';
-import { ARTIFACT_CSV_ROWS_MAX, artifactSizeLabel, parseCsv } from '../../../core/artifacts.ts';
+import { ARTIFACT_CSV_ROWS_MAX, ARTIFACT_LONG_NOTE, artifactSizeLabel, artifactTooLongToView, artifactViewText, parseCsv } from '../../../core/artifacts.ts';
 import { ApiError, api, artifactRawUrl } from '../../api/client.ts';
 import { useCoarsePointer, useLayout } from '../../shell/useLayout.ts';
 import { ChatMarkdown } from '../../views/session/ChatMarkdown.tsx';
@@ -237,9 +237,12 @@ function ResultView({ item, onFull, openAgent }: { readonly item: ArtifactListIt
           })}
         </div>
       ) : source && content !== null ? (
-        <pre className="v2-res-source" data-testid="v2-result-source-text">
-          {content}
-        </pre>
+        <>
+          {artifactTooLongToView(content) ? <LongNote href={artifactRawUrl(sessionId, item.id, n, true)} /> : null}
+          <pre className="v2-res-source" data-testid="v2-result-source-text">
+            {artifactViewText(content)}
+          </pre>
+        </>
       ) : (
         <Preview item={item} sessionId={sessionId} n={n} content={content} loading={needsText && shown.detail === null} />
       )}
@@ -252,6 +255,17 @@ function Preview({ item, sessionId, n, content, loading }: { readonly item: Arti
   const src = artifactRawUrl(sessionId, item.id, n);
   if (item.kind === 'image' || item.kind === 'svg') return <img className="v2-res-image" data-testid="v2-result-image" src={src} alt={item.title} />;
   if (item.kind === 'pdf') return <PdfPreview src={src} title={item.title} />;
+  // D177: a version over ARTIFACT_VIEW_MAX shows its start as plain text: drawing it whole would stall the page.
+  if (content !== null && !loading && artifactTooLongToView(content)) {
+    return (
+      <div data-testid="v2-result-long">
+        <LongNote href={artifactRawUrl(sessionId, item.id, n, true)} />
+        <pre className="v2-res-source" data-testid="v2-result-source-text">
+          {artifactViewText(content)}
+        </pre>
+      </div>
+    );
+  }
   if (item.kind === 'html') {
     // D89: scripts run in an opaque origin: no cookie, no storage, no API, no navigation of the app.
     return <iframe className="v2-res-frame" data-testid="v2-result-frame" sandbox="allow-scripts" src={src} title={item.title} referrerPolicy="no-referrer" />;
@@ -267,6 +281,18 @@ function Preview({ item, sessionId, n, content, loading }: { readonly item: Arti
     <div className="v2-res-doc" data-testid="v2-result-doc">
       <ChatMarkdown text={markdown ?? content} testId="v2-result-markdown" />
     </div>
+  );
+}
+
+/** D177: the note above a long version's start, with Download for all of it. */
+function LongNote({ href }: { readonly href: string }) {
+  return (
+    <p className="v2-muted v2-res-long" data-testid="v2-result-long-note">
+      {ARTIFACT_LONG_NOTE}{' '}
+      <a href={href} download data-testid="v2-result-long-download">
+        {W.downloadAll}
+      </a>
+    </p>
   );
 }
 
