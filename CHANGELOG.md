@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.49 (2026-11-18)
+
+### Artifacts
+- **Artifacts up to 100 MB:** text (Markdown, HTML, CSV, SVG, code), images and PDFs can each be up to 100 MB per version (before: 2 MB, 10 MB and 25 MB). A very long text opens on its first 2 MB, with **Download** for all of it; versions that long aren't compared line by line. Agents are told to save long texts from a file. See `docs/artifacts.md` (D177).
+
+### Conversations
+- **Bigger conversation moves:** moving a conversation to another computer carries artifact versions up to 100 MB (was 20 MB) and up to 1 GB of attachments, scratch files and artifacts in all (was 200 MB). Text versions travel through temporary files, not memory.
 ## 2.4.48 (2026-11-17)
 
 ### Profiles
