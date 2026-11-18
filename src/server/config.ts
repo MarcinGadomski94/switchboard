@@ -69,6 +69,8 @@ export interface ServerConfig {
    * peer listener binds only a Tailscale address (100.64.0.0/10).
    */
   readonly peerTestLoopback: boolean;
+  /** Tests only (`SWITCHBOARD_TEST_PEER_LISTENER_RETRY_MS`): the listener's retry wait (else `LISTENER_RETRY_MS`, 30 s). */
+  readonly peerListenerRetryMs?: number;
   /**
    * Fix · peer reconnects (`docs/peers.md` → *Connection states*): the peer
    * connections' grace period, stall limit and hold time, from
@@ -297,6 +299,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     openCommand: env['SWITCHBOARD_OPEN_COMMAND']?.trim() ? parseCommand('SWITCHBOARD_OPEN_COMMAND', env['SWITCHBOARD_OPEN_COMMAND'], '') : null,
     tailscaleCommand: parseCommand('SWITCHBOARD_TAILSCALE_BIN', env['SWITCHBOARD_TAILSCALE_BIN'], 'tailscale'),
     peerTestLoopback: env['SWITCHBOARD_PEER_TEST_LOOPBACK'] === '1',
+    ...(Number(env['SWITCHBOARD_TEST_PEER_LISTENER_RETRY_MS']) > 0 ? { peerListenerRetryMs: Number(env['SWITCHBOARD_TEST_PEER_LISTENER_RETRY_MS']) } : {}),
     peerTimings: parsePeerTimings(env),
     peerTestHooks: env['SWITCHBOARD_PEER_TEST_HOOKS'] === '1',
     deviceTestOrigin: parseDeviceTestOrigin(env['SWITCHBOARD_DEVICE_TEST_ORIGIN']),

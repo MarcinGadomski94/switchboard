@@ -1,9 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DB_FILE } from '../../../src/server/db/database.ts';
-import { makeTempDir, rawRequest, removeTempDir } from '../../helpers/net.ts';
+import { freeTestPorts, makeTempDir, rawRequest, removeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, enableListener, machineOn, pair, startPeerNode, waitFor } from '../../helpers/peers.ts';
 
 /**
@@ -30,6 +30,25 @@ async function twoNodes(): Promise<[PeerNode, PeerNode]> {
   nodes.push(b);
   return [a, b];
 }
+
+describe('D48 listener retry (2026-11-18)', () => {
+  it('switched on before Tailscale has an address (a restart): it says why, then listens by itself once the address comes', async () => {
+    const ipFile = path.join(tmp, 'tailscale-ip');
+    const node = await startPeerNode(tmp, 'boot', { env: { FAKE_TAILSCALE_IP_FILE: ipFile, SWITCHBOARD_TEST_PEER_LISTENER_RETRY_MS: '300' } });
+    nodes.push(node);
+    const [port] = await freeTestPorts();
+    const first = await node.call('PUT', '/api/machines/listener', { enabled: true, port });
+    expect(first.body).toMatchObject({ enabled: true, listening: null });
+    expect(String(first.body.error)).toContain('No Tailscale address');
+    // Tailscale comes up: no switch, no restart.
+    await writeFile(ipFile, '127.0.0.1\n');
+    const listening = await waitFor('the listener listens by itself', async () => {
+      const view = (await node.call('GET', '/api/machines')).body;
+      return view.listener.listening ? (view.listener as { listening: string; error: string | null }) : null;
+    }, 15_000);
+    expect(listening).toMatchObject({ listening: `127.0.0.1:${port}`, error: null });
+  }, 60_000);
+});
 
 describe('D48 pairing (two processes)', () => {
   it('the listener is off by default; one pairing works in both directions once both listen', async () => {

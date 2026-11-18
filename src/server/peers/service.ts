@@ -111,6 +111,9 @@ export const PEER_LIST_STALE_MS = 10_000;
 /** Plans (D99) hook: its plans (`GET /api/plans`). */
 /** D137 follow-up 2026-10-26: its archived sessions (the newest `ARCHIVE_PEER_LIMIT`, without agents), for this computer's Archived list. */
 /** D154: its moves (`GET /api/moves`: the take-overs its runner drives, running and recently finished). */
+/** 2026-11-18: how long the listener waits before trying again when it could not listen (no Tailscale address yet). */
+export const LISTENER_RETRY_MS = 30_000;
+
 const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', artifacts: '/api/artifacts', plans: '/api/plans', archived: '/api/sessions?closed=only', moves: '/api/moves' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
@@ -477,6 +480,8 @@ export class PeerService implements PeerHandlers {
   #listening: string | null = null;
   #listenerError: string | null = null;
   #listenerChange: Promise<void> = Promise.resolve();
+  /** 2026-11-18: while the switch is on but nothing listens (Tailscale not up yet at boot), the next try. */
+  #listenerRetry: NodeJS.Timeout | undefined;
   #started = false;
   #closed = false;
   #self: { id: string; name: string } | null = null;
@@ -582,6 +587,7 @@ export class PeerService implements PeerHandlers {
     this.#closed = true;
     await this.#flushSaves().catch((error: unknown) => this.#onError(error));
     clearTimeout(this.#outage);
+    clearTimeout(this.#listenerRetry);
     this.testHoldLists(false);
     this.testHoldTakeover(null);
     await this.#listenerChange.catch(() => undefined);
@@ -664,6 +670,8 @@ export class PeerService implements PeerHandlers {
 
   /** (Re)starts or stops the listener to match the switch; serialized. */
   #applyListener(): Promise<void> {
+    clearTimeout(this.#listenerRetry);
+    this.#listenerRetry = undefined;
     const run = this.#listenerChange.catch(() => undefined).then(async () => {
       const setting = await this.#listenerSetting();
       await this.#stopListener();
@@ -672,6 +680,7 @@ export class PeerService implements PeerHandlers {
       const host = setting.address ?? (await tailscaleIPv4(this.#config.tailscaleCommand, { cwd: this.#config.dataDir }));
       if (!host) {
         this.#listenerError = 'No Tailscale address: is Tailscale running and signed in? (`tailscale ip -4` found none; or set the address)';
+        this.#retryListener();
         return;
       }
       const app = buildPeerApp({ host, port: setting.port, handlers: this });
@@ -682,12 +691,28 @@ export class PeerService implements PeerHandlers {
       } catch (error) {
         await app.close().catch(() => undefined);
         this.#listenerError = error instanceof Error ? error.message : String(error);
+        // E.g. the Tailscale address is not on an interface yet right after boot (EADDRNOTAVAIL).
+        this.#retryListener();
       }
       // Paired machines learn the new address with the next hello.
       for (const connection of this.#connections.values()) connection.kick();
     });
     this.#listenerChange = run;
     return run;
+  }
+
+  /**
+   * 2026-11-18: the switch is on but nothing listens: try again in a while (a computer restarted with
+   * Switchboard up before Tailscale stayed unreachable from its paired computers until a restart).
+   */
+  #retryListener(): void {
+    if (this.#closed) return;
+    clearTimeout(this.#listenerRetry);
+    this.#listenerRetry = setTimeout(() => {
+      this.#listenerRetry = undefined;
+      if (!this.#closed && this.#listener === null) void this.#applyListener().catch((error: unknown) => this.#onError(error));
+    }, this.#config.peerListenerRetryMs ?? LISTENER_RETRY_MS);
+    this.#listenerRetry.unref();
   }
 
   async #stopListener(): Promise<void> {

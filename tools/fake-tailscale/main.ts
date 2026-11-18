@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 
 /**
  * tools/fake-tailscale: a stand-in for the Tailscale CLI so tests never call the
@@ -29,7 +29,11 @@ const env = process.env;
 if (env['FAKE_TAILSCALE_LOG']) appendFileSync(env['FAKE_TAILSCALE_LOG'], `${JSON.stringify(args)}\n`);
 
 if (args[0] === 'ip' && args[1] === '-4' && args.length === 2) {
-  const ip = env['FAKE_TAILSCALE_IP'] ?? '127.0.0.1';
+  // `FAKE_TAILSCALE_IP_FILE`: the address is read from that file at each call (missing or empty = none), so a
+  // test can bring Tailscale "up" later (2026-11-18, the listener's retry).
+  const file = env['FAKE_TAILSCALE_IP_FILE'];
+  const fromFile = file ? (existsSync(file) ? readFileSync(file, 'utf8').trim() : '') : null;
+  const ip = fromFile !== null ? fromFile || 'none' : (env['FAKE_TAILSCALE_IP'] ?? '127.0.0.1');
   if (ip === 'none') {
     process.stderr.write('no current Tailscale IPs; state: Stopped\n');
     process.exit(1);
