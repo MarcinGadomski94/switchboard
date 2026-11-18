@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.52 (2026-11-18)
+
+### Paired computers
+- **Back online by itself after a restart:** when a computer restarted and Switchboard came up before Tailscale, its paired computers saw it offline until Switchboard was restarted there (it could still reach them, they couldn't reach it). Switchboard now tries again every 30 seconds while the listener is on but not listening. See `docs/peers.md`.
 ## 2.4.51 (2026-11-18)
 
 ### Profiles
