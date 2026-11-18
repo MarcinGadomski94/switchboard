@@ -304,12 +304,14 @@ export function clocksOf(changes: RecordChanges): string[] {
  * first, then inside each combined folder: the one with the smallest id stays
  * (both machines pick the same one), the other's subfolders and sessions move
  * to its end, in their order, and the other is deleted. Answers the layout
- * (unchanged when nothing has the same name).
+ * (unchanged when nothing has the same name). D179: only folders of the same
+ * profile (`profileOf`) are combined: two people's "Projects" stay two folders
+ * (before, one person's sessions could move into the other's folder).
  */
-export function combineSameNamed(layout: SidebarLayout): SidebarLayout {
+export function combineSameNamed(layout: SidebarLayout, profileOf: (folderId: string) => string = () => ''): SidebarLayout {
   let current = layout;
   for (let guard = 0; guard < 1000; guard++) {
-    const pair = firstSameNamed(current);
+    const pair = firstSameNamed(current, profileOf);
     if (!pair) return current;
     const [keep, gone] = pair;
     let next: SidebarLayout | null = current;
@@ -328,10 +330,10 @@ export function combineSameNamed(layout: SidebarLayout): SidebarLayout {
 }
 
 /** The first two folders with the same name and the same parent, in tree order (the smaller id first). */
-function firstSameNamed(layout: SidebarLayout): readonly [SidebarFolder, SidebarFolder] | null {
+function firstSameNamed(layout: SidebarLayout, profileOf: (folderId: string) => string): readonly [SidebarFolder, SidebarFolder] | null {
   const tree = normalizeFolders(layout.folders);
   for (const folder of tree) {
-    const twins = tree.filter((f) => f.id !== folder.id && parentOf(f) === parentOf(folder) && f.name === folder.name);
+    const twins = tree.filter((f) => f.id !== folder.id && parentOf(f) === parentOf(folder) && f.name === folder.name && profileOf(f.id) === profileOf(folder.id));
     if (twins.length === 0) continue;
     const all = [folder, ...twins].sort((a, b) => (a.id < b.id ? -1 : 1));
     return [all[0] as SidebarFolder, all[1] as SidebarFolder];

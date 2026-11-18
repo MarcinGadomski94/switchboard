@@ -1087,6 +1087,8 @@ export const SETTINGS_WORDS = {
   stopAll: 'Stop all',
   sharedLayout: 'Shared layout',
   sharedLayoutSub: 'Folders, pins and the List / Board choice are the same on both computers and your phone.',
+  /** D179: the switches below are the browser's profile's (each profile shares its own folders; turn it on for that profile on both computers). */
+  sharedLayoutProfile: (name: string) => `For ${name} only: each profile shares its own folders and pins. Turn it on in ${name} on both computers.`,
   sharedAccounts: 'Shared accounts',
   sharedAccountsSub: 'Signed in once, used by every paired computer. Their names, order and usage are shared automatically.',
   sharedAccountsNone: 'No account is on more than one computer yet.',

@@ -155,6 +155,7 @@ export class UserProfileService {
     if (!this.#profiles) {
       this.#profiles = new Map((await this.#o.store.userProfiles.list({ includeDeleted: true })).map((record) => [record.id, record]));
       this.#merged = new Map([...this.#profiles.values()].filter((record) => record.mergedInto).map((record) => [record.id, record.mergedInto as string]));
+      this.#deletedIds = new Set([...this.#profiles.values()].filter((record) => record.deletedAt).map((record) => record.id));
     }
     return this.#profiles;
   }
@@ -266,8 +267,58 @@ export class UserProfileService {
       return this.fromRemote(machine, profileOf(remote));
     }
     const own = this.#index().get(sessionId);
-    if (own) return own;
+    // D179: a session left on a merged-away (or deleted) profile is its survivor's (Default's when none), never no one's.
+    if (own) return this.#alive(own);
     return DEFAULT_USER_PROFILE_ID;
+  }
+
+  /**
+   * D179: the profile of a session when it is known: this computer's sessions, and a paired
+   * computer's once its list arrived; `null` for one not known (yet).
+   */
+  knownProfileOfSession(sessionId: string): string | null {
+    if (sessionId.startsWith('r~')) {
+      if (!this.#o.remoteSessions?.().some((session) => session.id === sessionId)) return null;
+      return this.profileOfSession(sessionId);
+    }
+    return this.#index().has(sessionId) ? this.profileOfSession(sessionId) : null;
+  }
+
+  /** D179: the ids of the profiles that exist here (not deleted; this computer's ids). */
+  async liveIds(): Promise<ReadonlySet<string>> {
+    const records = await this.#records();
+    return new Set([DEFAULT_USER_PROFILE_ID, ...[...records.values()].filter((record) => !record.deletedAt).map((record) => record.id)]);
+  }
+  /** D179: deleted profiles' ids (tombstones). */
+  #deletedIds = new Set<string>();
+
+  /** D179: profile `id` as a live one: a merged-away one's survivor (the chain), a deleted one without a survivor → Default. */
+  #alive(id: string): string {
+    if (id === DEFAULT_USER_PROFILE_ID || !this.#deletedIds.has(id)) return id;
+    const survivor = this.#localOf(id);
+    return survivor !== id && !this.#deletedIds.has(survivor) ? survivor : DEFAULT_USER_PROFILE_ID;
+  }
+
+  /**
+   * D179 · the repair at start: data still naming a merged-away or deleted profile (a merge learned
+   * before 2.4.50 that did not move everything, a chat moved in under an old id) moves to the
+   * survivor (Default's when none). Answers the profiles repaired (`from → to`).
+   */
+  async repairOrphans(): Promise<Array<{ readonly from: string; readonly to: string }>> {
+    await this.ready();
+    const records = await this.#records();
+    // Read fresh, not cached: the index stays lazy (built at its first use, as before).
+    const used = new Set(this.#o.store.userProfiles.sessionProfiles().values());
+    const out: Array<{ from: string; to: string }> = [];
+    for (const record of records.values()) {
+      if (!record.deletedAt || record.id === DEFAULT_USER_PROFILE_ID || !used.has(record.id)) continue;
+      const to = this.#alive(record.id);
+      if (to === record.id) continue;
+      await this.#rekeyAll(record.id, to);
+      out.push({ from: record.id, to });
+    }
+    if (out.length > 0) this.#invalidate();
+    return out;
   }
 
   /**

@@ -113,6 +113,11 @@ export interface MachineSidebarSync {
   /** The last exchange (ISO), `null` before. */
   readonly lastSyncAt: string | null;
   readonly error: string | null;
+  /**
+   * D179: the profiles (this computer's ids) whose layout is shared with that computer: each
+   * profile turns its own sharing on (`enabled` = any). Absent from an older Switchboard.
+   */
+  readonly profiles?: readonly string[];
 }
 
 /**

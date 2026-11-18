@@ -533,6 +533,9 @@ export class PeerService implements PeerHandlers {
       selfId: async () => (await this.self()).id,
       // D172: a paired machine's folder profiles, as this machine names them.
       mapProfile: (machineId, id) => this.#userProfiles?.fromRemote(machineId, id) ?? id,
+      // D179: the layout is shared per profile.
+      profileOfSession: (sessionId) => (this.#userProfiles ? this.#userProfiles.knownProfileOfSession(sessionId) : null),
+      liveProfiles: async () => (this.#userProfiles ? await this.#userProfiles.liveIds() : new Set(['default'])),
       connection: (id) => this.#connections.get(id),
       machines: () => [...this.#records.keys()],
       onStatus: (id) => this.#publishMachine(id),
@@ -1559,12 +1562,13 @@ export class PeerService implements PeerHandlers {
   }
 
   /** D71: the switch of the shared sidebar layout with machine `id` (`PUT /api/machines/{id}/sidebar-sync` `{ enabled }`). */
-  async setSidebarSync(id: string, input: unknown): Promise<Machine> {
+  async setSidebarSync(id: string, input: unknown, profile: string | null = null): Promise<Machine> {
     const record = this.#records.get(id);
     if (!record) throw new PeerError(404, 'not-found', `no machine ${id}`);
     const enabled = (typeof input === 'object' && input !== null ? (input as { enabled?: unknown }).enabled : undefined) as unknown;
     if (typeof enabled !== 'boolean') throw new PeerError(422, 'invalid', 'the body must be { enabled: true | false }');
-    await this.#sidebar.setEnabled(id, enabled);
+    // D179: the switch is the profile's the browser works in (Default outside a profile).
+    await this.#sidebar.setEnabled(id, enabled, profile ?? 'default');
     return this.#machine(this.#records.get(id) ?? record);
   }
 

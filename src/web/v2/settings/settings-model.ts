@@ -2,6 +2,7 @@ import type { AccountProfile, AccountSettings } from '../../../core/accounts.ts'
 import { clock } from '../../../core/accounts.ts';
 import { CLI_LABELS, type CliProviderId } from '../../../core/cli-providers.ts';
 import { creditsInUse, creditsMoneyText, creditsResetDay } from '../../../core/credits.ts';
+import type { MachineSidebarSync } from '../../../core/peers.ts';
 import type { V2Status } from '../glossary.ts';
 
 /**
@@ -158,4 +159,15 @@ export function secondsLeft(iso: string | null | undefined, now: number): number
 /** "Offline since 09:12" (or plain "Offline"). */
 export function offlineSince(lastSeenAt: string | null, now: number = Date.now()): string {
   return lastSeenAt ? `Offline since ${clock(lastSeenAt, new Date(now))}` : 'Offline';
+}
+
+/**
+ * D179: whether the layout is shared with a paired computer for profile `profile` (the browser's):
+ * each profile has its own switch per computer. An older computer's view (no `profiles`) is the
+ * whole switch; a browser in no profile reads Default's.
+ */
+export function layoutSharedFor(sync: Pick<MachineSidebarSync, 'enabled' | 'profiles'> | undefined, profile: string | null): boolean {
+  if (!sync) return false;
+  if (!Array.isArray(sync.profiles)) return sync.enabled === true;
+  return sync.profiles.includes(profile ?? 'default');
 }

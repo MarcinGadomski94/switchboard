@@ -1,5 +1,8 @@
 import type { MachineSidebarSync, SidebarSyncState } from '../../core/peers.ts';
-import { type RecordChanges, noChanges } from '../../core/sidebar-records.ts';
+import { isCrewPinId } from '../../core/crew-pins.ts';
+import { isPlanPinId } from '../../core/plan-pins.ts';
+import { type FolderRecord, type RecordChanges, noChanges } from '../../core/sidebar-records.ts';
+import { DEFAULT_USER_PROFILE_ID } from '../../core/user-profiles.ts';
 import { SIDEBAR_SYNC_VERSION, type SidebarSyncAnswer, type SidebarSyncMessage, fromWire, readSyncMessage, toWire } from '../../core/sidebar-sync.ts';
 import type { SidebarWrite } from '../db/repos/sidebar.ts';
 import type { Store } from '../db/store.ts';
@@ -16,8 +19,11 @@ export const SIDEBAR_SYNC_PATH = '/peer/v1/sidebar';
 const SYNC_TIMEOUT_MS = 30_000;
 
 interface StoredSwitch {
+  /** Any profile on (kept for older readers of the setting). */
   readonly enabled: boolean;
   readonly mergedAt: string | null;
+  /** D179: the profiles (this computer's ids) that share their layout with that machine. */
+  readonly profiles: readonly string[];
 }
 
 /** What the sync needs of a paired machine's connection. */
@@ -34,6 +40,10 @@ export interface SidebarSyncOptions {
   readonly selfId: () => Promise<string>;
   /** D172: a paired machine's profile id on its folders → this machine's (its `default` is its Default). */
   readonly mapProfile?: (machineId: string, id: string) => string;
+  /** D179: a session's profile here (this computer's id), `null` when not known (yet). */
+  readonly profileOfSession?: (sessionId: string) => string | null;
+  /** D179: the profiles that exist here (this computer's ids; deleted ones left out). */
+  readonly liveProfiles?: () => Promise<ReadonlySet<string>>;
   /** The machine's connection (`undefined` when not paired). */
   readonly connection: (machineId: string) => SyncConnection | undefined;
   /** The paired machines' ids. */
@@ -83,11 +93,19 @@ export class SidebarSync {
     const stored = (await this.#options.store.settings.get(SIDEBAR_SYNC_SETTING)) as Record<string, unknown> | undefined;
     const out: Record<string, StoredSwitch> = {};
     for (const [id, value] of Object.entries(stored ?? {})) {
-      const entry = value as { enabled?: unknown; mergedAt?: unknown } | null;
-      if (entry && typeof entry === 'object') out[id] = { enabled: entry.enabled === true, mergedAt: typeof entry.mergedAt === 'string' ? entry.mergedAt : null };
+      const entry = value as { enabled?: unknown; mergedAt?: unknown; profiles?: unknown } | null;
+      if (!entry || typeof entry !== 'object') continue;
+      // D179: a switch from before (no `profiles`) was the whole layout's: it is Default's now.
+      const profiles = Array.isArray(entry.profiles) ? entry.profiles.filter((p): p is string => typeof p === 'string' && p !== '') : entry.enabled === true ? [DEFAULT_USER_PROFILE_ID] : [];
+      out[id] = { enabled: profiles.length > 0, mergedAt: typeof entry.mergedAt === 'string' ? entry.mergedAt : null, profiles };
     }
     this.#switches = out;
     return out;
+  }
+
+  /** D179: the profiles that share their layout with `machineId` (this computer's ids). */
+  profilesFor(machineId: string): ReadonlySet<string> {
+    return new Set(this.#switches?.[machineId]?.profiles ?? []);
   }
 
   async #save(id: string, value: StoredSwitch | null): Promise<void> {
@@ -103,22 +121,23 @@ export class SidebarSync {
     await this.#load();
   }
 
-  /** `true` when this machine's switch for `machineId` is on. */
+  /** `true` when this machine's switch for `machineId` is on for some profile (D179). */
   enabled(machineId: string): boolean {
-    return this.#switches?.[machineId]?.enabled === true;
+    return (this.#switches?.[machineId]?.profiles.length ?? 0) > 0;
   }
 
-  /** What the Machine row shows (`Machine.sidebarSync`). */
+  /** What the Machine row shows (`Machine.sidebarSync`); D179: `profiles` lists who shares (each browser shows its own profile's switch). */
   view(machineId: string): MachineSidebarSync {
     const stored = this.#switches?.[machineId];
     const status = this.#status.get(machineId);
-    const enabled = stored?.enabled === true;
+    const enabled = (stored?.profiles.length ?? 0) > 0;
     return {
       enabled,
       state: enabled ? (status?.state ?? 'connecting') : 'off',
       mergedAt: stored?.mergedAt ?? null,
       lastSyncAt: status?.lastSyncAt ?? null,
       error: enabled ? (status?.error ?? null) : null,
+      profiles: [...(stored?.profiles ?? [])],
     };
   }
 
@@ -129,11 +148,18 @@ export class SidebarSync {
     if (!before || before.state !== next.state || before.error !== next.error || synced) this.#options.onStatus(machineId);
   }
 
-  /** The switch (`PUT /api/machines/{id}/sidebar-sync`). Turning it on exchanges everything at once (when reachable). */
-  async setEnabled(machineId: string, enabled: boolean): Promise<void> {
+  /**
+   * The switch (`PUT /api/machines/{id}/sidebar-sync`), D179: for one profile (the one the browser
+   * works in). Turning it on exchanges everything at once (when reachable).
+   */
+  async setEnabled(machineId: string, enabled: boolean, profile: string = DEFAULT_USER_PROFILE_ID): Promise<void> {
     const current = (await this.#load())[machineId];
-    await this.#save(machineId, { enabled, mergedAt: current?.mergedAt ?? null });
-    this.#status.delete(machineId);
+    const set = new Set(current?.profiles ?? []);
+    if (enabled) set.add(profile);
+    else set.delete(profile);
+    const profiles = [...set];
+    await this.#save(machineId, { enabled: profiles.length > 0, mergedAt: current?.mergedAt ?? null, profiles });
+    if (profiles.length === 0) this.#status.delete(machineId);
     this.#options.onStatus(machineId);
     if (enabled) await this.exchange(machineId);
   }
@@ -170,10 +196,40 @@ export class SidebarSync {
     this.changed(write.changes, origin);
   }
 
-  async #message(full: boolean, changes: RecordChanges | null): Promise<SidebarSyncMessage> {
+  async #message(machineId: string, full: boolean, changes: RecordChanges | null): Promise<SidebarSyncMessage> {
     const selfId = await this.#options.selfId();
-    const records = changes ?? (await this.#options.store.sidebar.records());
+    const all = await this.#options.store.sidebar.records();
+    const records = this.#shared(machineId, changes ?? all, all.folders, await this.#live());
     return { v: SIDEBAR_SYNC_VERSION, full, ...toWire(records, selfId) };
+  }
+
+  /**
+   * D179: only the records of the profiles that share with `machineId` (this computer's ids):
+   * their folders, and the places of their sessions. A place in a folder goes with that folder's
+   * profile; a session placed elsewhere goes with its own profile (one not known yet: sent / taken,
+   * the layout shown is cut to each profile anyway). Pinned crews and projects go while any profile shares.
+   */
+  #shared(machineId: string, changes: RecordChanges, knownFolders: readonly FolderRecord[], live: ReadonlySet<string> | null): RecordChanges {
+    const profiles = this.profilesFor(machineId);
+    const folderProfile = new Map<string, string>();
+    for (const folder of knownFolders) folderProfile.set(folder.id, folder.userProfileId ?? DEFAULT_USER_PROFILE_ID);
+    for (const folder of changes.folders) folderProfile.set(folder.id, folder.userProfileId ?? DEFAULT_USER_PROFILE_ID);
+    const folders = changes.folders.filter((folder) => profiles.has(folder.userProfileId ?? DEFAULT_USER_PROFILE_ID) && (live === null || live.has(folder.userProfileId ?? DEFAULT_USER_PROFILE_ID)));
+    const places = changes.places.filter((place) => {
+      if (isCrewPinId(place.sessionId) || isPlanPinId(place.sessionId)) return profiles.size > 0;
+      const session = this.#options.profileOfSession?.(place.sessionId) ?? null;
+      if (session !== null && !profiles.has(session)) return false;
+      if (place.group !== 'folder' || place.folderId === null) return true;
+      const folder = folderProfile.get(place.folderId);
+      // A place in a folder of another profile than its session's is never shared (it would hide the session there).
+      if (folder !== undefined && session !== null && folder !== session) return false;
+      return folder === undefined ? session !== null : profiles.has(folder);
+    });
+    return { folders, places };
+  }
+
+  async #live(): Promise<ReadonlySet<string> | null> {
+    return this.#options.liveProfiles ? await this.#options.liveProfiles() : null;
   }
 
   /** Sends a live change (`full: false`). */
@@ -184,7 +240,7 @@ export class SidebarSync {
       return;
     }
     try {
-      const answer = await connection.request('POST', SIDEBAR_SYNC_PATH, await this.#message(false, changes), { timeoutMs: SYNC_TIMEOUT_MS });
+      const answer = await connection.request('POST', SIDEBAR_SYNC_PATH, await this.#message(machineId, false, changes), { timeoutMs: SYNC_TIMEOUT_MS });
       this.#answered(machineId, answer, false);
     } catch (error) {
       this.#failed(machineId, error);
@@ -209,7 +265,7 @@ export class SidebarSync {
     }
     let answer: { readonly status: number; readonly body: unknown };
     try {
-      answer = await connection.request('POST', SIDEBAR_SYNC_PATH, await this.#message(true, null), { timeoutMs: SYNC_TIMEOUT_MS });
+      answer = await connection.request('POST', SIDEBAR_SYNC_PATH, await this.#message(machineId, true, null), { timeoutMs: SYNC_TIMEOUT_MS });
     } catch (error) {
       this.#failed(machineId, error);
       return;
@@ -220,11 +276,20 @@ export class SidebarSync {
       const selfId = await this.#options.selfId();
       const incoming = fromWire(body, selfId);
       if (incoming.dropped > 0) this.#options.log('warn', `sidebar sync with ${machineId}: ${incoming.dropped} malformed item(s) left out`);
-      this.#applied(await this.#options.store.sidebar.merge(this.#mapped(machineId, incoming.changes)), machineId);
+      this.#applied(await this.#options.store.sidebar.merge(await this.#incoming(machineId, incoming.changes)), machineId);
       await this.#firstMerge(machineId);
     } catch (error) {
       this.#failed(machineId, error);
     }
+  }
+
+  /**
+   * D179: what a paired machine sent, as this machine takes it: profiles translated (D172), then
+   * only the records of the profiles this machine shares with it (the same rule as sending).
+   */
+  async #incoming(machineId: string, changes: RecordChanges): Promise<RecordChanges> {
+    const mapped = this.#mapped(machineId, changes);
+    return this.#shared(machineId, mapped, (await this.#options.store.sidebar.records()).folders, await this.#live());
   }
 
   /** D172: a paired machine's folder records with their profile as this machine names it. */
@@ -275,7 +340,7 @@ export class SidebarSync {
     const stored = (await this.#load())[machineId];
     if (!stored?.enabled || stored.mergedAt !== null) return;
     const combined = await this.#options.store.sidebar.combineSameNamed();
-    await this.#save(machineId, { enabled: true, mergedAt: new Date().toISOString() });
+    await this.#save(machineId, { ...stored, mergedAt: new Date().toISOString() });
     this.#options.log('info', `sidebar layout merged with ${machineId}`);
     // Sent to every machine it is on with, this one included (it combines the same folders, the same way).
     this.#applied(combined, null);
@@ -296,10 +361,10 @@ export class SidebarSync {
     const selfId = await this.#options.selfId();
     const incoming = fromWire(message, selfId);
     if (incoming.dropped > 0) this.#options.log('warn', `sidebar sync from ${machineId}: ${incoming.dropped} malformed item(s) left out`);
-    this.#applied(await this.#options.store.sidebar.merge(this.#mapped(machineId, incoming.changes)), machineId);
+    this.#applied(await this.#options.store.sidebar.merge(await this.#incoming(machineId, incoming.changes)), machineId);
     this.#setStatus(machineId, 'synced', null, true);
     if (!message.full) return { status: 200, body: { v: SIDEBAR_SYNC_VERSION, enabled: true } };
     await this.#firstMerge(machineId);
-    return { status: 200, body: { ...(await this.#message(true, null)), enabled: true } as SidebarSyncAnswer };
+    return { status: 200, body: { ...(await this.#message(machineId, true, null)), enabled: true } as SidebarSyncAnswer };
   }
 }

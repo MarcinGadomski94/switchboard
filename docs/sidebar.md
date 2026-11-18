@@ -135,6 +135,16 @@ Developer rulings (2026-10-05): a **shared two-way layout** — paired machines 
 - **Hidden ids:** a third machine's session, a closed one or a deleted one keeps its place in the shared layout and is not shown where it is not listed (as D54 / D58 keep a closed session's place).
 - **Unplaced sessions** are each machine's own list (its service order: its own sessions first); the shared part is pinned, the folders and the loose order.
 
+### Per profile (D179)
+
+Developer report 2026-11-18 (`docs/decisions.md` → D179): the sync "should be only for the selected profile, and it should happen immediately"; conversations of another profile went missing.
+
+- **The switch is each profile's own:** Settings → Computers → Shared layout switches sharing for the profile the browser works in (a line above the switches names it), stored per (computer, profile) in `peers.sidebarSync` (`{ enabled, mergedAt, profiles: [...] }`). A switch from before (no `profiles`) is **Default's**. `Machine.sidebarSync.profiles` lists the profiles that share (`enabled` = any). A profile shares with a computer only when it turned sharing on **on both** computers (each side sends and takes only its sharing profiles' records).
+- **What goes:** a profile's folders (each with its profile, D172's ids), and the places of its sessions. A place in a folder goes with that folder's profile; a session's place elsewhere with the session's profile (one not known here yet, e.g. a paired computer's new agent before its list arrives, is taken by its folder's profile, so it shows at once). Crew and project pins go while any profile shares. A folder of a profile that does not exist here is not taken; a place in a folder of another profile than its session's is never sent or taken.
+- **The bug it fixes:** a folder made or changed live went to the other computer **without its profile**, and landed in that computer's Default: another person's (D172). So one person's folders mixed into the other's layout, and the first merge's `combineSameNamed` (which looked at names only) could move one person's agents into the other's folder; deleting that folder with its agents archived (D141) then archived them. Now every written folder record carries its profile (`SidebarLayoutRepository.#write`), `combineSameNamed` combines one profile's folders only, and the D141 delete archives only the agents the deleting profile sees.
+- **Never hidden:** a session of the viewing profile that sits in a folder it does not see is listed **loose** (at the end; `filterLayout`), not hidden.
+- **At once:** turning sharing on runs the full exchange before answering; every change after goes out right away (no timer).
+
 ## Pinned crews (2.4.4)
 
 v2 Fixes after 2.0 (`docs/v2.md` → *Shell*): a crew (a team, D100) can be pinned in the v2 rail. **No migration:** the pin is the id `crew~<team id>` (`src/core/crew-pins.ts`) in the layout's `pinned` list, next to the pinned sessions, so it has a place record, an order key and a clock like a pinned session and moves with the D54 rules (pin at the end, Unpin = unplaced, a pin at `index` for Undo).

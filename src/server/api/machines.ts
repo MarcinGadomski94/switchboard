@@ -62,7 +62,9 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
   // D71: the shared sidebar layout with that machine, on / off (off until switched on; turning it on merges both layouts).
   app.put<{ Params: { id: string } }>('/api/machines/:id/sidebar-sync', async (request, reply) => {
     try {
-      return await peers.setSidebarSync(request.params.id, request.body);
+      // D179: per profile: the one the browser works in.
+      const scope = request.userProfileScope;
+      return await peers.setSidebarSync(request.params.id, request.body, typeof scope === 'string' && scope !== '*' ? scope : null);
     } catch (error) {
       return sendPeerError(reply, error);
     }

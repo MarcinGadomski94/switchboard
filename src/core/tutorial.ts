@@ -194,6 +194,8 @@ const V2_4_46 = '2.4.46';
 const V2_4_47 = '2.4.47';
 /** The version D176 (computers known through a paired one) ships in (the next release after 2.4.47; adjust if it ships later). */
 const V2_4_48 = '2.4.48';
+/** The version D179 (the shared layout per profile) ships in (the next release after 2.4.49; adjust if it ships later). */
+const V2_4_50 = '2.4.50';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2025,6 +2027,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-profile-access', 'v2-nav-settings', 'v2-tab-more'],
         v2Route: '/settings/profiles',
         missing: 'Settings → Profiles: an admin opens Computers… on a profile.',
+      },
+    ],
+  },
+  // D179: the shared layout (D71) is each profile's own (docs/sidebar.md → Shared layout (D71) → Per profile (D179)).
+  {
+    id: 'shared-layout-profiles',
+    decision: 'D179',
+    version: V2_4_50,
+    title: 'Each profile shares its own folders',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'per-profile',
+        title: 'Shared layout, per profile',
+        what: 'Settings → Computers → Shared layout now switches for the profile you are in: each profile shares its own folders and pins with a computer, and turns it on there too. Another person’s folders never mix into yours, a new folder or agent shows on the other computer at once, and an agent never hides in a folder of another profile.',
+        todo: ['Open Settings → Computers and turn Shared layout on for a computer in your profile.'],
+        anchors: ['v2-shared-layout', 'v2-nav-settings', 'v2-tab-more'],
+        v2Route: '/settings/computers',
+        missing: 'Settings → Computers lists Shared layout once a computer is paired.',
       },
     ],
   },

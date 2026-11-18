@@ -166,7 +166,11 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     // D141: archive the agents in the folder and its subfolders (those nothing holds back), then delete the whole subtree.
     const before = await store.sidebar.read();
     if (!before.folders.some((f) => f.id === folderId)) return noFolder(reply, folderId);
-    const candidates = await folderCandidates(before, folderId);
+    // D179: only the agents this profile sees: another profile's agent in the folder is never archived by it (it stays, unplaced).
+    const scope = request.userProfileScope;
+    const profiles = context.userProfiles;
+    const seen = (sessionId: string): boolean => !profiles || typeof scope !== 'string' || scope === '*' || profiles.sees(scope, sessionId);
+    const candidates = (await folderCandidates(before, folderId)).filter((candidate) => seen(candidate.sessionId));
     const { archive: toArchive, kept } = splitFolderArchive(candidates, await archiveHolds(before, candidates.map((c) => c.sessionId)));
     const archived: FolderArchiveAgent[] = [];
     const outcomes = await Promise.all(toArchive.map(async (candidate) => ({ candidate, failure: await archiveOne(candidate.sessionId) })));

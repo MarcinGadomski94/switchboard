@@ -919,6 +919,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   await installPlans(app, apiContext, options.plans);
   // ── Project memory (D107) hook: the Project memory service and its routes (docs/memory-removal.md). ──
   await installMemory(app, apiContext);
+  // D179: data still naming a merged-away or deleted profile moves to its survivor (once Team is up: crews are re-keyed too).
+  app.addHook('onReady', async () => {
+    const repaired = await userProfiles.repairOrphans().catch((error: unknown) => {
+      console.error('switchboard profiles: repair failed', error);
+      return [];
+    });
+    for (const { from, to } of repaired) console.info(`switchboard profiles: data of the removed profile ${from} moved to ${to}`);
+  });
   // D137: the archive sweeps after Plans and Team started (registered last, so its onReady runs after theirs); never in demo mode.
   app.addHook('onReady', async () => {
     if (!config.demo) void archive.start().catch((error: unknown) => console.error(error));

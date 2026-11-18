@@ -92,8 +92,8 @@ export class SidebarLayoutRepository {
       const next = change(layoutFromRecords(records));
       if (next === null) return null;
       const after = recordsAfter(records, next, () => this.#clock.next());
-      this.#write(after.changes);
-      return { layout: layoutFromRecords(this.#records()), changes: after.changes };
+      const written = this.#write(after.changes);
+      return { layout: layoutFromRecords(this.#records()), changes: written };
     });
   }
 
@@ -102,14 +102,16 @@ export class SidebarLayoutRepository {
     for (const clock of clocksOf(incoming)) this.#clock.observe(clock);
     return transaction(this.#ctx.db, () => {
       const merged = mergeRecords(this.#records(), incoming);
-      this.#write(merged.changes);
-      return { layout: layoutFromRecords(merged.records), changes: merged.changes };
+      const written = this.#write(merged.changes);
+      return { layout: layoutFromRecords(merged.records), changes: written };
     });
   }
 
   /** D71 first enable: combines same-named folders at the same place (`combineSameNamed`); answers what changed. */
   async combineSameNamed(): Promise<SidebarWrite> {
-    return (await this.change((layout) => combineSameNamed(layout))) as SidebarWrite;
+    // D179: only within one profile's folder tree.
+    const profiles = new Map(this.#records().folders.map((folder) => [folder.id, folder.userProfileId ?? DEFAULT_USER_PROFILE_ID]));
+    return (await this.change((layout) => combineSameNamed(layout, (id) => profiles.get(id) ?? DEFAULT_USER_PROFILE_ID))) as SidebarWrite;
   }
 
   #records(): SidebarRecords {
@@ -133,8 +135,13 @@ export class SidebarLayoutRepository {
     return { folders, places };
   }
 
-  #write(changes: RecordChanges): void {
-    if (noChanges(changes)) return;
+  /**
+   * Stores `changes`; answers them with every folder's profile filled in (D179: the records sent to
+   * the paired computers carry it: before, a new folder went without one and landed in the other
+   * computer's Default, another person's there).
+   */
+  #write(changes: RecordChanges): RecordChanges {
+    if (noChanges(changes)) return changes;
     const db = this.#ctx.db;
     const now = this.#ctx.now();
     const folder = db.prepare(
@@ -145,11 +152,17 @@ export class SidebarLayoutRepository {
     // D165: a folder keeps its profile; a new one without one takes the profile the request works in (Default outside a request).
     const fallback = currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID;
     const own = new Map((db.prepare('SELECT id, user_profile_id FROM sidebar_folders').all() as Array<{ id: string; user_profile_id: string }>).map((row) => [row.id, row.user_profile_id]));
-    for (const f of changes.folders) folder.run(f.id, f.name, f.nameClock, f.parentId, f.order, f.placeClock, f.deletedClock, f.collapsed ? 1 : 0, now, f.userProfileId ?? own.get(f.id) ?? fallback);
+    const folders: FolderRecord[] = [];
+    for (const f of changes.folders) {
+      const profile = f.userProfileId ?? own.get(f.id) ?? fallback;
+      folder.run(f.id, f.name, f.nameClock, f.parentId, f.order, f.placeClock, f.deletedClock, f.collapsed ? 1 : 0, now, profile);
+      folders.push({ ...f, userProfileId: profile });
+    }
     const place = db.prepare(
       'INSERT INTO sidebar_places (session_id, grp, folder_id, sort_key, clock) VALUES (?, ?, ?, ?, ?) ' +
         'ON CONFLICT (session_id) DO UPDATE SET grp = excluded.grp, folder_id = excluded.folder_id, sort_key = excluded.sort_key, clock = excluded.clock',
     );
     for (const p of changes.places) place.run(p.sessionId, p.group, p.group === 'folder' ? p.folderId : null, p.order, p.clock);
+    return { folders, places: changes.places };
   }
 }

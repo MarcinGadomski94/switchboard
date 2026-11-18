@@ -355,11 +355,15 @@ const SIDEBAR_FILTER: ListFilter = (body, sees, { scope, resolvers }) => {
 export function filterLayout(layout: SidebarLayout, sees: Sees, folderSeen: (folderId: string) => boolean): SidebarLayout {
   if (!layout || !Array.isArray(layout.pinned) || !Array.isArray(layout.folders)) return layout;
   const keep = (id: string): boolean => (id.startsWith('crew~') || id.startsWith('plan~') ? true : sees(id));
+  // D179: a session of this profile in a folder it does not see (another profile's, e.g. a combine or a
+  // sync from before 2.4.50) is never hidden: it shows loose, at the end.
+  const stray = layout.folders.filter((folder) => !folderSeen(folder.id)).flatMap((folder) => folder.sessionIds.filter((id: string) => !id.startsWith('crew~') && !id.startsWith('plan~') && sees(id)));
+  const loose = [...(Array.isArray(layout.loose) ? layout.loose.filter(keep) : []), ...stray];
   return {
     ...layout,
     pinned: layout.pinned.filter(keep),
     folders: layout.folders.filter((folder) => folderSeen(folder.id)).map((folder) => ({ ...folder, sessionIds: folder.sessionIds.filter(keep) })),
-    ...(Array.isArray(layout.loose) ? { loose: layout.loose.filter(keep) } : {}),
+    ...(Array.isArray(layout.loose) || stray.length > 0 ? { loose } : {}),
   };
 }
 

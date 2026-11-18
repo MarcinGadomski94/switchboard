@@ -100,6 +100,12 @@ Paired computers form a chain, not a circle: your PC, your home PC and a shared 
 - **The hub:** the `inboxChanged` count is the client's profile's (published with a per-profile map that never leaves the server); `planChanged` and `teamChanged` go only to the clients of the profile that owns the plan / crew.
 - **A sidebar position** counted in one profile's rows (Pinned, a folder, the loose order) lands before the same row in the whole list.
 
+## Layout and profiles (D179)
+
+- **Shared layout per profile:** Settings → Computers → Shared layout is each profile's switch; a profile's folders and places reach another computer only when that profile shares on both (`docs/sidebar.md` → *Per profile (D179)*). Another person's folders never mix into yours.
+- **Never hidden by layout:** an agent or conversation of this profile in a folder of another profile shows loose; deleting a folder with its agents archived (D141) archives only the agents the deleting profile sees.
+- **A merged-away or deleted profile's data:** a session still naming a merged-away profile reads as its survivor's (the merged-into chain; Default's for a deleted profile without one), and at start `repairOrphans` moves every such reference (sessions, folders, phones, schedules, crews, terminals) to it, once. Tests: `tests/server/user-profiles/layout-profiles.test.ts`.
+
 ## A folder bound to a profile (D169)
 
 A saved folder (D14) may be **bound** to one profile (`folders.user_profile_id`, migration 0057; `NULL` = shared, as before). Per computer: each computer's folders are bound on their own (no matching or syncing between computers).

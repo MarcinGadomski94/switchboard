@@ -14,7 +14,8 @@ import { type MachineUpdateView, localUpdateView, machineUpdateView } from '../.
 import { useMachineUpdate } from '../../updates/useMachineUpdate.ts';
 import { useStatusPill } from '../shell/useShellData.ts';
 import { formatBytes } from '../shell/status-model.ts';
-import { offlineSince, secondsLeft } from './settings-model.ts';
+import { layoutSharedFor, offlineSince, secondsLeft } from './settings-model.ts';
+import { useUserProfiles } from '../profiles/Profiles.tsx';
 
 function errorText(caught: unknown, fallback: string): string {
   if (caught instanceof ApiError) return refusalText(caught.body, fallback);
@@ -438,17 +439,26 @@ function BackgroundApps({ selfName, machines }: { readonly selfName: string; rea
 /** D71: share the folder layout with each paired computer (a switch per computer). */
 function SharedLayout({ machines, onChanged }: { readonly machines: readonly Machine[]; readonly onChanged: () => void }) {
   const toast = useToast();
+  // D179: each profile shares its own layout: the switches are this browser's profile's.
+  const { view: profiles } = useUserProfiles();
+  const activeId = profiles?.activeId ?? null;
+  const activeName = profiles?.profiles.find((profile) => profile.id === activeId)?.name ?? null;
   return (
-    <Card pad className="v2-set-card" data-testid="v2-shared-layout">
+    <Card pad className="v2-set-card" data-testid="v2-shared-layout" data-tour="v2-shared-layout">
       <div className="v2-set-card-h">
         <Icon name="folder" />
         <h3 className="v2-grow">{W.sharedLayout}</h3>
       </div>
       <p className="v2-muted v2-set-small">{W.sharedLayoutSub}</p>
+      {activeName ? (
+        <p className="v2-muted v2-set-small" data-testid="v2-shared-layout-profile">
+          {W.sharedLayoutProfile(activeName)}
+        </p>
+      ) : null}
       {machines.length === 0 ? <p className="v2-muted v2-set-small">{W.noComputers}</p> : null}
       {machines.map((machine) => {
         const sync = machine.sidebarSync;
-        const on = sync?.enabled === true;
+        const on = layoutSharedFor(sync, activeId);
         const word = !on ? 'Off' : sync?.state === 'synced' ? 'In sync' : sync?.state === 'waiting' ? 'Waiting for the other computer' : sync?.state === 'unsupported' ? 'Update Switchboard there' : sync?.state === 'error' ? (sync.error ?? 'Failed') : sync?.state === 'unreachable' ? 'Catches up when it is back' : 'Connecting…';
         return (
           <div className="v2-set-row" key={machine.id} data-testid="v2-shared-layout-row">
