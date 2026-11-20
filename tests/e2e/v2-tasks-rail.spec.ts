@@ -86,7 +86,7 @@ test('the rail shows Tasks with the count of unfinished tasks across agents, liv
   await expect(page.getByTestId('v2-nav-badge-tasks')).toHaveCount(0);
 });
 
-test('the seven rail items fit the tablet and short desktop rails; the phone keeps Tasks in More', async ({ page }) => {
+test('the eight rail items fit the tablet and short desktop rails (D181: 2 rows of 4 icons on a desktop); the phone keeps Tasks in More', async ({ page }) => {
   for (const size of [
     { width: 1280, height: 720 },
     { width: 1024, height: 768 },
@@ -94,14 +94,19 @@ test('the seven rail items fit the tablet and short desktop rails; the phone kee
   ]) {
     await page.setViewportSize(size);
     await openWithHub(page, `${world.baseUrl}/`);
-    // The eight destinations, then (D181) the Pinned and Recent buttons.
-    const items = page.getByTestId('v2-rail').locator('a.v2-nav-item');
+    const items = page.getByTestId('v2-rail').locator('.v2-nav-item');
     await expect(items).toHaveCount(8);
-    // Pinned, the last button (no agent opened yet: no Recent), sits inside the window without scrolling the rail.
-    const box = await page.getByTestId('v2-rail-pins-button').boundingBox();
+    // Settings, the last item, sits inside the window without scrolling the rail.
+    const box = await page.getByTestId('v2-nav-settings').boundingBox();
     expect(box, `${size.width}×${size.height}`).not.toBeNull();
     expect(box!.y + box!.height, `${size.width}×${size.height}`).toBeLessThanOrEqual(size.height);
     expect(await page.getByTestId('v2-rail').evaluate((el) => el.scrollTop)).toBe(0);
+    if (size.width >= 1280) {
+      // D181 (corrected 2026-11-20): two rows of four icons.
+      const boxes = await items.evaluateAll((links) => links.map((link) => link.getBoundingClientRect()).map((box) => ({ x: Math.round(box.x), y: Math.round(box.y) })));
+      expect(new Set(boxes.map((box) => box.y)).size, 'rows').toBe(2);
+      expect(new Set(boxes.map((box) => box.x)).size, 'columns').toBe(4);
+    }
   }
 
   await page.setViewportSize({ width: 390, height: 844 });

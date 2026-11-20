@@ -108,22 +108,14 @@ test('pin a crew from its ⋯ menu: in the rail, expand to its teammates, open o
   test.setTimeout(90_000);
   await page.goto(`${world.baseUrl}/crews/team`);
   const rail = page.getByTestId('v2-rail-pins');
-  // D181: Pinned opens beside the rail (a pick, a click outside or Esc closes it).
-  const openPins = async (): Promise<void> => {
-    if ((await page.getByTestId('v2-rail-pins-flyout').count()) === 0) await page.getByTestId('v2-rail-pins-button').click();
-    await expect(rail).toBeVisible();
-  };
-  await openPins();
   await expect(rail).toContainText('Pin agents or crews from their ⋯ menu.');
-  await page.keyboard.press('Escape');
 
   await page.getByTestId('v2-crew-menu').click();
   await page.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
   await expect(page.getByTestId('v2-toast').filter({ hasText: 'Pinned “Team” to the sidebar.' })).toBeVisible();
   await expect.poll(() => pinnedIds(page)).toEqual(['crew~team']);
 
-  // In Pinned, collapsed by default.
-  await openPins();
+  // In the rail, collapsed by default.
   const pinned = rail.locator('[data-testid="v2-pin-crew"][data-crew="team"]');
   await expect(pinned).toBeVisible();
   await expect(rail).not.toContainText('Pin agents or crews');
@@ -146,20 +138,17 @@ test('pin a crew from its ⋯ menu: in the rail, expand to its teammates, open o
   await page.mouse.move(0, 0);
   await toggle.blur();
   await page.waitForTimeout(300); // the chevron's turn
-  await page.getByTestId('v2-rail-pins-flyout').screenshot({ path: path.join('test-results', 'v2-crews-rail-expanded.png') });
+  await page.getByTestId('v2-rail').screenshot({ path: path.join('test-results', 'v2-crews-rail-expanded.png') });
 
   // Remembered per browser across a reload.
   await page.reload();
-  await openPins();
   await expect(rail.locator('[data-testid="v2-pin-crew"][data-crew="team"]').getByTestId('v2-pin-crew-toggle')).toHaveAttribute('aria-expanded', 'true');
 
   // A teammate row opens its agent; the crew row opens the crew page.
   await mates.filter({ hasText: 'Builder' }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${builder.sessionId}$`));
-  await openPins();
   await pinned.getByTestId('v2-pin-crew-link').click();
   await expect(page).toHaveURL(/\/crews\/team$/);
-  await openPins();
   await expect(pinned.getByTestId('v2-pin-crew-link')).toHaveAttribute('aria-current', 'page');
 
   // An archived teammate leaves the list: "1 archived".
@@ -172,7 +161,6 @@ test('pin a crew from its ⋯ menu: in the rail, expand to its teammates, open o
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await page.reload();
-  await openPins();
   await expect(rail.locator('[data-testid="v2-pin-crew"][data-crew="team"]').getByTestId('v2-pin-crew-toggle')).toHaveAttribute('aria-expanded', 'false');
 
   // Unpin from the Crews list's ⋯.
@@ -180,15 +168,12 @@ test('pin a crew from its ⋯ menu: in the rail, expand to its teammates, open o
   const card = page.locator('[data-testid="v2-crew-card"][data-crew="team"]');
   await card.getByTestId('v2-crew-menu').click();
   await page.getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
-  await expect.poll(() => pinnedIds(page)).toEqual([]);
-  await openPins();
   await expect(rail.locator('[data-testid="v2-pin-crew"]')).toHaveCount(0);
+  await expect.poll(() => pinnedIds(page)).toEqual([]);
   await expect(rail).toContainText('Pin agents or crews from their ⋯ menu.');
-  await page.keyboard.press('Escape');
   // Undo pins it again, where it was.
   await page.getByTestId('v2-toast').filter({ hasText: 'Unpinned “Team”.' }).getByTestId('v2-toast-undo').click();
   await expect.poll(() => pinnedIds(page)).toEqual(['crew~team']);
-  await openPins();
   await expect(rail.locator('[data-testid="v2-pin-crew"][data-crew="team"]')).toBeVisible();
 });
 

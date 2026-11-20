@@ -2130,8 +2130,8 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
     steps: [
       {
         id: 'icons',
-        title: 'Icons, with their names on hover',
-        what: 'The sidebar shows icons only, so the page gets the room. Point at an icon (or tab to it) to see its name and what its number counts. Results is now called Artifacts.',
+        title: 'The pages as icons, with their names on hover',
+        what: 'The sidebar’s pages are two rows of icons, so Pinned and Recent get the room under them. Point at an icon (or tab to it) to see its name and what its number counts. Results is now called Artifacts.',
         todo: ['Point at an icon in the sidebar.'],
         anchors: ['v2-nav-home', 'v2-nav-results'],
         v2Route: '/',
@@ -2139,12 +2139,12 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
       {
         id: 'lists',
-        title: 'Pinned and Recent, one click away',
-        what: 'The pin and the clock under the icons open your pinned agents, crews and projects, and the agents you used last, beside the sidebar. Each agent says which computer it runs on. Choose how many agents Recent lists in Settings › Appearance.',
-        todo: ['Click the pin in the sidebar.'],
+        title: 'Pinned and Recent, with their computer',
+        what: 'Under the icons, Pinned lists your pinned agents, crews and projects, and Recent the agents you used last. Each agent says which computer it runs on once computers are paired. Choose how many agents Recent lists in Settings › Appearance.',
+        todo: ['Look at Pinned and Recent in the sidebar.'],
         anchors: ['v2-rail-pins', 'v2-recent'],
         v2Route: '/',
-        missing: 'Pinned and Recent are in the sidebar on a computer or a tablet.',
+        missing: 'Pinned and Recent are in the sidebar on a computer.',
       },
     ],
   },

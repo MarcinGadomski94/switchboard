@@ -94,8 +94,6 @@ export const WORDS = {
   recent: 'Recent',
   recentActions: 'Recent: more',
   clearRecent: 'Clear recent',
-  /** D181: the rail's Recent list before any agent was opened. */
-  recentEmpty: 'The agents you open show up here.',
   /** D181: Settings › Appearance › how many agents Recent shows. */
   recentCount: 'Recent agents',
   recentCountSub: 'How many agents the sidebar’s Recent list shows (0 hides it). In this browser.',

@@ -161,16 +161,12 @@ test('D175: a conversation is pinned from its ⋯ like an agent and shows in Pin
   await page.getByTestId('v2-agent-menu').click();
   await page.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
   await expect.poll(pinnedIds).toContain(id);
-  // D181: Pinned opens beside the rail.
-  await page.getByTestId('v2-rail-pins-button').click();
   const row = page.getByTestId('v2-rail-pins').locator('[data-testid="v2-pin-agent"][data-kind="conversation"]');
   await expect(row).toHaveCount(1);
   await expect(row.locator('[data-icon="chat"]')).toBeVisible();
-  await page.keyboard.press('Escape');
   await page.getByTestId('v2-agent-menu').click();
   await page.getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
   await expect.poll(pinnedIds).not.toContain(id);
-  await page.getByTestId('v2-rail-pins-button').click();
   await expect(row).toHaveCount(0);
 });
 

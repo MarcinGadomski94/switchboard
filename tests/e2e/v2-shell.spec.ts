@@ -36,15 +36,9 @@ test('v2 is the default: the shell renders with its eight rail items, and the ra
   await expect(page.getByTestId('shell')).toHaveCount(0);
   const rail = page.getByTestId('v2-rail');
   await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Artifacts', 'Tasks', 'Terminals', 'Settings']);
-  // D181: icons only; the names are the icons' labels (and tooltips).
-  await expect(page.getByTestId('v2-nav-results')).toHaveAttribute('aria-label', 'Artifacts');
   await expect(page.getByTestId('v2-nav-home')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('v2-page-home')).toBeVisible();
-  // D181: Pinned opens beside the rail.
-  await page.getByTestId('v2-rail-pins-button').click();
-  await expect(page.getByTestId('v2-rail-pins')).toContainText('Pinned');
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('v2-rail-pins')).toHaveCount(0);
+  await expect(rail.getByTestId('v2-rail-pins')).toContainText('Pinned');
   // The top bar: search, shortcuts, the status pill, Needs you, + New.
   await expect(page.getByTestId('v2-palette-open')).toBeVisible();
   await expect(page.getByTestId('v2-status-pill')).toBeVisible();

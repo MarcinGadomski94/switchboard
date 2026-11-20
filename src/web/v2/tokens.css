@@ -42,8 +42,7 @@
   --v2-r-pill: 999px;
 
   /* Sizes */
-  /* D181: the rail is icons only at every width it shows. */
-  --v2-rail: 64px;
+  --v2-rail: 232px;
   --v2-topbar: 64px;
   --v2-touch: 44px;
   --v2-control: 40px;
@@ -130,6 +129,12 @@
   color-scheme: dark;
 }
 
+/* The tablet rail (the prototype's ≤ 1279 px). */
+@media (max-width: 1279px) {
+  :root[data-ui='v2'] {
+    --v2-rail: 84px;
+  }
+}
 
 /* The page itself while v2 shows (the classic global.css paints it otherwise). */
 html[data-ui='v2'],
