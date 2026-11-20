@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.4 (2026-11-20)
+
+### Sidebar
+- **Icons only:** the sidebar shows icons with their names and counts on hover or focus, so the page gets more room. **Pinned** and **Recent** open beside it from a pin and a clock button. See `docs/v2.md` (D181).
+- **Results is now Artifacts.**
+- **Pinned and recent agents show the computer they run on** when computers are paired.
+- **How many recent agents:** Settings › Appearance › Recent agents (default 5; 0 hides Recent).
+
+### Agents
+- **A terminal under the conversation:** switch the bottom between **Message**, **Terminal** (in the agent's folder) and **Both**; Ctrl+` switches too. The terminal closes when you leave the conversation. Not yet for an agent on a paired computer. See `docs/terminals.md` (D182).
+- **Changes and Helpers are only in the side panel** now; the tabs above the chat are gone (phones keep them in ⋯).
+- **Files for an agent on another computer:** its Files tab and each turn's changes load through the paired computer, read-only, with the same checks; Open in its app stays on its own computer. That computer needs 2.5.4 too.
+- **Mark reviewed on a To review card takes effect at once** (no 5-second wait).
 ## 2.5.3 (2026-11-20)
 
 ### Agents
