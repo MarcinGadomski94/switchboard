@@ -16,9 +16,10 @@ import { Button, Icon, StatusBadge } from '../components/index.ts';
 import { AGENT_WORDS, sessionStatusToV2 } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
 import { Group, type GroupKey } from './SidePanel.tsx';
-import { agentProjects, foldOverview, notesHref, type OverviewItem, overviewItems, overviewSummary, reportedView } from './side-model.ts';
+import { agentProjects, foldOverview, notesHref, type OverviewFold, type OverviewItem, overviewItems, overviewSummary, reportedView } from './side-model.ts';
 import { EarlierToggle, ShowMoreHelpers, useFoldClock } from './HelpersFold.tsx';
 import { HELPERS_PAGE, withPendingHelpers } from './helpers-model.ts';
+import { helpersOverview } from './helpers-view.ts';
 import type { AgentData } from './useAgent.ts';
 
 /** The overview's live activity text refreshes this often (the classic overview's tick). */
@@ -116,25 +117,62 @@ export function OverviewGroup({
   readonly open: boolean;
   readonly onToggle: (id: GroupKey, open: boolean) => void;
 }) {
+  const overview = useOverview(data);
+  if (!overview.session) return null;
+  return (
+    <Group id="overview" title={AGENT_WORDS.overview} icon="table" summary={overview.summary} open={open || overview.resumable} onToggle={onToggle}>
+      <OverviewTable data={data} helperHref={helperHref} overview={overview} />
+    </Group>
+  );
+}
+
+/** What the agents overview holds now: its rows (the older ones folded), the table the agent printed, and its one-line summary. */
+export interface Overview {
+  readonly session: AgentData['session'];
+  readonly fold: OverviewFold;
+  readonly reported: ReturnType<typeof reportedView>;
+  /** "4 agents · 3 working". */
+  readonly summary: string;
+  /** A stopped run can be resumed (the Details group then opens by itself). */
+  readonly resumable: boolean;
+}
+
+/**
+ * SPIKE: the overview's data apart from where it is drawn (the Details group, the side
+ * panel's Helpers tab). `everyHelper`: the Helpers tab's rows, where a helper keeps its
+ * row after it finished and while it works in the background (`helpers-view.ts`).
+ */
+export function useOverview(data: AgentData, options: { readonly everyHelper?: boolean } = {}): Overview {
   const session = data.session;
-  const all = useMemo(() => (session ? overviewItems(session) : []), [session]);
+  const everyHelper = options.everyHelper === true;
+  const all = useMemo(() => (session && !everyHelper ? overviewItems(session) : []), [session, everyHelper]);
   // 2026-10-27 · the helpers fold: helpers and runs that ended over 10 minutes ago fold under one row.
   const now = useFoldClock(session);
   const background = data.activity?.background;
-  const fold = useMemo(() => (session ? foldOverview(all, { agents: withPendingHelpers(session.agents, background), workflows: session.workflows }, now) : { shown: [], earlier: [], earlierCount: 0 }), [all, session, background, now]);
+  const fold = useMemo<OverviewFold>(() => {
+    if (!session) return { shown: [], earlier: [], earlierCount: 0 };
+    if (everyHelper) return helpersOverview(session, background, now);
+    return foldOverview(all, { agents: withPendingHelpers(session.agents, background), workflows: session.workflows }, now);
+  }, [all, session, background, now, everyHelper]);
+  const reported = useMemo(() => (session ? reportedView(session) : null), [session]);
+  // The Helpers tab counts every helper it lists, folded ones too; Details counts what it shows.
+  return { session, fold, reported, summary: overviewSummary(everyHelper ? [...fold.shown, ...fold.earlier] : fold.shown), resumable: fold.shown.some((item) => item.kind === 'workflow' && item.resume !== null) };
+}
+
+/** The overview's table ({@link OverviewGroup} says what it holds). */
+export function OverviewTable({ data, helperHref, overview }: { readonly data: AgentData; readonly helperHref: (agentId: string) => string; readonly overview: Overview }) {
+  const { session, fold, reported } = overview;
   const [expanded, setExpanded] = useState(false);
   const [limit, setLimit] = useState(HELPERS_PAGE);
   useEffect(() => {
     setExpanded(false);
     setLimit(HELPERS_PAGE);
   }, [data.sessionId]);
-  const reported = useMemo(() => (session ? reportedView(session) : null), [session]);
   if (!session) return null;
   const earlierRows = expanded ? cutRows(fold.earlier, limit) : { rows: [], more: 0 };
   const items = [...fold.shown, ...earlierRows.rows];
-  const resumable = fold.shown.some((item) => item.kind === 'workflow' && item.resume !== null);
   return (
-    <Group id="overview" title={AGENT_WORDS.overview} icon="table" summary={overviewSummary(fold.shown)} open={open || resumable} onToggle={onToggle}>
+    <>
       <table className="v2-ag-ov" data-testid="v2-agent-overview">
         <colgroup>
           <col />
@@ -204,7 +242,7 @@ export function OverviewGroup({
           </details>
         </div>
       ) : null}
-    </Group>
+    </>
   );
 }
 

@@ -2051,6 +2051,12 @@ export const AGENT_WORDS = {
   densityRemembered: (which: string): string => `${which}. Remembered.`,
   detailsHidden: 'Details hidden. The chat takes the full width. ⌘. brings them back.',
   detailsShown: 'Details shown.',
+  // SPIKE (side panel): the panel holds Changes, Files and Helpers; Details opens from its ⓘ.
+  showSidePanel: 'Show the side panel',
+  hideSidePanel: 'Hide the side panel',
+  sidePanelHidden: 'Side panel hidden. The chat takes the full width. ⌘. brings it back.',
+  sidePanelShown: 'Side panel shown.',
+  allHelpers: 'All helpers',
   // Chat.
   earlier: 'Show earlier messages',
   earlierLoading: 'Loading earlier messages…',

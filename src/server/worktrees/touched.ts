@@ -64,6 +64,8 @@ export interface SessionTouchedFilesOptions {
   readonly git?: TouchedGit;
   readonly env?: NodeJS.ProcessEnv;
   readonly onError?: (error: unknown) => void;
+  /** SPIKE (`endTree`): epoch ms, for when an end snapshot was taken (tests pass a fake clock). */
+  readonly now?: () => number;
 }
 
 /**
@@ -101,6 +103,9 @@ export class SessionTouchedFiles {
   readonly #onError: (error: unknown) => void;
   /** `<session>\0<turn>\0<repo top>` → the tree when that turn ended. */
   readonly #ends = new Map<string, string>();
+  /** SPIKE (`endTree`): the same keys → when that snapshot was taken (epoch ms). */
+  readonly #endTimes = new Map<string, number>();
+  readonly #now: () => number;
   /** The same keys while their snapshot is being taken (a Diff read right at the turn's end waits for it). */
   readonly #pending = new Map<string, Promise<string | null>>();
   readonly #pairs = new Map<string, readonly string[]>();
@@ -113,6 +118,7 @@ export class SessionTouchedFiles {
     this.#store = options.store;
     this.#git = options.git ?? new CheckpointGit(options.env ? { env: options.env } : {});
     this.#onError = options.onError ?? ((error) => console.error('switchboard touched files:', error));
+    this.#now = options.now ?? Date.now;
   }
 
   /** Starts taking an end snapshot of each turn (a session's status going from `run` to `idle` / `done`); returns the stop function. */
@@ -176,6 +182,26 @@ export class SessionTouchedFiles {
     );
     this.#pending.set(marker, tracked);
     void tracked.finally(() => this.#pending.delete(marker));
+  }
+
+  /**
+   * SPIKE (side panel, `src/core/turn-changes.ts`): the end snapshot kept for turn `turn`
+   * of the session in the working tree `repoPath` (its tree and when it was taken);
+   * `null` when none is kept (the turn ended before a restart, or has not ended yet).
+   *
+   * A snapshot is kept under the newest save point stored when a turn ended
+   * ({@link turnEnded}). A turn that ends before its own save point's row is stored (a
+   * very quick one) therefore leaves its end under the turn before: the caller tells by
+   * `at` (an end taken after the next turn began is not this turn's).
+   */
+  async endTree(sessionId: string, turn: number, repoPath: string): Promise<{ readonly tree: string; readonly at: number } | null> {
+    // The listing of a just-ended turn's snapshots starts synchronously: wait for it, then for the snapshot itself.
+    await this.#pending.get(`${sessionId}\u0000listing`);
+    const key = endKey(sessionId, turn, repoPath);
+    await this.#pending.get(key);
+    const tree = this.#ends.get(key);
+    const at = this.#endTimes.get(key);
+    return tree === undefined || at === undefined ? null : { tree, at };
   }
 
   /**
@@ -296,7 +322,12 @@ export class SessionTouchedFiles {
 
   #remember(key: string, tree: string): void {
     this.#ends.set(key, tree);
-    if (this.#ends.size > MAX_ENDS) this.#ends.delete(this.#ends.keys().next().value as string);
+    this.#endTimes.set(key, this.#now());
+    if (this.#ends.size > MAX_ENDS) {
+      const oldest = this.#ends.keys().next().value as string;
+      this.#ends.delete(oldest);
+      this.#endTimes.delete(oldest);
+    }
   }
 }
 

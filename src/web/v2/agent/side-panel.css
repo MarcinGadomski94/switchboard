@@ -1,0 +1,1056 @@
+/* SPIKE · the tabbed, resizable side panel of the agent view (Details | Changes | Files). */
+
+/* The panel's width comes from the view (`--v2-ag-side`), no longer a fixed 344px. */
+.sb2 .v2-ag {
+  grid-template-columns: minmax(0, 1fr) var(--v2-ag-side, 344px);
+}
+
+.sb2 .v2-ag[data-side='hidden'],
+.sb2 .v2-ag:not([data-layout='desktop']) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sb2 .v2-ag-side2 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* The handle on the panel's left edge. */
+.sb2 .v2-ag-side-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.sb2 .v2-ag-side-handle::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.sb2 .v2-ag-side-handle:hover::after,
+.sb2 .v2-ag-side-handle:focus-visible::after,
+body.v2-ag-resizing .sb2 .v2-ag-side-handle::after {
+  background: var(--v2-accent);
+}
+
+body.v2-ag-resizing,
+body.v2-ag-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* A PDF in the panel must not swallow the pointer while the edge is dragged. */
+body.v2-ag-resizing iframe {
+  pointer-events: none;
+}
+
+.sb2 .v2-ag-side-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 2px 6px 0 14px;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-side-top .v2-tabs {
+  border-bottom: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.sb2 .v2-ag-side-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A tablet-wide window: the same tabs and panes in the drawer (the tabs are its title). */
+.sb2 .v2-drawer-b:has(> .v2-ag-side-drawer) {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sb2 .v2-ag-side-drawer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-drawer-h:has(.v2-tabs) {
+  padding: 4px 8px 0 14px;
+}
+
+.sb2 .v2-drawer-h .v2-tabs {
+  border-bottom: 0;
+  padding: 0;
+  margin: 0;
+}
+
+/* ── Changes ── */
+.sb2 .v2-ag-chg {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sb2 .v2-ag-chg-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px 6px;
+}
+
+.sb2 .v2-ag-chg-pad,
+.sb2 .v2-ag-files-pad {
+  padding: 14px;
+}
+
+/*
+ * The tree of changed files and the picked file's diff. Narrow panel: the tree above
+ * the diff. Wide panel (the container query below): the tree in a column at the right
+ * of the diff, as the files of a change are listed in an editor.
+ */
+.sb2 .v2-ag-chg {
+  container: v2-ag-chg / inline-size;
+}
+
+.sb2 .v2-ag-chg-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-chg-tree {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  max-height: 38%;
+  min-height: 0;
+  border-bottom: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-ag-chg-tree-h {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  flex: none;
+  padding: 8px 10px 6px;
+}
+
+.sb2 .v2-ag-chg-filter {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 30px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.sb2 .v2-ag-chg-rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.sb2 .v2-ag-chg-row {
+  font-size: 13px;
+}
+
+.sb2 .v2-ag-chg-row[aria-current='true'] {
+  background: var(--v2-accent-soft);
+  font-weight: 600;
+}
+
+.sb2 .v2-ag-chg-state {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--v2-border);
+  border-radius: 999px;
+  color: var(--v2-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.sb2 .v2-ag-chg-row[data-state='new'] .v2-ag-chg-state {
+  border-color: var(--v2-green);
+  color: var(--v2-green);
+}
+
+.sb2 .v2-ag-chg-row[data-state='deleted'] .v2-ag-chg-state {
+  border-color: var(--v2-red);
+  color: var(--v2-red);
+}
+
+.sb2 .v2-ag-chg-row[data-state='deleted'] .v2-ag-tree-name {
+  text-decoration: line-through;
+}
+
+@container v2-ag-chg (min-width: 760px) {
+  .sb2 .v2-ag-chg-body {
+    flex-direction: row-reverse;
+  }
+
+  .sb2 .v2-ag-chg-tree {
+    width: clamp(240px, 34%, 380px);
+    max-height: none;
+    border-bottom: 0;
+    border-left: 1px solid var(--v2-border);
+  }
+
+  .sb2 .v2-ag-chg-diff {
+    min-width: 0;
+  }
+}
+
+.sb2 .v2-ag-files-row:focus-visible,
+.sb2 .v2-ag-tree-row:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: -2px;
+}
+
+.sb2 .v2-ag-chg-delta {
+  color: var(--v2-muted);
+  font-family: var(--v2-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-chg-diff {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sb2 .v2-ag-chg-diff-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 4px 8px 4px 14px;
+  border-bottom: 1px solid var(--v2-border);
+  background: var(--v2-sunken);
+  color: var(--v2-muted);
+  font-size: 12px;
+}
+
+.sb2 .v2-ag-chg-diff-h .v2-mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-chg-lines {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--v2-surface);
+  font-family: var(--v2-mono);
+  font-size: 12.5px;
+  line-height: 19px;
+}
+
+.sb2 .v2-ag-chg-line {
+  display: grid;
+  grid-template-columns: 42px 42px minmax(0, 1fr);
+  min-width: max-content;
+}
+
+.sb2 .v2-ag-chg-diff[data-wrap='true'] .v2-ag-chg-line {
+  min-width: 0;
+}
+
+.sb2 .v2-ag-chg-no {
+  padding: 0 6px;
+  background: var(--v2-surface-2);
+  color: var(--v2-muted);
+  text-align: right;
+  user-select: none;
+}
+
+.sb2 .v2-ag-chg-text {
+  padding: 0 12px 0 10px;
+  white-space: pre;
+}
+
+.sb2 .v2-ag-chg-diff[data-wrap='true'] .v2-ag-chg-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.sb2 .v2-ag-chg-line[data-tone='add'] .v2-ag-chg-text {
+  background: var(--v2-green-bg);
+}
+
+.sb2 .v2-ag-chg-line[data-tone='del'] .v2-ag-chg-text {
+  background: var(--v2-red-bg);
+}
+
+.sb2 .v2-ag-chg-line[data-tone='add'] .v2-ag-chg-no:nth-child(2) {
+  color: var(--v2-green);
+}
+
+.sb2 .v2-ag-chg-line[data-tone='del'] .v2-ag-chg-no:nth-child(1) {
+  color: var(--v2-red);
+}
+
+.sb2 .v2-ag-chg-line[data-tone='hunk'] {
+  background: var(--v2-sunken);
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-ag-chg-line[data-tone='hunk'] .v2-ag-chg-no {
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-ag-chg-line[data-tone='hunk'] .v2-ag-chg-text {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: 12px;
+}
+
+.sb2 .v2-ag-chg-line[data-tone='note'] .v2-ag-chg-text {
+  color: var(--v2-muted);
+  font-style: italic;
+}
+
+/* Comments on diff lines. */
+.sb2 .v2-ag-chg-line {
+  position: relative;
+}
+
+.sb2 .v2-ag-chg-add {
+  position: absolute;
+  left: 74px;
+  top: 0;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  background: var(--v2-accent);
+  border: 0;
+  border-radius: 4px;
+  color: #fff;
+  font: 600 14px/19px var(--v2-font);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sb2 .v2-ag-chg-line:hover .v2-ag-chg-add,
+.sb2 .v2-ag-chg-add:focus-visible {
+  opacity: 1;
+}
+
+/* A touch screen has no hover: the "+" always shows there. (By keyboard: the file's Comment button takes a line number.) */
+@media (hover: none) {
+  .sb2 .v2-ag-chg-add {
+    opacity: 0.75;
+  }
+}
+
+.sb2 .v2-ag-chg-line[data-commented='true'] .v2-ag-chg-no {
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-ag-chg-note,
+.sb2 .v2-ag-chg-box {
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  font-family: var(--v2-font);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sb2 .v2-ag-chg-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  border-left: 3px solid var(--v2-accent);
+  background: var(--v2-accent-soft);
+  color: var(--v2-text);
+}
+
+.sb2 .v2-ag-chg-note-text {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.sb2 .v2-ag-chg-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--v2-accent);
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-ag-chg-box textarea {
+  width: 100%;
+  min-height: 52px;
+  font: inherit;
+  resize: vertical;
+}
+
+.sb2 .v2-ag-chg-box-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb2 .v2-ag-chg-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 8px;
+  color: var(--v2-accent);
+  font-family: var(--v2-font);
+}
+
+.sb2 .v2-ag-chg-box-line {
+  width: 124px;
+  min-height: 0;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.sb2 .v2-ag-chg-send {
+  flex: none;
+  border-top: 1px solid var(--v2-border);
+  background: var(--v2-surface);
+  font-size: 13px;
+}
+
+.sb2 .v2-ag-chg-send-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 8px 8px;
+}
+
+.sb2 .v2-ag-chg-send-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 6px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--v2-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-chg-send-count:hover {
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-ag-chg-send-count:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: -2px;
+}
+
+/* Every comment, also those on lines the shown view does not have. */
+.sb2 .v2-ag-chg-all {
+  max-height: 180px;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  border-bottom: 1px solid var(--v2-border);
+  list-style: none;
+}
+
+.sb2 .v2-ag-chg-all li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'where remove' 'text remove';
+  align-items: center;
+  column-gap: 6px;
+  padding: 4px 6px 4px 14px;
+}
+
+.sb2 .v2-ag-chg-all-where {
+  grid-area: where;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-chg-all-text {
+  grid-area: text;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.sb2 .v2-ag-chg-all li > button {
+  grid-area: remove;
+}
+
+/* ── "N files changed" under the last reply of a turn ── */
+.sb2 .v2-ag-turnchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  background: var(--v2-surface);
+  border: 1px solid var(--v2-border);
+  border-radius: 999px;
+  color: var(--v2-text);
+  font: inherit;
+  font-size: var(--v2-fs-s, 12.5px);
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-turnchip:hover {
+  border-color: var(--v2-accent);
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-ag-turnchip:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+.sb2 .v2-ag-turnchip-delta {
+  color: var(--v2-muted);
+  font-family: var(--v2-mono);
+  font-size: 12px;
+}
+
+/* ── Files: the lists ── */
+.sb2 .v2-ag-files2 {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* While a file is shown the lists stay laid out under it, unseen and unreachable (not `display: none`, which would
+   lose where they are scrolled): back from the file, the tree is as unfolded and as scrolled as it was. */
+.sb2 .v2-ag-side-pane {
+  position: relative;
+}
+
+.sb2 .v2-ag-files2[data-under='true'] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.sb2 .v2-ag-files-head {
+  flex: none;
+  padding: 10px 14px 8px;
+}
+
+.sb2 .v2-ag-files-filter {
+  flex: none;
+  width: calc(100% - 28px);
+  margin: 0 14px 8px;
+}
+
+.sb2 .v2-ag-files-list,
+.sb2 .v2-ag-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-files-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'name chips' 'dir chips';
+  column-gap: 8px;
+  width: 100%;
+  padding: 7px 14px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--v2-border);
+  color: var(--v2-text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-files-row:hover:not(:disabled),
+.sb2 .v2-ag-tree-row:hover {
+  background: var(--v2-accent-soft);
+}
+
+.sb2 .v2-ag-files-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.sb2 .v2-ag-files-name {
+  grid-area: name;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-files-dir {
+  grid-area: dir;
+  overflow: hidden;
+  color: var(--v2-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-files-chips {
+  grid-area: chips;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb2 .v2-ag-tree {
+  padding: 4px 0 20px;
+}
+
+.sb2 .v2-ag-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  padding: 2px 10px;
+  background: none;
+  border: 0;
+  color: var(--v2-text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-tree-root {
+  font-weight: 600;
+}
+
+.sb2 .v2-ag-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-tree-note {
+  padding: 4px 10px;
+}
+
+/* ── Files: the viewer ── */
+.sb2 .v2-ag-fv {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sb2 .v2-ag-fv-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-fv-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.sb2 .v2-ag-fv-title b,
+.sb2 .v2-ag-fv-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-fv-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sb2 .v2-ag-fv-bar {
+  flex: none;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-fv-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 6px 14px;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-fv-md {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 30px;
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-ag-fv-media {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-ag-fv-media img,
+.sb2 .v2-ag-fv-media video {
+  max-width: 100%;
+  height: auto;
+}
+
+.sb2 .v2-ag-fv-media audio {
+  width: 100%;
+}
+
+.sb2 .v2-ag-fv-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
+/* What a page is shown without: one line, the list on demand. */
+.sb2 .v2-ag-fv-note {
+  flex: none;
+  max-height: 40%;
+  overflow: auto;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--v2-border);
+  background: var(--v2-sunken);
+}
+
+.sb2 .v2-ag-fv-note summary {
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-fv-note ul {
+  margin: 6px 0 2px;
+  padding-left: 18px;
+}
+
+.sb2 .v2-ag-fv-note li {
+  overflow-wrap: anywhere;
+}
+
+.sb2 .v2-ag-fv-table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--v2-surface);
+}
+
+.sb2 .v2-ag-fv-table table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.sb2 .v2-ag-fv-table th,
+.sb2 .v2-ag-fv-table td {
+  padding: 4px 10px;
+  border: 1px solid var(--v2-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-fv-table th {
+  position: sticky;
+  top: 0;
+  background: var(--v2-surface-2);
+}
+
+/* Code with a line-number gutter: one fixed line height for the numbers, the text and the marked line. */
+.sb2 .v2-ag-src {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--v2-surface);
+  font-family: var(--v2-mono);
+  font-size: 12.5px;
+}
+
+.sb2 .v2-ag-src-in {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: max-content;
+}
+
+.sb2 .v2-ag-src-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 0 10px;
+  border-right: 1px solid var(--v2-border);
+  background: var(--v2-surface-2);
+  color: var(--v2-muted);
+  text-align: right;
+  user-select: none;
+}
+
+.sb2 .v2-ag-src-gutter span {
+  height: var(--v2-ag-src-line);
+  line-height: var(--v2-ag-src-line);
+}
+
+.sb2 .v2-ag-src .v2-ag-src-pre {
+  margin: 0;
+  padding: 0 14px 0 12px;
+  overflow: visible;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  line-height: var(--v2-ag-src-line);
+  tab-size: 4;
+  white-space: pre;
+}
+
+.sb2 .v2-ag-src .v2-ag-src-pre code {
+  display: block;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+}
+
+.sb2 .v2-ag-src-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--v2-ag-src-line);
+  background: var(--v2-accent-soft);
+  pointer-events: none;
+}
+
+/* ── A path in a reply that opens in the panel ── */
+.sb2 .sb-md .sb-md-file {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px dashed var(--v2-accent);
+  color: var(--v2-accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb2 .sb-md .sb-md-file:hover {
+  border-bottom-style: solid;
+}
+
+.sb2 .sb-md .sb-md-file:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--v2-accent);
+  outline-offset: 2px;
+}
+
+.sb2 .sb-md .sb-md-file code {
+  color: inherit;
+}
+
+/* Syntax colours of the file viewer: the chat's own (`markdown.css`), without the chat's code-card styling. */
+.sb2 .v2-ag-src .hljs-comment,
+.sb2 .v2-ag-src .hljs-quote {
+  color: var(--muted-3);
+}
+
+.sb2 .v2-ag-src .hljs-keyword,
+.sb2 .v2-ag-src .hljs-selector-tag,
+.sb2 .v2-ag-src .hljs-doctag,
+.sb2 .v2-ag-src .hljs-name,
+.sb2 .v2-ag-src .hljs-tag {
+  color: var(--branch-fg);
+}
+
+.sb2 .v2-ag-src .hljs-string,
+.sb2 .v2-ag-src .hljs-regexp,
+.sb2 .v2-ag-src .hljs-addition {
+  color: var(--diff-add-fg);
+}
+
+.sb2 .v2-ag-src .hljs-number,
+.sb2 .v2-ag-src .hljs-literal,
+.sb2 .v2-ag-src .hljs-symbol,
+.sb2 .v2-ag-src .hljs-bullet,
+.sb2 .v2-ag-src .hljs-type,
+.sb2 .v2-ag-src .hljs-built_in,
+.sb2 .v2-ag-src .hljs-selector-attr,
+.sb2 .v2-ag-src .hljs-selector-pseudo {
+  color: oklch(0.8 0.1 70);
+}
+
+.sb2 .v2-ag-src .hljs-deletion,
+.sb2 .v2-ag-src .hljs-variable,
+.sb2 .v2-ag-src .hljs-template-variable,
+.sb2 .v2-ag-src .hljs-selector-id,
+.sb2 .v2-ag-src .hljs-selector-class {
+  color: var(--diff-del-fg);
+}
+
+.sb2 .v2-ag-src .hljs-title,
+.sb2 .v2-ag-src .hljs-section {
+  color: var(--text-strong);
+}
+
+.sb2 .v2-ag-src .hljs-meta,
+.sb2 .v2-ag-src .hljs-punctuation,
+.sb2 .v2-ag-src .hljs-operator {
+  color: var(--muted-2);
+}
+
+/* The marked line sits behind the text, not over it. */
+.sb2 .v2-ag-src .v2-ag-src-pre {
+  position: relative;
+  z-index: 1;
+}
+
+.sb2 .v2-ag-src-gutter {
+  z-index: 2;
+}
+
+/* ── The tab row: the work first (Changes, Files, Helpers); Details is the ⓘ at its end ── */
+.sb2 .v2-ag-side-top .v2-tabs,
+.sb2 .v2-drawer-h .v2-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb2 .v2-ag-side-top .v2-tab[data-tab='details'],
+.sb2 .v2-drawer-h .v2-tab[data-tab='details'] {
+  margin-left: auto;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* ── Helpers: who is at work, beside the chat ── */
+.sb2 .v2-ag-helpers2 {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px 24px;
+}
+
+.sb2 .v2-ag-helpers2-sum {
+  margin: 0 0 8px;
+}
+
+.sb2 .v2-ag-helpers2-apps {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-helpers2-apps h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A helper's own chat in the panel: the panel's width, not the chat column's. */
+.sb2 .v2-ag-side-pane > .v2-ag-helper {
+  flex: 1;
+  min-height: 0;
+}
+
+.sb2 .v2-ag-side-pane > .v2-ag-helper .v2-ag-col {
+  width: auto;
+  max-width: none;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+/* Lines added and removed, each in its colour, in the tree and on the picker. */
+.sb2 .v2-ag-chg-delta {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+}
+
+.sb2 .v2-ag-chg-delta [data-sign='added'] {
+  color: var(--v2-green);
+}
+
+.sb2 .v2-ag-chg-delta [data-sign='removed'] {
+  color: var(--v2-red);
+}
+
+.sb2 .v2-btn .v2-ag-chg-delta {
+  font-weight: 400;
+}
+
+/* The picked file's bar keeps its name readable in a narrow panel: its buttons go under it. */
+.sb2 .v2-ag-chg-diff-h {
+  flex-wrap: wrap;
+}
+
+.sb2 .v2-ag-chg-diff-h .v2-mono {
+  flex: 1 1 160px;
+  min-width: 0;
+}

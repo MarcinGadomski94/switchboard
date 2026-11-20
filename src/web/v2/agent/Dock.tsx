@@ -43,6 +43,9 @@ function refusal(error: unknown): string {
   return error instanceof ApiError ? refusalText(error.status, error.body) : refusalText(0, null);
 }
 
+/** SPIKE: a helper's own chat open in the side panel, beside this chat (`HelperChat.tsx`). */
+const HELPER_IN_PANEL = '[data-testid="v2-agent-helper-chat"][data-in-panel="true"]';
+
 /** The clock a message sent now shows until the service records it (the classic composer's rule). */
 function sendQueued(session: SessionDetail | null): QueuedReason | null {
   if (!session) return null;
@@ -214,6 +217,8 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       const active = document.activeElement;
+      // SPIKE: a helper's chat open in the side panel takes Esc (back to the helpers, as in its full view), unless the message box has the focus.
+      if (active !== input.current && document.querySelector(HELPER_IN_PANEL) !== null) return;
       const context = {
         stoppable: stoppableRef.current,
         stopping: stoppingRef.current,

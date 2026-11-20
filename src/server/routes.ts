@@ -80,6 +80,8 @@ import type { PrWatcher } from './ci/watcher.ts';
 import { registerCiRoutes } from './api/ci.ts';
 import { registerTurnStatusRoutes } from './api/turn-status.ts';
 import { registerReviewRoutes } from './api/review.ts';
+import { registerAgentFileRoutes } from './api/agent-files.ts';
+import { registerTurnChangesRoutes } from './api/turn-changes.ts';
 import { registerProcessRoutes } from './api/processes.ts';
 import type { ProcessService } from './processes/service.ts';
 
@@ -220,6 +222,10 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   // D124: the agent's turn_status and a session's Not waiting.
   await registerTurnStatusRoutes(app, context);
   await registerReviewRoutes(app, context);
+  // SPIKE: the side panel's Files (`src/core/agent-files.ts`).
+  await registerAgentFileRoutes(app, context);
+  // SPIKE: what each turn changed (`src/core/turn-changes.ts`).
+  await registerTurnChangesRoutes(app, context);
   // D127: the processes sessions leave running (and the agent's process_keep).
   await registerProcessRoutes(app, context);
   await registerSearchRoutes(app, context);

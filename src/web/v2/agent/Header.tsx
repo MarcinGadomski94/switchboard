@@ -112,12 +112,14 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
   const members = useTeamMembers();
   const name = session ? agentDisplayName(session, members) : '';
   useTabTitle(name);
+  // SPIKE (side panel): beside the chat it holds Changes, Files and Helpers, so the button names the panel; a phone's sheet is still Details.
+  const sideWord = phone ? (sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails) : sideShown ? AGENT_WORDS.hideSidePanel : AGENT_WORDS.showSidePanel;
   const viewItems: MenuItem[] = [
     { id: 'comfortable', label: AGENT_WORDS.comfortable, icon: view.density === 'comfortable' ? 'check' : 'circle', onSelect: () => onView({ ...view, density: 'comfortable' }) },
     { id: 'compact', label: AGENT_WORDS.compact, icon: view.density === 'compact' ? 'check' : 'circle', onSelect: () => onView({ ...view, density: 'compact' }) },
     { separator: true, id: 'sep' },
     { id: 'full', label: AGENT_WORDS.fullWidth, icon: view.fullWidth ? 'check' : 'circle', onSelect: () => onView({ ...view, fullWidth: !view.fullWidth }) },
-    { id: 'side', label: sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails, icon: 'sheet', kbd: '⌘.', onSelect: onToggleSide },
+    { id: 'side', label: sideWord, icon: 'sheet', kbd: '⌘.', onSelect: onToggleSide },
   ];
   const notWaiting = (): void => {
     if (!needs) return;
@@ -252,7 +254,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
             />
             <IconButton ref={setViewAnchor} icon="sliders" label={AGENT_WORDS.view} title="Text density and width" aria-haspopup="menu" aria-expanded={viewOpen} data-testid="v2-agent-view-button" onClick={() => setViewOpen((v) => !v)} />
             <Menu items={viewItems} anchor={viewAnchor} open={viewOpen} onClose={() => setViewOpen(false)} label={AGENT_WORDS.view} testId="v2-agent-view-menu" />
-            <IconButton icon="sheet" label={`${sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails} (⌘.)`} title={`${sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails} (⌘.)`} aria-pressed={sideShown} data-testid="v2-agent-details" data-tour="v2-agent-details" onClick={onToggleSide} />
+            <IconButton icon="sheet" label={`${sideWord} (⌘.)`} title={`${sideWord} (⌘.)`} aria-pressed={sideShown} data-testid="v2-agent-details" data-tour="v2-agent-details" onClick={onToggleSide} />
           </>
         )}
         <AgentMenuButton data={data} extra={phoneExtra} />

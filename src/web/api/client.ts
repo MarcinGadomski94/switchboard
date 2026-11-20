@@ -1,4 +1,6 @@
 import type { SessionWorksIn, WorkspaceFileChoice } from '../../core/workspace-move.ts';
+import type { AgentDirListing, AgentFileList, AgentFileMeta, AgentFileOpenHow, AgentFileRoots, AgentFileText, AgentPageInfo } from '../../core/agent-files.ts';
+import type { TurnChanges } from '../../core/turn-changes.ts';
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { UserProfile, UserProfilesView } from '../../core/user-profiles.ts';
 import type { TerminalInfo, TerminalsView } from '../../core/terminals.ts';
@@ -213,6 +215,20 @@ function query(params: Readonly<Record<string, string | undefined>>): string {
   }
   const text = search.toString();
   return text ? `?${text}` : '';
+}
+
+/** SPIKE: how an HTML file is asked for as a page (`src/core/agent-files.ts` → "A page"). */
+export interface AgentPageAsk {
+  /** The file looks like it holds secrets and the developer asked for it anyway. */
+  readonly confirm: boolean;
+  /** Let the page's own scripts run. */
+  readonly scripts: boolean;
+  /** New when the page is asked for anew (Reload). */
+  readonly version: string;
+}
+
+function pageQuery(path: string, how: AgentPageAsk): string {
+  return query({ path, scripts: how.scripts ? '1' : undefined, confirm: how.confirm ? '1' : undefined, v: how.version });
 }
 
 const enc = encodeURIComponent;
@@ -437,6 +453,24 @@ export const api = {
   sessionDiffTargets: (id: string) => request<DiffTargets>('GET', `/api/sessions/${enc(id)}/diff/targets`),
   /** D152: which repos the session works in (its history), with their paths. */
   sessionWorksIn: (id: string) => request<SessionWorksIn>('GET', `/api/sessions/${enc(id)}/works-in`),
+  // SPIKE: the side panel's Files (`src/core/agent-files.ts`).
+  agentFiles: (id: string) => request<AgentFileList>('GET', `/api/sessions/${enc(id)}/files`),
+  agentFileRoots: (id: string) => request<AgentFileRoots>('GET', `/api/sessions/${enc(id)}/files/roots`),
+  agentDir: (id: string, path?: string) => request<AgentDirListing>('GET', `/api/sessions/${enc(id)}/files/dir${query({ path })}`),
+  agentFileMeta: (id: string, path: string) => request<AgentFileMeta>('GET', `/api/sessions/${enc(id)}/files/meta${query({ path })}`),
+  agentFileText: (id: string, path: string, offset: number, confirm: boolean) =>
+    request<AgentFileText>('GET', `/api/sessions/${enc(id)}/files/text${query({ path, offset: String(offset), confirm: confirm ? '1' : undefined })}`),
+  /** The address of a file's bytes (an image, a PDF, a sound, a film), for `src=`. */
+  agentFileRawUrl: (id: string, path: string, confirm: boolean): string => `/api/sessions/${enc(id)}/files/raw${query({ path, confirm: confirm ? '1' : undefined })}`,
+  /** What an HTML file is shown with as a page, and what was left out. `how` is the same for the page itself ({@link api.agentPageUrl}): the server builds it once for both. */
+  agentPageInfo: (id: string, path: string, how: AgentPageAsk) => request<AgentPageInfo>('GET', `/api/sessions/${enc(id)}/files/page/info${pageQuery(path, how)}`),
+  /** The address of an HTML file as a closed-off page, for a sandboxed frame's `src=`. */
+  agentPageUrl: (id: string, path: string, how: AgentPageAsk): string => `/api/sessions/${enc(id)}/files/page${pageQuery(path, how)}`,
+  openAgentFile: (id: string, path: string, how: AgentFileOpenHow) => request<null>('POST', `/api/sessions/${enc(id)}/files/open`, { path, how }),
+  // SPIKE: what each turn changed (`src/core/turn-changes.ts`).
+  turnChanges: (id: string) => request<TurnChanges>('GET', `/api/sessions/${enc(id)}/turn-changes`),
+  /** From before turn `from` until after turn `to`; `to` = `null`: until now. */
+  turnChangesDiff: (id: string, from: number, to: number | null) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/turn-changes/diff${query({ from: String(from), to: to === null ? undefined : String(to) })}`),
   /** D90 ruling: the file count of the Diff tab's view (the session tab's "Diff · n"). */
   sessionDiffCount: (id: string, scope: DiffScope) => request<DiffCount>('GET', `/api/sessions/${enc(id)}/diff/count${query({ scope })}`),
 

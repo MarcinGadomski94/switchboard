@@ -102,7 +102,7 @@ function HelpersGroup({ data, helperHref, open, onToggle }: { readonly data: Age
  * own chats, D36), Background apps (D127: Keep / Stop), Tasks (D68), Handoff note &
  * terminal, Advanced (branch, separate copy, path, CLI, Remote Control, hooked).
  */
-export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentData; readonly onHide?: () => void; readonly helperHref: (agentId: string) => string }) {
+export function SidePanel({ data, onHide, helperHref, helpersElsewhere = false }: { readonly data: AgentData; readonly onHide?: () => void; readonly helperHref: (agentId: string) => string; /** SPIKE: the helpers, the agents overview and the background apps are shown elsewhere (the side panel's Helpers tab): left out here. */ readonly helpersElsewhere?: boolean }) {
   const [open, setOpen] = useState(loadOpen);
   const toggle = (id: GroupKey, value: boolean): void => {
     setOpen((current) => {
@@ -149,11 +149,11 @@ export function SidePanel({ data, onHide, helperHref }: { readonly data: AgentDa
       <Group id="how" title={AGENT_WORDS.howItWorks} icon="sliders" summary={modelSummary(session.model)} open={open.how} onToggle={toggle}>
         <HowGroup data={data} />
       </Group>
-      {data.conversation ? null : (
+      {data.conversation || helpersElsewhere ? null : (
         <HelpersGroup data={data} helperHref={helperHref} open={open.helpers} onToggle={toggle} />
       )}
-      {data.conversation ? null : <OverviewGroup data={data} helperHref={helperHref} open={open.overview} onToggle={toggle} />}
-      {data.conversation ? null : (
+      {data.conversation || helpersElsewhere ? null : <OverviewGroup data={data} helperHref={helperHref} open={open.overview} onToggle={toggle} />}
+      {data.conversation || helpersElsewhere ? null : (
         <Group id="bg" title={AGENT_WORDS.backgroundApps} icon="cpu" open={open.bg} onToggle={toggle}>
           <BackgroundGroup sessionId={data.sessionId} blocked={data.blocked} />
         </Group>
@@ -365,7 +365,8 @@ function HowGroup({ data }: { readonly data: AgentData }) {
   );
 }
 
-function BackgroundGroup({ sessionId, blocked }: { readonly sessionId: string; readonly blocked: string | null }) {
+/** The apps the agent left running, each with Keep and Stop (also the side panel's Helpers tab shows them). */
+export function BackgroundGroup({ sessionId, blocked }: { readonly sessionId: string; readonly blocked: string | null }) {
   const [view, setView] = useState<SessionProcesses | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {

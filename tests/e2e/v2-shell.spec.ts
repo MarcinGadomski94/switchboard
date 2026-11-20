@@ -77,7 +77,7 @@ test('keyboard: ? lists the shortcuts, ⌘K opens the palette, ⌘⇧F opens Sea
   const list = page.getByTestId('v2-shortcuts');
   await expect(list).toBeVisible();
   await expect(list).toContainText('Command palette and quick search');
-  await expect(list).toContainText('Hide or show the agent’s details panel');
+  await expect(list).toContainText('Hide or show the agent’s side panel');
   await expect(list).toContainText('Hide or show the folder tree in Agents');
   await page.keyboard.press('Escape');
   await expect(list).toHaveCount(0);

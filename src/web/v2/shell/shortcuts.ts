@@ -32,7 +32,7 @@ export function shortcutList(): readonly ShortcutLine[] {
   return [
     { keys: modKey('K'), what: 'Command palette and quick search' },
     { keys: APPLE ? '⌘⇧F' : 'Ctrl Shift F', what: 'Search everything, every computer' },
-    { keys: modKey('.'), what: 'Hide or show the agent’s details panel' },
+    { keys: modKey('.'), what: 'Hide or show the agent’s side panel' },
     { keys: modKey('\\'), what: 'Hide or show the folder tree in Agents' },
     { keys: 'Esc', what: 'Stop the agent you’re looking at' },
     { keys: APPLE ? '⌘↩' : 'Ctrl Enter', what: 'Send' },

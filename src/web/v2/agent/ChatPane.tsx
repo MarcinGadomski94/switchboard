@@ -1,5 +1,8 @@
-import { type MutableRefObject, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type MutableRefObject, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { SessionCheckpoints } from '../../../core/checkpoints.ts';
+import { filesChangedText, turnsLabel } from '../../../core/turn-changes.ts';
+import { deltaText } from '../../views/session/diff.ts';
+import { TurnChangesContext } from './turn-changes.ts';
 import { CommandCopy } from '../../components/CommandCopy.tsx';
 import type { Question } from '../../../core/api.ts';
 import { closedBatchText } from '../../../core/session-close.ts';
@@ -501,6 +504,9 @@ function Reply({ row, data, variant, fullText, onSave }: { readonly row: Extract
     return item.separated ? [{ separator: true as const, id: `sep-${item.id}` }, entry] : [entry];
   });
   const label = data.conversation ? AGENT_WORDS.conversation : AGENT_WORDS.agent;
+  // SPIKE (side panel): under the last reply of a turn, what the turn changed; it opens Changes on that turn.
+  const turnChanges = useContext(TurnChangesContext);
+  const changed = turnChanges && row.turnEventId !== null && turnChanges.lastReplies.has(row.id) ? (turnChanges.byEvent.get(row.turnEventId) ?? null) : null;
   return (
     <div className="v2-ag-msg v2-ag-reply" data-cont={row.cont ? 'true' : undefined} data-event-id={row.id} data-testid="v2-agent-reply" data-n={row.n} data-note={row.note ? 'true' : undefined}>
       {row.cont ? null : (
@@ -527,6 +533,22 @@ function Reply({ row, data, variant, fullText, onSave }: { readonly row: Extract
         <ChatMarkdown text={row.text} testId="v2-agent-reply-text" onSaveCode={data.blocked === null ? (code, language) => onSave(code, 'code', language) : null} />
         {row.cut ? <CutNote cut={row.cut} control={fullText} /> : null}
       </div>
+      {turnChanges && changed ? (
+        <button
+          type="button"
+          className="v2-ag-turnchip"
+          data-testid="v2-agent-turn-changes"
+          data-turn={changed.turn}
+          title={`See what ${turnsLabel(changed.turn, changed.through).toLowerCase()} changed`}
+          aria-label={`${turnsLabel(changed.turn, changed.through)}: ${filesChangedText(changed.files)}${changed.added > 0 || changed.removed > 0 ? `, ${deltaText(changed.added, changed.removed)}` : ''}. Open the changes.`}
+          onClick={() => turnChanges.open(changed)}
+        >
+          <Icon name="copy" size="s" />
+          <span>{filesChangedText(changed.files)}</span>
+          {changed.added > 0 || changed.removed > 0 ? <span className="v2-ag-turnchip-delta">{deltaText(changed.added, changed.removed)}</span> : null}
+          {changed.through > changed.turn ? <span className="v2-ag-turnchip-delta">{turnsLabel(changed.turn, changed.through)}</span> : null}
+        </button>
+      ) : null}
       <Menu items={menu} anchor={anchor} open={open} onClose={() => setOpen(false)} label={AGENT_WORDS.replyActions(row.n)} testId="v2-agent-reply-menu-list" />
     </div>
   );

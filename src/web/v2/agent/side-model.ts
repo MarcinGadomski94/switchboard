@@ -57,9 +57,12 @@ export type OverviewItem =
       readonly resume: string | null;
     };
 
-/** The derived overview (D21), Workflow runs grouped (D51); finished helpers leave it (D37). */
-export function overviewItems(session: Pick<SessionDetail, 'agents' | 'status' | 'task' | 'workflows'>): OverviewItem[] {
-  const shown = session.agents.filter((agent) => !isFinishedSubagent(agent));
+/**
+ * The derived overview (D21), Workflow runs grouped (D51); finished helpers leave it (D37).
+ * SPIKE · `everyHelper` (the side panel's Helpers tab, `helpers-view.ts`): they stay.
+ */
+export function overviewItems(session: Pick<SessionDetail, 'agents' | 'status' | 'task' | 'workflows'>, options: { readonly everyHelper?: boolean } = {}): OverviewItem[] {
+  const shown = options.everyHelper ? session.agents : session.agents.filter((agent) => !isFinishedSubagent(agent));
   const rows = new Map(overviewRows(shown, session).map((row) => [row.id, row]));
   const out: OverviewItem[] = [];
   for (const entry of overviewEntries(shown, session.workflows ?? [])) {

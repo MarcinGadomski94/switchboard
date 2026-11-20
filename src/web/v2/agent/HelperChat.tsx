@@ -39,8 +39,13 @@ function useWorkflowChat(sessionId: string, agentId: string | null, version: num
  * the brief from the agent, its replies and tool activity in the v2 chat's style,
  * its result last; no composer (helpers take no messages), the live line instead.
  * Back (and Esc) return to the main chat.
+ *
+ * SPIKE (side panel): with `inPanel` it is shown in the side panel, beside the main
+ * chat, at the same address. Back (and Esc) then leave the list of helpers in the
+ * panel, so the button says so. While it is open there Esc is its own, not the main
+ * chat's Stop (`Dock.tsx`), unless the message box has the focus.
  */
-export function HelperChat({ data, helperId, focusEventId }: { readonly data: AgentData; readonly helperId: string; readonly focusEventId: number | null }) {
+export function HelperChat({ data, helperId, focusEventId, inPanel = false }: { readonly data: AgentData; readonly helperId: string; readonly focusEventId: number | null; readonly inPanel?: boolean }) {
   const { navigate } = useV2Router();
   const { session, sessionId, activity } = data;
   const members = useTeamMembers();
@@ -54,6 +59,7 @@ export function HelperChat({ data, helperId, focusEventId }: { readonly data: Ag
   const stick = useRef(true);
   const revealed = useRef<number | null>(null);
   const back = (): void => navigate(`/agents/${encodeURIComponent(sessionId)}`);
+  const backLabel = inPanel ? AGENT_WORDS.allHelpers : AGENT_WORDS.mainChat;
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[aria-modal="true"], [role="menu"]')) return;
@@ -85,7 +91,7 @@ export function HelperChat({ data, helperId, focusEventId }: { readonly data: Ag
     return (
       <div className="v2-ag-scroll" data-testid="v2-agent-helper-chat" data-state="missing">
         <div className="v2-ag-col">
-          <EmptyState icon="crew" tone="grey" title={AGENT_WORDS.helperMissing} action={<Button onClick={back}>{AGENT_WORDS.mainChat}</Button>} />
+          <EmptyState icon="crew" tone="grey" title={AGENT_WORDS.helperMissing} action={<Button onClick={back}>{backLabel}</Button>} />
         </div>
       </div>
     );
@@ -95,10 +101,10 @@ export function HelperChat({ data, helperId, focusEventId }: { readonly data: Ag
   const line = entry ? subagentActivityLine(entry, now) : null;
   const name = agent.description || agent.name;
   return (
-    <div className="v2-ag-helper" data-testid="v2-agent-helper-chat" data-helper-id={helperId}>
+    <div className="v2-ag-helper" data-testid="v2-agent-helper-chat" data-helper-id={helperId} data-in-panel={inPanel ? 'true' : undefined}>
       <div className="v2-ag-helper-head">
         <Button size="sm" variant="ghost" icon="back" onClick={back} data-testid="v2-agent-helper-back">
-          {AGENT_WORDS.mainChat}
+          {backLabel}
         </Button>
         <Avatar name={name} size="m" status={sessionStatusToV2(agent.status)} />
         <div className="v2-grow" style={{ minWidth: 0 }}>

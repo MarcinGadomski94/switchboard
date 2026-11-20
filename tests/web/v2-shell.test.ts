@@ -177,7 +177,7 @@ describe('D131 · the shell: status pill, rail counts, shortcuts', () => {
     expect(shortcutList().map((line) => line.what)).toEqual([
       'Command palette and quick search',
       'Search everything, every computer',
-      'Hide or show the agent’s details panel',
+      'Hide or show the agent’s side panel',
       'Hide or show the folder tree in Agents',
       'Stop the agent you’re looking at',
       'Send',

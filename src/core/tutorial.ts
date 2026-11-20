@@ -1279,8 +1279,8 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'agent',
         title: 'One agent',
-        what: 'An agent is its chat, the changes it made, its results and its helpers. The side panel (⌘.) holds its details: computer, usage, routines and helpers. Each reply has a ⋯ menu: copy it, save it as a result, add it to tasks or undo from there.',
-        todo: ['Press ⌘. (or Details) to show or hide the side panel.', 'Hover a reply and open its ⋯ menu.'],
+        what: 'An agent is its chat, the changes it made, its results and its helpers. The side panel (⌘.) holds its changes, its files and its helpers; its details (computer, usage, routines) are behind the ⓘ at the end of the panel’s tabs. Each reply has a ⋯ menu: copy it, save it as a result, add it to tasks or undo from there.',
+        todo: ['Press ⌘. to show or hide the side panel.', 'Hover a reply and open its ⋯ menu.'],
         anchors: ['v2-agent-details'],
         v2Route: 'agent',
         missing: 'Start an agent from Home to see its view. ',
@@ -1622,7 +1622,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Open an agent and look at Works in at the top of its Details.'],
         anchors: ['v2-agent-works-in', 'v2-agent-details'],
         v2Route: '/agents',
-        missing: 'Open an agent in Agents and show its Details (⌘.) to see Works in. ',
+        missing: 'Open an agent in Agents and press the ⓘ (Details) in its side panel to see Works in. ',
       },
       {
         id: 'move',

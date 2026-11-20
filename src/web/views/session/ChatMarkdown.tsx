@@ -1,8 +1,10 @@
-import { type ReactNode, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
+import { pathRefOfCode } from '../../../core/agent-files.ts';
 import { codeLanguage } from './artifacts.ts';
+import { FileLinksContext, linkFilePaths } from './file-links.ts';
 import { LINK_REL, chatUrlTransform, rehypeChatText, safeLinkUrl } from './markdown.ts';
 import './markdown.css';
 
@@ -138,9 +140,11 @@ export const ChatMarkdown = memo(
     const latest = useRef(onSaveCode);
     latest.current = onSaveCode;
     const offersSave = onSaveCode !== null;
+    // SPIKE (side panel Files): with a provider, paths the conversation touched become links.
+    const links = useContext(FileLinksContext);
     const components = useMemo<Components>(() => {
       const save = offersSave ? (code: string, language: string | null): void => latest.current?.(code, language) : null;
-      return {
+      const base: Components = {
         ...COMPONENTS,
         // D92: every fenced code block has Copy; D89 adds Save as artifact where the chat offers it.
         pre: ({ node, children }) => (
@@ -149,10 +153,58 @@ export const ChatMarkdown = memo(
           </CodeBlock>
         ),
       };
-    }, [offersSave]);
+      if (!links) return base;
+      return {
+        ...base,
+        // An inline code span that is one of the conversation's files.
+        code: ({ className, children, node: _node, ...rest }) => {
+          const text = typeof children === 'string' ? children : null;
+          const ref = text !== null && !className && !text.includes('\n') ? pathRefOfCode(text) : null;
+          const target = ref ? links.known.get(ref.path) : undefined;
+          // Any other code stays exactly as it was (its attributes too).
+          if (!ref || !target) {
+            return (
+              <code className={className} {...rest}>
+                {children}
+              </code>
+            );
+          }
+          return (
+            <button type="button" className="sb-md-file" data-testid="chat-file-link" title={`Open ${target.path}`} onClick={() => links.open(target.path, ref.line ?? target.line)}>
+              <code>{children}</code>
+            </button>
+          );
+        },
+        // A path in the prose, marked by `linkFilePaths`.
+        span: ({ className, children, node: _node, ...rest }) => {
+          const file = (rest as Record<string, unknown>)['data-sb-file'];
+          // Any other span stays exactly as it was (its attributes too: `data-md-image` marks an image's placeholder).
+          if (typeof file !== 'string') {
+            return (
+              <span className={className} {...rest}>
+                {children}
+              </span>
+            );
+          }
+          const lineText = (rest as Record<string, unknown>)['data-sb-line'];
+          const line = typeof lineText === 'string' && /^\d+$/.test(lineText) ? Number(lineText) : null;
+          return (
+            <button type="button" className="sb-md-file" data-testid="chat-file-link" title={`Open ${file}`} onClick={() => links.open(file, line)}>
+              {children}
+            </button>
+          );
+        },
+      };
+    }, [offersSave, links]);
+    const rehypePlugins = useMemo(() => {
+      if (!links) return REHYPE_PLUGINS;
+      const known = links.known;
+      const fileLinks = () => (tree: Parameters<typeof linkFilePaths>[0]) => linkFilePaths(tree, known);
+      return [rehypeChatText, fileLinks, rehypeHighlight];
+    }, [links]);
     return (
       <div className="sb-md" data-testid={testId}>
-        <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={components} urlTransform={chatUrlTransform}>
+        <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePlugins} components={components} urlTransform={chatUrlTransform}>
           {text}
         </Markdown>
       </div>

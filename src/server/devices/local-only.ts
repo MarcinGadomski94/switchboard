@@ -231,6 +231,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
  * the flows that act on this computer itself.
  */
 export const DEVICE_REFUSED: readonly DeviceRule[] = [
+  // SPIKE (side panel): an agent's files and what each of its turns changed are read on this computer only.
+  ['*', /^\/api\/sessions\/[^/]+\/files(?:\/.*)?$/],
+  ['*', /^\/api\/sessions\/[^/]+\/turn-changes(?:\/.*)?$/],
   // D165: profiles are managed and switched on the computer; moving an agent between profiles too.
   [WRITE, /^\/api\/user-profiles(?:\/.*)?$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/user-profile$/],
