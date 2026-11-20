@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEvents } from '../../../src/core/api.ts';
 import { ARTIFACT_IMAGE_MAX, ARTIFACT_PDF_MAX, ARTIFACT_TEXT_MAX, ARTIFACT_VERSIONS_MAX } from '../../../src/core/artifacts.ts';
 import { AGENT_SESSION_HEADER } from '../../../src/core/todos.ts';
-import { HTML_ARTIFACT_CSP, PDF_ARTIFACT_CSP, STATIC_ARTIFACT_CSP, filterArtifacts } from '../../../src/server/api/artifacts.ts';
+import { HTML_ARTIFACT_CSP, HTML_FRAME_CSP, PDF_ARTIFACT_CSP, STATIC_ARTIFACT_CSP, filterArtifacts } from '../../../src/server/api/artifacts.ts';
 import { DEVICE_ALLOWED, matchesRule } from '../../../src/server/devices/local-only.ts';
 import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -198,11 +198,28 @@ describe('D89 · saving', () => {
     const html = (await agent('POST', '/agent/v1/artifacts', { title: 'Mock', kind: 'html', content: '<!doctype html><p>hi</p><script>document.cookie</script>' })).body as ArtifactSaveResult;
     const page = await ui('GET', `/api/sessions/${session}/artifacts/${html.artifact.id}/versions/1/raw`);
     expect(page.headers['content-type']).toBe('text/html; charset=utf-8');
-    expect(page.headers['content-security-policy']).toBe(HTML_ARTIFACT_CSP);
-    expect(HTML_ARTIFACT_CSP).toMatch(/^sandbox allow-scripts;/);
-    expect(HTML_ARTIFACT_CSP).not.toContain('allow-same-origin');
-    expect(HTML_ARTIFACT_CSP).toContain("default-src 'none'");
+    // D180: shown in a frame document that keeps it where it is: `frame-src blob:` (the result is a blob: in its frame), sandboxed, nothing from an address.
+    expect(page.headers['content-security-policy']).toBe(HTML_FRAME_CSP);
+    expect(HTML_FRAME_CSP).toMatch(/^sandbox allow-scripts;/);
+    expect(HTML_FRAME_CSP).not.toContain('allow-same-origin');
+    expect(HTML_FRAME_CSP).toContain("default-src 'none'");
+    expect(HTML_FRAME_CSP).toContain('frame-src blob:');
+    expect(HTML_FRAME_CSP).toContain("frame-ancestors 'self'");
     expect(page.headers['x-content-type-options']).toBe('nosniff');
+    const frame = page.body as unknown as string;
+    // The rules are stated in the frame document too (a header can be taken off on the way), and the result carries its own just after its doctype.
+    expect(frame).toContain('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'');
+    const held = JSON.parse(/<script type="application\/json" id="page"[^>]*>([\s\S]*?)<\/script>/.exec(frame)?.[1] ?? '""') as string;
+    expect(held).toMatch(/^<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' data:;[^"]*frame-src 'none'/);
+    expect(held.endsWith('<p>hi</p><script>document.cookie</script>')).toBe(true);
+    // Nothing the result holds can end the data block.
+    const nasty = (await agent('POST', '/agent/v1/artifacts', { title: 'Nasty', kind: 'html', content: '<p></script><script>parent.location="https://x.example/"</script>' })).body as ArtifactSaveResult;
+    const nastyFrame = (await ui('GET', `/api/sessions/${session}/artifacts/${nasty.artifact.id}/versions/1/raw`)).body as unknown as string;
+    expect(nastyFrame.match(/<\/script/gi)).toHaveLength(2);
+    // ?download answers the file as it is, under the result's own rules.
+    const file = await ui('GET', `/api/sessions/${session}/artifacts/${html.artifact.id}/versions/1/raw?download`);
+    expect(file.headers['content-security-policy']).toBe(HTML_ARTIFACT_CSP);
+    expect(HTML_ARTIFACT_CSP).not.toContain('allow-same-origin');
     const svg = (await agent('POST', '/agent/v1/artifacts', { title: 'Logo', kind: 'svg', content: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' })).body as ArtifactSaveResult;
     const image = await ui('GET', `/api/sessions/${session}/artifacts/${svg.artifact.id}/versions/1/raw`);
     expect(image.headers['content-type']).toBe('image/svg+xml');

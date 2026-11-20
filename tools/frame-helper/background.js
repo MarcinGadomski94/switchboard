@@ -13,6 +13,10 @@
  * - marker.js also sends `frame-helper:reset` at document_start: a new loopback
  *   document in the tab starts without rules until it asks.
  * - A tab's rule goes when the tab closes or leaves loopback pages.
+ * - D180 (2026-11-20): Switchboard's own host (127.0.0.1 / localhost, the only loopback host
+ *   the page lists: site tools are https and never loopback) keeps its headers on every frame
+ *   but the capability check page (FRAME_CHECK_PATH): an HTML result or an agent's page shown
+ *   in Switchboard keeps the Content-Security-Policy that confines it.
  * Only messages from this extension's own content script in the top frame of a
  * loopback page count; the hosts must be plain host names, at most 50.
  * Plain script, no build step.
@@ -58,29 +62,50 @@ function readHosts(hosts) {
   return { hosts: unique };
 }
 
-/** The tab's one rule; its id is the tab's id. */
-function tabRule(tabId, hosts) {
-  return {
-    id: tabId,
-    priority: 1,
-    action: {
-      type: 'modifyHeaders',
-      responseHeaders: [
-        { header: 'x-frame-options', operation: 'remove' },
-        { header: 'content-security-policy', operation: 'remove' },
-      ],
-    },
-    condition: { tabIds: [tabId], resourceTypes: ['sub_frame'], requestDomains: hosts },
-  };
+/** Switchboard's own hosts (the loopback pages it runs on). */
+var OWN_HOSTS = ['127.0.0.1', 'localhost'];
+
+/** The id of a tab's second rule (its own host's check page): the tab id plus this. */
+var CHECK_RULE_OFFSET = 1000000000;
+
+/*
+ * Switchboard's capability check page (FRAME_CHECK_PATH in src/core/site-tools.ts), exactly:
+ * the path itself, not the same text inside another address's query.
+ */
+var CHECK_URL = '^http://(?:127\\.0\\.0\\.1|localhost)(?::[0-9]+)?/api/frame-helper/check(?:[?#].*)?$';
+
+var REMOVE_HEADERS = {
+  type: 'modifyHeaders',
+  responseHeaders: [
+    { header: 'x-frame-options', operation: 'remove' },
+    { header: 'content-security-policy', operation: 'remove' },
+  ],
+};
+
+/**
+ * The tab's rules: one for its site tools' hosts (id: the tab's id), and for Switchboard's own
+ * host one for the capability check page only (id: the tab's id + CHECK_RULE_OFFSET).
+ */
+function tabRules(tabId, hosts) {
+  var sites = hosts.filter(function (host) {
+    return OWN_HOSTS.indexOf(host) === -1;
+  });
+  var own = hosts.filter(function (host) {
+    return OWN_HOSTS.indexOf(host) !== -1;
+  });
+  var rules = [];
+  if (sites.length > 0) rules.push({ id: tabId, priority: 1, action: REMOVE_HEADERS, condition: { tabIds: [tabId], resourceTypes: ['sub_frame'], requestDomains: sites } });
+  if (own.length > 0) rules.push({ id: tabId + CHECK_RULE_OFFSET, priority: 1, action: REMOVE_HEADERS, condition: { tabIds: [tabId], resourceTypes: ['sub_frame'], requestDomains: own, regexFilter: CHECK_URL } });
+  return rules;
 }
 
 // One rule update at a time, in the order they were asked for.
 var queue = Promise.resolve();
 
-/** Replaces the tab's rule with one for `hosts` (none for an empty list). */
+/** Replaces the tab's rules with those for `hosts` (none for an empty list). */
 function setTabHosts(tabId, hosts) {
   var run = function () {
-    return api.declarativeNetRequest.updateSessionRules({ removeRuleIds: [tabId], addRules: hosts.length > 0 ? [tabRule(tabId, hosts)] : [] });
+    return api.declarativeNetRequest.updateSessionRules({ removeRuleIds: [tabId, tabId + CHECK_RULE_OFFSET], addRules: tabRules(tabId, hosts) });
   };
   var next = queue.then(run, run);
   queue = next.catch(function () {

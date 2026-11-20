@@ -516,6 +516,16 @@ export function pagePolicy(scripts: boolean): PagePolicy {
   };
 }
 
+/**
+ * D180: `meta` put into `html` just after its doctype (before everything else when it has
+ * none), as {@link PageScan.head} places it for a page view: an HTML result states its own
+ * rules too.
+ */
+export function withPageMeta(html: string, meta: string): string {
+  const doctype = /^﻿?\s*<!doctype[^>]*>/i.exec(html);
+  return doctype ? `${html.slice(0, doctype[0].length)}${meta}${html.slice(doctype[0].length)}` : `${meta}${html}`;
+}
+
 /** The page's own statement of its rules: put just after its doctype ({@link PageScan.head}). */
 export function pageMetaTag(scripts: boolean): string {
   return `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(scripts).pageMeta}">`;

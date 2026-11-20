@@ -74,7 +74,13 @@ describe('D89 · a peer\'s artifacts', () => {
     expect(raw.status).toBe(200);
     expect(raw.headers.get('content-type')).toBe('text/html; charset=utf-8');
     expect(raw.headers.get('content-security-policy')).toMatch(/^sandbox allow-scripts;/);
-    expect(await raw.text()).toBe('<!doctype html><p>hi</p>');
+    // D180: A answers it in its frame document (the result held as data), passed on as it came.
+    const shown = await raw.text();
+    expect(raw.headers.get('content-security-policy')).toContain('frame-src blob:');
+    expect(shown).toContain('id="page"');
+    expect(shown).toContain('\\u003cp>hi\\u003c/p>');
+    const file = await fetch(`${b.baseUrl}/api/sessions/${encodeURIComponent(id)}/artifacts/${pageId}/versions/1/raw?download`, { headers: { cookie: `sb_token=${token}` } });
+    expect(await file.text()).toBe('<!doctype html><p>hi</p>');
 
     // Save as artifact from B into A's session; the detail on B counts it.
     const saved = await b.call('POST', `/api/sessions/${encodeURIComponent(id)}/artifacts`, { title: 'Notes', kind: 'markdown', content: '# Notes\n' });

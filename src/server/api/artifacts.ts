@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ArtifactKind, ArtifactListItem } from '../../core/api.ts';
 import { ARTIFACT_PDF_TYPE, ARTIFACT_SAVE_BODY_MAX, artifactExtension, artifactFileName, isArtifactKind } from '../../core/artifacts.ts';
 import { AGENT_SESSION_HEADER } from '../../core/todos.ts';
+import { pageFrame, pageMetaTag, pagePolicy, withPageMeta } from '../agent-files/page.ts';
 import { ArtifactError } from '../artifacts/service.ts';
 import type { ApiContext } from '../routes.ts';
 import { contentDisposition } from './attachments.ts';
@@ -23,6 +24,23 @@ export const ARTIFACT_RAW_ROUTE = '/api/sessions/:id/artifacts/:artifactId/versi
  */
 export const HTML_ARTIFACT_CSP =
   "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'";
+
+/**
+ * D180 (`docs/security.md` → *Artifacts*): the CSP an HTML result is shown under. A sandboxed
+ * page may send its own frame to any address, and only the document that frames it can refuse
+ * that (`frame-src`); this app's own page states no such rule, so an HTML result could leave to
+ * another site. It is now shown as the agent page view is (`agent-files/page.ts`): a frame
+ * document under these rules (`sandbox allow-scripts`, nothing from an address, `frame-src blob:`)
+ * shows the result from a `blob:` in a frame of its own. The same rules are stated in a `<meta>`
+ * in the frame document and in the result itself, so they hold when a header is taken off on the
+ * way. `?download` still answers the file as it is (under {@link HTML_ARTIFACT_CSP}).
+ */
+export const HTML_FRAME_CSP = pagePolicy(true).header;
+
+/** D180: the frame document an HTML result is shown in ({@link HTML_FRAME_CSP}). */
+export function htmlArtifactFrame(html: string, title: string): string {
+  return pageFrame(withPageMeta(html, pageMetaTag(true)), title, true);
+}
 
 /** D89: the CSP of every other version: nothing runs or loads (an SVG's scripts included); only the app may frame it. */
 export const STATIC_ARTIFACT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox; frame-ancestors 'self'";
@@ -191,6 +209,11 @@ export async function registerArtifactRoutes(app: FastifyInstance, context: ApiC
         return reply.send(page);
       }
       for (const [name, value] of Object.entries(artifactHeaders(raw.artifact, raw.version.mediaType, request.query.download !== undefined))) reply.header(name, value);
+      // D180: an HTML result is shown inside a frame document whose `frame-src blob:` keeps it where it is (a sandboxed page may otherwise send its own frame anywhere).
+      if (raw.artifact.kind === 'html' && request.query.download === undefined) {
+        reply.header('content-security-policy', HTML_FRAME_CSP);
+        return reply.send(htmlArtifactFrame(raw.bytes.toString('utf8'), raw.artifact.title));
+      }
       return reply.send(raw.bytes);
     } catch (error) {
       return sendArtifactError(reply, error);

@@ -119,8 +119,16 @@ interface SessionRule {
   readonly id: number;
   readonly priority: number;
   readonly action: unknown;
-  readonly condition: { readonly tabIds: number[]; readonly resourceTypes: string[]; readonly requestDomains: string[] };
+  readonly condition: { readonly tabIds: number[]; readonly resourceTypes: string[]; readonly requestDomains: string[]; readonly regexFilter?: string };
 }
+
+/** The tabs that have rules, in the order their rules were written (a tab has up to two). */
+function tabsWithRules(rules: readonly SessionRule[]): number[] {
+  return [...new Set(rules.map((rule) => rule.condition.tabIds[0] as number))];
+}
+
+/** D180: the second rule's id (Switchboard's own host, its check page only). */
+const CHECK = 1_000_000_000;
 
 type Listener = (...args: never[]) => unknown;
 
@@ -175,35 +183,48 @@ const switchboard = (tabId = 7, url = 'http://127.0.0.1:4870/tools/jira') => ({ 
 const sitesMessage = (hosts: unknown) => ({ type: 'frame-helper:sites', hosts });
 
 describe('background.js (tab-scoped session rules, D28 ruling)', () => {
-  it("replaces the sender tab's one rule: remove the two headers from sub_frames of exactly the listed hosts, in that tab only", async () => {
+  it("replaces the sender tab's rules: remove the two headers from sub_frames of the listed site hosts, and of Switchboard's own host only on its check page, in that tab only", async () => {
     const worker = await startWorker();
     const first = await worker.send(sitesMessage(['127.0.0.1', 'acme.atlassian.net']), switchboard(7));
     expect(first).toEqual({ open: true, answer: { ok: true, hosts: ['127.0.0.1', 'acme.atlassian.net'], error: null } });
+    const remove = {
+      type: 'modifyHeaders',
+      responseHeaders: [
+        { header: 'x-frame-options', operation: 'remove' },
+        { header: 'content-security-policy', operation: 'remove' },
+      ],
+    };
     expect(worker.rules()).toEqual([
-      {
-        id: 7,
-        priority: 1,
-        action: {
-          type: 'modifyHeaders',
-          responseHeaders: [
-            { header: 'x-frame-options', operation: 'remove' },
-            { header: 'content-security-policy', operation: 'remove' },
-          ],
-        },
-        condition: { tabIds: [7], resourceTypes: ['sub_frame'], requestDomains: ['127.0.0.1', 'acme.atlassian.net'] },
-      },
+      { id: 7, priority: 1, action: remove, condition: { tabIds: [7], resourceTypes: ['sub_frame'], requestDomains: ['acme.atlassian.net'] } },
+      { id: 7 + CHECK, priority: 1, action: remove, condition: { tabIds: [7], resourceTypes: ['sub_frame'], requestDomains: ['127.0.0.1'], regexFilter: expect.any(String) } },
     ]);
-    // Another Switchboard tab gets its own rule; a new list replaces the tab's rule (never merges).
+    // Another Switchboard tab gets its own rules; a new list replaces the tab's rules (never merges).
     await worker.send(sitesMessage(['localhost', 'grafana.example.com']), switchboard(9, 'http://localhost:4870/'));
     await worker.send(sitesMessage(['127.0.0.1', 'site.test', 'site.test']), switchboard(7));
     expect(worker.rules().map((rule) => [rule.id, rule.condition.tabIds, rule.condition.requestDomains])).toEqual([
-      [9, [9], ['localhost', 'grafana.example.com']],
-      [7, [7], ['127.0.0.1', 'site.test']], // deduplicated
+      [9, [9], ['grafana.example.com']],
+      [9 + CHECK, [9], ['localhost']],
+      [7, [7], ['site.test']], // deduplicated
+      [7 + CHECK, [7], ['127.0.0.1']],
     ]);
-    expect(worker.updates.at(-1)!.removeRuleIds).toEqual([7]);
-    // An empty list removes the tab's rule.
+    expect(worker.updates.at(-1)!.removeRuleIds).toEqual([7, 7 + CHECK]);
+    // An empty list removes the tab's rules.
     expect((await worker.send(sitesMessage([]), switchboard(7))).answer).toEqual({ ok: true, hosts: [], error: null });
-    expect(worker.rules().map((rule) => rule.id)).toEqual([9]);
+    expect(tabsWithRules(worker.rules())).toEqual([9]);
+  });
+
+  it("D180: Switchboard's own host loses its headers only on the capability check page, never on an HTML result's or an agent's page", async () => {
+    const worker = await startWorker();
+    await worker.send(sitesMessage(['127.0.0.1']), switchboard(7));
+    const own = worker.rules().find((rule) => rule.id === 7 + CHECK);
+    const matches = (url: string): boolean => new RegExp(own!.condition.regexFilter!).test(url);
+    expect(matches('http://127.0.0.1:4870/api/frame-helper/check')).toBe(true);
+    expect(matches('http://localhost:4870/api/frame-helper/check?n=2')).toBe(true);
+    expect(matches('http://127.0.0.1:4870/api/sessions/s1/artifacts/a1/versions/1/raw')).toBe(false);
+    expect(matches('http://127.0.0.1:4870/api/sessions/s1/files/page?path=/api/frame-helper/check')).toBe(false);
+    expect(matches('http://127.0.0.1:4870/api/frame-helper/check/../../sessions/x')).toBe(false);
+    // Only own hosts: no rule for the site tools at all.
+    expect(worker.rules().map((rule) => rule.id)).toEqual([7 + CHECK]);
   });
 
   it('refuses anything but plain host names, and more than 50; a refused list leaves the tab without rules', async () => {
@@ -228,7 +249,7 @@ describe('background.js (tab-scoped session rules, D28 ruling)', () => {
     ];
     for (const hosts of refused) {
       await worker.send(sitesMessage(['127.0.0.1', 'site.test']), switchboard(7));
-      expect(worker.rules()).toHaveLength(1);
+      expect(worker.rules()).toHaveLength(2);
       const { answer } = await worker.send(sitesMessage(hosts), switchboard(7));
       expect(answer, JSON.stringify(hosts)).toMatchObject({ ok: false, hosts: [] });
       expect((answer as { error: string }).error).toMatch(/plain host name|list of host names|at most 50 hosts/);
@@ -268,22 +289,22 @@ describe('background.js (tab-scoped session rules, D28 ruling)', () => {
     await worker.send(sitesMessage(['127.0.0.1', 'site.test']), switchboard(7));
     await worker.send(sitesMessage(['127.0.0.1', 'site.test']), switchboard(8));
     expect(await worker.send({ type: 'frame-helper:reset' }, switchboard(7, 'http://127.0.0.1:3000/'))).toEqual({ answer: undefined, open: false });
-    expect(worker.rules().map((rule) => rule.id)).toEqual([8]);
+    expect(tabsWithRules(worker.rules())).toEqual([8]);
     // A reset from anything but a loopback top frame is ignored.
     await worker.send({ type: 'frame-helper:reset' }, { ...switchboard(8), frameId: 2 });
-    expect(worker.rules().map((rule) => rule.id)).toEqual([8]);
+    expect(tabsWithRules(worker.rules())).toEqual([8]);
   });
 
   it("clears a tab's rule when the tab closes or leaves loopback pages; loopback navigations keep it", async () => {
     const worker = await startWorker();
     for (const tabId of [7, 8, 9, 10]) await worker.send(sitesMessage(['127.0.0.1', 'site.test']), switchboard(tabId));
     await worker.removed(7);
-    expect(worker.rules().map((rule) => rule.id)).toEqual([8, 9, 10]);
+    expect(tabsWithRules(worker.rules())).toEqual([8, 9, 10]);
     // Switchboard's own reload and in-app navigation keep the rule.
     await worker.updated(8, { status: 'loading' }, { id: 8, url: 'http://127.0.0.1:4870/tools/jira' });
     await worker.updated(8, { url: 'http://127.0.0.1:4870/settings/tools' }, { id: 8, url: 'http://127.0.0.1:4870/settings/tools' });
     await worker.updated(8, { title: 'Switchboard' }, { id: 8, url: 'https://evil.example/' }); // not a navigation
-    expect(worker.rules().map((rule) => rule.id)).toEqual([8, 9, 10]);
+    expect(tabsWithRules(worker.rules())).toEqual([8, 9, 10]);
     // Another site: gone. A page the helper may not see (its URL hidden): gone too.
     await worker.updated(8, { status: 'loading', url: 'https://evil.example/' }, { id: 8, url: 'https://evil.example/' });
     await worker.updated(9, { status: 'loading' }, { id: 9 });
