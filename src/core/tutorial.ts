@@ -196,6 +196,8 @@ const V2_4_47 = '2.4.47';
 const V2_4_48 = '2.4.48';
 /** The version D179 (the shared layout per profile) ships in (the next release after 2.4.49; adjust if it ships later). */
 const V2_4_50 = '2.4.50';
+/** The version D180 (the agent view's side panel) ships in. */
+const V2_5_1 = '2.5.1';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2046,6 +2048,52 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-shared-layout', 'v2-nav-settings', 'v2-tab-more'],
         v2Route: '/settings/computers',
         missing: 'Settings → Computers lists Shared layout once a computer is paired.',
+      },
+    ],
+  },
+  // D180: the agent view's side panel: Changes | Files | Helpers | ⓘ (docs/v2.md → The agent view's side panel).
+  {
+    id: 'side-panel',
+    decision: 'D180',
+    version: V2_5_1,
+    title: 'Changes, files and helpers beside the chat',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'tabs',
+        title: 'The side panel’s tabs',
+        what: 'An agent’s side panel shows its Changes, its Files and its Helpers next to the chat; its details are behind the ⓘ. Changes opens on For review while a review waits; a turn’s “N files changed” chip under its last reply opens what that turn changed.',
+        todo: ['Open an agent and switch between Changes, Files and Helpers in its side panel.'],
+        anchors: ['v2-side-tabs', 'v2-agent-details'],
+        v2Route: 'agent',
+        missing: 'Start an agent from Home to see its side panel.',
+      },
+      {
+        id: 'list',
+        title: 'The list and the width',
+        what: 'From 760 px wide the panel shows the list on its right and the file or diff beside the chat; narrower, the list button at the far right of a file’s header pops the list over it. ⟷ switches the panel between narrow and wide.',
+        todo: ['Press ⟷ next to ⓘ, then the list button in a diff’s or file’s header.'],
+        anchors: ['v2-side-width', 'v2-side-list', 'v2-side-changes'],
+        v2Route: 'agent',
+        missing: 'Open an agent that changed files to see the list button.',
+      },
+      {
+        id: 'reader',
+        title: 'Files and the reader',
+        what: 'Files lists what the agent touched, newest first, then its folders, each file with one sign: what changed, new, deleted, or read. A file opens with what the agent did to it (“Edited by the agent at 10:21 · View changes”), its new lines marked, code in colours.',
+        todo: ['Open Files and a file the agent wrote; press View changes.'],
+        anchors: ['v2-side-info', 'v2-side-tabs'],
+        v2Route: 'agent',
+        missing: 'Open a file the agent wrote to see its info line.',
+      },
+      {
+        id: 'helpers',
+        title: 'Helpers',
+        what: 'Helpers lists what needs you first, then what is working with what each helper does now, then the finished ones folded under one row, and the apps the agent left running. A red dot on the tab means a helper failed.',
+        todo: ['Open an agent with helpers and its Helpers tab.'],
+        anchors: ['v2-side-helpers', 'v2-side-tabs'],
+        v2Route: 'agent',
+        missing: 'An agent that uses helpers shows the Helpers tab.',
       },
     ],
   },

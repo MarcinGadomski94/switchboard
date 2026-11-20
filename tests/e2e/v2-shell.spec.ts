@@ -97,9 +97,10 @@ test('keyboard: ? lists the shortcuts, ⌘K opens the palette, ⌘⇧F opens Sea
 
 test('a classic address opens its v2 page (push notifications, paired computers, bookmarks)', async ({ page }) => {
   await page.goto(`${server.baseUrl}/sessions/abc/diff`);
-  await expect(page).toHaveURL(`${server.baseUrl}/agents/abc/changes`);
-  // Lane S: the agent view (here for an id with no agent) on its Changes tab.
-  await expect(page.locator('[data-testid="v2-agent-view"][data-session-id="abc"]')).toHaveAttribute('data-tab', 'changes');
+  // Lane S: the agent view (here for an id with no agent); D180: its Changes open in the side panel, next to the chat, at the agent's own address.
+  await expect(page.locator('[data-testid="v2-agent-view"][data-session-id="abc"]')).toBeVisible();
+  await expect(page.getByTestId('v2-agent-side')).toHaveAttribute('data-side-tab', 'changes');
+  await expect(page).toHaveURL(`${server.baseUrl}/agents/abc`);
   await page.goto(`${server.baseUrl}/inbox`);
   await expect(page).toHaveURL(`${server.baseUrl}/needs-you`);
   await expect(page.getByTestId('v2-page-needs-you')).toBeVisible();
@@ -133,16 +134,17 @@ test('the theme switch: v2 → Classic → v2, at once and without a reload, kee
   expect(await sameWindow(page)).toBe(true);
   await expect(page).toHaveURL(`${server.baseUrl}/settings/appearance`);
 
-  // From an agent's Changes tab to Classic (the palette's switch): the address becomes the session's Diff.
+  // From an agent's Changes to Classic (the palette's switch): D180: Changes is the side panel's, so the address is the agent's own, and Classic opens the session.
   await page.goto(`${server.baseUrl}/agents/abc/changes`);
   await expect(page.locator('[data-testid="v2-agent-view"][data-session-id="abc"]')).toBeVisible();
+  await expect(page).toHaveURL(`${server.baseUrl}/agents/abc`);
   await markWindow(page);
   await page.keyboard.press('ControlOrMeta+k');
   await expect(page.getByTestId('v2-palette')).toBeVisible();
   await page.keyboard.type('classic');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('shell')).toBeVisible();
-  await expect(page).toHaveURL(`${server.baseUrl}/sessions/abc/diff`);
+  await expect(page).toHaveURL(`${server.baseUrl}/sessions/abc`);
   expect(await sameWindow(page)).toBe(true);
   // Back to v2 for the next tests (the browser's own choice).
   await page.evaluate(() => window.localStorage.removeItem('switchboard.ui.theme'));

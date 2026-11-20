@@ -170,7 +170,11 @@ test('⌘. hides the details panel and it is remembered; the View menu changes t
   await settled(page, id);
   await openWithHub(page, `${world.baseUrl}/agents/${id}`);
   await expect(page.getByTestId('v2-agent-side')).toBeVisible();
+  // D180: Details is the panel's ⓘ tab; its groups start closed, each with its summary.
+  await page.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: 'Details' }).click();
   await expect(page.getByTestId('v2-agent-group-how')).toBeVisible();
+  await expect(page.getByTestId('v2-agent-group-how')).not.toHaveAttribute('open', '');
+  await expect(page.getByTestId('v2-agent-group-how').locator('summary')).toContainText('Claude Code');
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('ControlOrMeta+.');
   await expect(page.getByTestId('v2-agent-side')).toHaveCount(0);
@@ -197,23 +201,37 @@ test('the Changes tab, and Undo from here restores the files', async ({ page }) 
   const exists = async (): Promise<boolean> => readFile(file).then(() => true, () => false);
   await expect.poll(exists).toBe(true);
 
+  // D180: Changes opens in the side panel beside the chat (1440 × 900: room for the 820 px panel).
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openWithHub(page, `${world.baseUrl}/agents/${id}/changes`);
-  const changes = page.getByTestId('v2-agent-changes');
+  await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}`);
+  const changes = page.getByTestId('v2-side-changes');
   await expect(changes).toBeVisible();
-  await expect(changes.getByTestId('v2-agent-changes-scope')).toContainText('Since last save point');
-  // D174: waiting for review, the tab opens on For review; Side by side shows the file in two columns (remembered).
+  // D174: waiting for review, it opens on For review.
   await expect(changes).toHaveAttribute('data-scope', 'review');
-  await expect(changes.getByTestId('v2-agent-change-file')).toContainText('notes.txt');
-  await expect(changes.getByTestId('v2-agent-diff')).toHaveAttribute('data-layout', 'unified');
-  await changes.getByTestId('v2-agent-diff-layout').locator('[data-value="split"]').click();
-  await expect(changes.getByTestId('v2-agent-diff')).toHaveAttribute('data-layout', 'split');
+  await expect(changes.getByTestId('v2-side-changes-scope')).toContainText('For review');
+  await changes.getByTestId('v2-side-changes-scope').click();
+  await expect(page.getByTestId('v2-side-changes-scope-menu').getByRole('menuitem')).toContainText(['For review', 'Since last save point']);
+  await page.keyboard.press('Escape');
+  await expect(changes.getByTestId('v2-side-change-file')).toContainText('notes.txt');
+  // Narrow (560 px): the list first; a file fills the panel; Side by side is not offered.
+  await changes.getByTestId('v2-side-change-file').first().click();
+  await expect(changes.getByTestId('v2-side-diff')).toHaveAttribute('data-layout', 'unified');
+  await changes.getByTestId('v2-side-diff-more').click();
+  await expect(page.getByTestId('v2-side-diff-menu').getByRole('menuitem', { name: 'Side by side' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  // ⟷: 820 px, the list docked beside the diff; Side by side in ⋯ shows two columns (remembered).
+  await page.getByTestId('v2-agent-side-width').click();
+  await expect(changes.getByTestId('v2-side-changes-split')).toHaveAttribute('data-mode', 'docked');
+  await changes.getByTestId('v2-side-diff-more').click();
+  await page.getByTestId('v2-side-diff-menu').getByRole('menuitem', { name: 'Side by side' }).click();
+  await expect(changes.getByTestId('v2-side-diff')).toHaveAttribute('data-layout', 'split');
   await expect(changes.getByTestId('v2-agent-split-right').first()).toHaveAttribute('data-tone', 'add');
   await expect(changes.getByTestId('v2-agent-split-left').first()).toHaveAttribute('data-tone', 'empty');
   await page.reload();
-  await expect(page.getByTestId('v2-agent-diff')).toHaveAttribute('data-layout', 'split');
+  await expect(page.getByTestId('v2-side-diff')).toHaveAttribute('data-layout', 'split');
 
-  // Undo from here, on the reply that wrote the file.
-  await page.getByTestId('v2-agent-tabs').getByRole('tab', { name: 'Chat' }).click();
+  // Undo from here, on the reply that wrote the file (the chat is beside the panel: no tab to switch).
   await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}`);
   const reply = page.getByTestId('v2-agent-reply').last();
   await reply.hover();
@@ -306,9 +324,13 @@ test('a helper thread expands inline and opens its own chat', async ({ page }) =
   await expect(chat.getByTestId('v2-agent-helper-brief')).toBeVisible();
   await page.getByTestId('v2-agent-helper-back').click();
   await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}`);
-  // The Helpers tab lists it too.
+  // The Helpers tab lists it too: D180, in the side panel, under "1 finished" (folded).
   await page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ }).click();
-  await expect(page.getByTestId('v2-agent-helper-card')).toHaveCount(1);
+  const helpers = page.getByTestId('v2-side-helpers');
+  await expect(helpers.getByTestId('v2-side-helpers-finished-toggle')).toHaveText(/1 finished/);
+  await expect(helpers.getByTestId('v2-side-helper-row')).toHaveCount(0);
+  await helpers.getByTestId('v2-side-helpers-finished-toggle').click();
+  await expect(helpers.getByTestId('v2-side-helper-row')).toHaveCount(1);
 });
 
 test('the peek sheet: the chat with its composer, the tabs, Open full view', async ({ page }) => {
@@ -325,7 +347,9 @@ test('the peek sheet: the chat with its composer, the tabs, Open full view', asy
   await expect(sheet.getByTestId('v2-agent-changes')).toBeVisible();
   await sheet.getByTestId('v2-agent-peek-full').click();
   await expect(sheet).toHaveCount(0);
-  await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}/changes`);
+  // D180: the full view shows Changes in its side panel, next to the chat (the address is the agent's own).
+  await expect(page.getByTestId('v2-agent-side')).toHaveAttribute('data-side-tab', 'changes');
+  await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}`);
 });
 
 test('a deep link to a message scrolls to it and highlights it', async ({ page }) => {
@@ -383,26 +407,26 @@ test('lane X · the side panel: the agents overview with a stopped run\'s Resume
   await openWithHub(page, `${world.baseUrl}/agents/${id}`);
   const side = page.getByTestId('v2-agent-side');
 
-  // The overview: the main agent, the run's row and its two agents under it.
-  const group = side.getByTestId('v2-agent-group-overview');
-  await expect(group.locator('summary')).toContainText('Agents overview');
-  await group.locator('summary').click();
-  const runRow = group.getByTestId('v2-agent-overview-workflow');
+  // D180: the helpers are the panel's Helpers tab: Working holds the run's row and its two helpers under it.
+  await side.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: /Helpers/ }).click();
+  const helpers = side.getByTestId('v2-side-helpers');
+  const runRow = helpers.getByTestId('v2-side-helper-run');
   await expect(runRow).toHaveCount(1, { timeout: 15_000 });
-  await expect(group.locator('[data-testid="v2-agent-overview-row"][data-depth="1"]')).toHaveCount(2);
-  await expect(group.locator('[data-testid="v2-agent-overview-row"][data-depth="0"]')).toHaveCount(1);
+  await expect(runRow.locator('[data-testid="v2-side-helper-row"][data-indent="true"]')).toHaveCount(2);
 
-  // Paused mid-run, the run stops and offers Resume run, which asks the agent.
+  // Paused mid-run, the run stops and is in Needs you with Resume run, which asks the agent.
   const paused = await page.evaluate(async (sessionId) => (await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/pause`, { method: 'POST' })).status, id);
   expect(paused).toBe(200);
-  await expect(runRow).toContainText('stopped · 0/2 done', { timeout: 15_000 });
+  const group = helpers.getByTestId('v2-side-helpers-needs');
+  await expect(group.getByTestId('v2-side-helper-stopped-run')).toContainText('stopped · 0/2 done', { timeout: 15_000 });
   const resume = group.getByTestId('v2-agent-resume-run');
   await expect(resume).toBeEnabled();
   await resume.click();
   await expect(group.getByTestId('v2-agent-resume-note')).toHaveText('Asked the agent to resume it.');
   await expect(resume).toBeDisabled();
 
-  // D99: the project link (its plan agent) opens the project.
+  // D99: the project link (its plan agent) opens the project: in Details (ⓘ).
+  await side.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: 'Details' }).click();
   const project = side.getByTestId('v2-agent-project-link');
   await expect(project).toContainText('Project · Acme checkout');
   await expect(project).toHaveAttribute('data-role', 'source');

@@ -138,7 +138,7 @@ export interface Overview {
 }
 
 /**
- * SPIKE: the overview's data apart from where it is drawn (the Details group, the side
+ * D180: the overview's data apart from where it is drawn (the Details group, the side
  * panel's Helpers tab). `everyHelper`: the Helpers tab's rows, where a helper keeps its
  * row after it finished and while it works in the background (`helpers-view.ts`).
  */
@@ -322,6 +322,45 @@ export function HelperLine({ data, item, href, look, indent = false }: { readonl
       <span className="v2-sp-hstate" title={text}>
         {text.replace(/^[●✓✕⏸]\s*/u, '')}
       </span>
+    </div>
+  );
+}
+
+/** D180 · a stopped Workflow run in the Helpers tab's Needs you: its name, status and **Resume run** (the overview's rule). */
+export function StoppedRunLine({ data, item }: { readonly data: AgentData; readonly item: Extract<OverviewItem, { kind: 'workflow' }> }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const session = data.session;
+  const blocked = session ? resumeBlocked(session) : null;
+  const resume = (): void => {
+    if (!item.resume) return;
+    setState('sending');
+    api.sendMessage(data.sessionId, item.resume).then(
+      () => setState('sent'),
+      () => setState('failed'),
+    );
+  };
+  const note = blocked ?? (state === 'sent' ? AGENT_WORDS.resumeRunSent : state === 'failed' ? AGENT_WORDS.resumeRunFailed : null);
+  return (
+    <div data-testid="v2-side-helper-stopped-run" data-run-id={item.runId}>
+      <div className="v2-sp-hrow v2-sp-hrun" data-look="waiting">
+        <Icon name="routine" size="s" />
+        <b className="v2-grow" title={item.name}>
+          {item.name}
+        </b>
+        <span className="v2-sp-hstate" title={item.statusText}>
+          {item.statusText.replace(/^[●✓✕⏸]\s*/u, '')}
+        </span>
+      </div>
+      <div className="v2-sp-hrow" data-indent="true">
+        <Button size="sm" icon="play" data-testid="v2-agent-resume-run" disabled={blocked !== null || state === 'sending' || state === 'sent'} title={blocked ?? AGENT_WORDS.resumeRunHint} onClick={resume}>
+          {AGENT_WORDS.resumeRun}
+        </Button>
+        {note ? (
+          <span className="v2-muted v2-ag-small" data-testid="v2-agent-resume-note" role="status">
+            {note}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

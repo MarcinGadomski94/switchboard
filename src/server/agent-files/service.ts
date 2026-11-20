@@ -1,6 +1,5 @@
 /**
- * SPIKE · side panel Files (contract and rules: `src/core/agent-files.ts`).
- * Throwaway: no decision, no docs entry yet.
+ * D180 · side panel Files (contract and rules: `src/core/agent-files.ts`).
  *
  * Reads files for the loopback UI only. Which files: those inside one of the
  * agent's roots (its folder, its separate copies, the repos it works in), and

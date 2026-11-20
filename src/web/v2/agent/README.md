@@ -24,6 +24,11 @@
 | `chat-model.ts`, `composer-model.ts`, `header-model.ts`, `reply-menu.ts`, `view-settings.ts` (Model and Effort: `../shared/model-effort.ts`) | Pure, unit-tested (`tests/web/v2-agent.test.ts`) |
 | `results-bits.ts`, `move-model.ts`, `side-model.ts`, `timeline-model.ts` | Lane X, pure, unit-tested (`tests/web/v2-x-agent.test.ts`) |
 | `agent.css` | Styles, all under `.sb2`, classes `v2-ag-*` |
+| `PanelSplit.tsx`, `panel-layout.ts`, `side-settings.ts`, `panel-routes.ts`, `side-panel.css` | D180: the side panel's frame: the 760 px rule, the list button and its popover, ⟷, the Esc order, the tab and width remembered, the addresses that only open the panel |
+| `ChangesPanel.tsx`, `changes-view.ts`, `changes-tree.ts`, `diff-highlight.ts`, `diff-comments.ts`, `useHeadDiff.ts` | D180: Changes in the panel (the picker, the tree, the diff in syntax colours, line comments), the shared `head` diff |
+| `FilesPanel.tsx`, `files-view.ts`, `files-tab-state.ts`, `useAgentFiles.ts`, `page-view.ts` | D180: Files as one view (Touched by this agent, the tree's signals), the reader (history, breadcrumb, info line, changed lines, the HTML page view) |
+| `HelpersPanel.tsx`, `helpers-view.ts` | D180: Helpers in sections (Needs you, Working, N finished, Running apps); the red dot (`helperFailed`) |
+| `turn-changes.ts`, `useTurnChanges.ts` | D180: what each turn changed: the "N files changed" chip under a turn's last reply |
 
 Everything reuses the classic session view's models, hooks and API clients (chat items, outgoing / D114, Stop / D50, drafts / D88, attachments / D57, checkpoints / D80, diff / D90, timeline, fresh session / D83, CI / D109, processes / D127); only the markup is new. E2E: `tests/e2e/v2-agent.spec.ts`.
 

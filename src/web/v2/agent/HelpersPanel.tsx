@@ -2,7 +2,7 @@
  * D180 · the side panel's Helpers: the agent's helpers beside the chat, in sections of one-line
  * rows (`helpers-view.ts`):
  *
- * - **Needs you:** failed and waiting helpers, the status word in red or amber;
+ * - **Needs you:** failed and waiting helpers, the status word in red or amber; a stopped run that can resume, with Resume run;
  * - **Working:** each running Workflow run (name · phase · "4 of 6") with its working helpers
  *   under it, each with what it does now and for how long; then the working helpers on their own;
  * - **N finished:** one folded row; unfolded, the finished helpers and runs, muted;
@@ -16,7 +16,7 @@ import { Icon, Skeleton } from '../components/index.ts';
 import { AGENT_WORDS } from '../glossary.ts';
 import { HelperChat } from './HelperChat.tsx';
 import { helperSections } from './helpers-view.ts';
-import { HelperLine, useOverview } from './SideExtras.tsx';
+import { HelperLine, StoppedRunLine, useOverview } from './SideExtras.tsx';
 import { BackgroundGroup } from './SidePanel.tsx';
 import type { AgentData } from './useAgent.ts';
 
@@ -54,9 +54,12 @@ export function HelpersPanel({ data, helperHref, helper }: { readonly data: Agen
           <p className="v2-sr" data-testid="v2-side-helpers-sum">
             {overview.summary}
           </p>
-          {sections.needsYou.length > 0 ? (
+          {sections.needsYou.length > 0 || sections.stoppedRuns.length > 0 ? (
             <section className="v2-sp-hsec" aria-label={AGENT_WORDS.needsYouSection} data-testid="v2-side-helpers-needs">
               <h4 className="v2-ag-files-h">{AGENT_WORDS.needsYouSection}</h4>
+              {sections.stoppedRuns.map((item) => (
+                <StoppedRunLine key={`run:`} data={data} item={item} />
+              ))}
               {sections.needsYou.map((item) => (
                 <HelperLine key={item.id} data={data} item={item} href={href(item)} look={item.sessionStatus === 'fail' ? 'failed' : 'waiting'} />
               ))}
@@ -87,7 +90,7 @@ export function HelpersPanel({ data, helperHref, helper }: { readonly data: Agen
               )}
             </section>
           ) : null}
-          {sections.finishedCount > 0 ? (
+          {sections.finished.length > 0 ? (
             <section className="v2-sp-hsec" data-testid="v2-side-helpers-finished">
               <button type="button" className="v2-sp-hfold" aria-expanded={finishedOpen} onClick={() => setFinishedOpen((open) => !open)} data-testid="v2-side-helpers-finished-toggle">
                 <Icon name={finishedOpen ? 'chev-down' : 'chev'} size="s" />
@@ -107,7 +110,7 @@ export function HelpersPanel({ data, helperHref, helper }: { readonly data: Agen
                 : null}
             </section>
           ) : null}
-          {sections.needsYou.length === 0 && sections.working.length === 0 && sections.finishedCount === 0 ? <p className="v2-muted v2-ag-small v2-ag-files-pad">{AGENT_WORDS.noHelpersText}</p> : null}
+          {sections.needsYou.length === 0 && sections.stoppedRuns.length === 0 && sections.working.length === 0 && sections.finished.length === 0 ? <p className="v2-muted v2-ag-small v2-ag-files-pad">{AGENT_WORDS.noHelpersText}</p> : null}
           {data.conversation ? null : (
             <section className="v2-ag-helpers2-apps v2-sp-hsec" aria-label={AGENT_WORDS.runningApps}>
               <h4 className="v2-ag-files-h">{AGENT_WORDS.runningApps}</h4>

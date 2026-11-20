@@ -504,7 +504,7 @@ function Reply({ row, data, variant, fullText, onSave }: { readonly row: Extract
     return item.separated ? [{ separator: true as const, id: `sep-${item.id}` }, entry] : [entry];
   });
   const label = data.conversation ? AGENT_WORDS.conversation : AGENT_WORDS.agent;
-  // SPIKE (side panel): under the last reply of a turn, what the turn changed; it opens Changes on that turn.
+  // D180 (side panel): under the last reply of a turn, what the turn changed; it opens Changes on that turn.
   const turnChanges = useContext(TurnChangesContext);
   const changed = turnChanges && row.turnEventId !== null && turnChanges.lastReplies.has(row.id) ? (turnChanges.byEvent.get(row.turnEventId) ?? null) : null;
   return (

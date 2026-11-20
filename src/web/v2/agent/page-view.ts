@@ -1,5 +1,5 @@
 /**
- * SPIKE · side panel Files: the words for an HTML file shown as a page
+ * D180 · side panel Files: the words for an HTML file shown as a page
  * (`src/core/agent-files.ts` → "A page").
  */
 import { AGENT_PAGE_BYTES, type AgentPageInfo, type AgentPageLeftWhy } from '../../../core/agent-files.ts';

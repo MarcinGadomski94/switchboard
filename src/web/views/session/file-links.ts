@@ -1,5 +1,5 @@
 /**
- * SPIKE · side panel Files: paths in a reply become links. The agent view provides
+ * D180 · side panel Files: paths in a reply become links. The agent view provides
  * the files its conversation touched; {@link ChatMarkdown} reads them from the
  * context and turns matching paths into buttons. Without a provider (the classic
  * theme, every other place) nothing changes.

@@ -1,5 +1,5 @@
 /**
- * SPIKE · side panel Files: an HTML file shown as a page (contract and limits:
+ * D180 · side panel Files: an HTML file shown as a page (contract and limits:
  * `src/core/agent-files.ts` → "A page"). The pure parts: what a page points at, which
  * of that is a file next to it, the rules the page runs under, and the frame document
  * it is served in.

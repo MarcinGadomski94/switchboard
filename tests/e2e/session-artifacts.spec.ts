@@ -120,12 +120,30 @@ test('an HTML artifact runs sandboxed: its script runs, the app\'s cookie and AP
   await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${html.artifact.id}`);
   const frame = page.getByTestId('artifact-frame');
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
-  const inner = page.frameLocator('[data-testid="artifact-frame"]');
+  // D180: the result runs in a frame of its frame document (from a blob:), sandboxed again.
+  const inner = page.frameLocator('[data-testid="artifact-frame"]').frameLocator('iframe');
   await expect(inner.locator('#out')).toHaveText(/^ran · blocked: SecurityError · null$/);
   await expect(inner.locator('body')).toHaveAttribute('data-api', 'refused');
-  // Served under the sandbox CSP, also when opened on its own.
+  // Served under the sandbox CSP, also when opened on its own; its frame may hold only a blob: (it cannot leave).
   const raw = await page.request.get(`${world.baseUrl}/api/sessions/${id}/artifacts/${html.artifact.id}/versions/1/raw`);
   expect(raw.headers()['content-security-policy']).toMatch(/^sandbox allow-scripts;/);
+  expect(raw.headers()['content-security-policy']).toContain('frame-src blob:');
+});
+
+test('D180: an HTML artifact cannot send its frame to another address; the view says it left and shows it again', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'mockup-leave', 'Hi.');
+  await waitDone(page, id);
+  const html = await agentSaves(id, {
+    title: 'Leaver',
+    kind: 'html',
+    content: `<!doctype html><body><p id="out">here</p><script>setTimeout(() => { location.href = 'https://example.com/'; }, 50);</script></body>`,
+  });
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${html.artifact.id}`);
+  const outer = page.frameLocator('[data-testid="artifact-frame"]');
+  // The navigation is refused by the frame document's frame-src: it says the page left this view, nothing of example.com shows.
+  await expect(outer.locator('#left')).toContainText('The page left this view', { timeout: 10_000 });
+  await expect(outer.getByRole('button', { name: 'Show the page again' })).toBeVisible();
 });
 
 test('a Mermaid diagram is drawn inside its sandboxed frame; one Mermaid cannot parse shows its source', async ({ page }) => {

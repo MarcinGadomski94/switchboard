@@ -1,5 +1,5 @@
 /**
- * SPIKE · the side panel's Changes as a tree: only the files the chosen view changed,
+ * D180 · the side panel's Changes as a tree: only the files the chosen view changed,
  * folded into their folders as the Files tab's tree is, each with what changed in it.
  * Pure.
  */

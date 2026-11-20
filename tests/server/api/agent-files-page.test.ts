@@ -12,7 +12,7 @@ import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
- * SPIKE · side panel Files: an HTML file served as a page (`GET …/files/page`) and
+ * D180 · side panel Files: an HTML file served as a page (`GET …/files/page`) and
  * what it is shown with (`GET …/files/page/info`): the headers that close it off,
  * scripts only when asked for, and the refusals.
  */

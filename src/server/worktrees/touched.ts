@@ -64,7 +64,7 @@ export interface SessionTouchedFilesOptions {
   readonly git?: TouchedGit;
   readonly env?: NodeJS.ProcessEnv;
   readonly onError?: (error: unknown) => void;
-  /** SPIKE (`endTree`): epoch ms, for when an end snapshot was taken (tests pass a fake clock). */
+  /** D180 (`endTree`): epoch ms, for when an end snapshot was taken (tests pass a fake clock). */
   readonly now?: () => number;
 }
 
@@ -103,7 +103,7 @@ export class SessionTouchedFiles {
   readonly #onError: (error: unknown) => void;
   /** `<session>\0<turn>\0<repo top>` → the tree when that turn ended. */
   readonly #ends = new Map<string, string>();
-  /** SPIKE (`endTree`): the same keys → when that snapshot was taken (epoch ms). */
+  /** D180 (`endTree`): the same keys → when that snapshot was taken (epoch ms). */
   readonly #endTimes = new Map<string, number>();
   readonly #now: () => number;
   /** The same keys while their snapshot is being taken (a Diff read right at the turn's end waits for it). */
@@ -185,7 +185,7 @@ export class SessionTouchedFiles {
   }
 
   /**
-   * SPIKE (side panel, `src/core/turn-changes.ts`): the end snapshot kept for turn `turn`
+   * D180 (side panel, `src/core/turn-changes.ts`): the end snapshot kept for turn `turn`
    * of the session in the working tree `repoPath` (its tree and when it was taken);
    * `null` when none is kept (the turn ended before a restart, or has not ended yet).
    *

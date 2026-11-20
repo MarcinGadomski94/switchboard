@@ -28,7 +28,7 @@ function turnOf(value: unknown): number | null {
 }
 
 /**
- * SPIKE · side panel: what each turn changed (`src/core/turn-changes.ts` is the
+ * D180 · side panel: what each turn changed (`src/core/turn-changes.ts` is the
  * contract). The loopback UI only: the device and the peer listeners serve
  * allow-lists these routes are not on (`src/server/devices/local-only.ts`,
  * `src/server/peers/service.ts`), and an agent of a paired computer answers 409

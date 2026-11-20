@@ -65,44 +65,30 @@ async function post(page: Page, id: string, text: string): Promise<void> {
   expect(status).toBe(202);
 }
 
-test('desktop: recent helpers show, then fold live after 10 minutes; expand 50 at a time, Show more, collapse; the counts and the summary lane', async ({ page }) => {
+test('desktop: the side panel’s Helpers: the working one under Working, the finished ones folded under one row; the counts and the summary lane', async ({ page }) => {
   await page.clock.install({ time: Date.now() });
+  // D180: on a desktop the Helpers address opens the side panel's Helpers tab, beside the chat.
   await openWithHub(page, `${world.baseUrl}/agents/${sessionId}/helpers`);
-  const tab = page.getByTestId('v2-agent-helpers-tab');
-  // Every helper ended under 10 minutes ago: all 57 show, nothing folded.
-  await expect(tab.getByTestId('v2-agent-helper-card')).toHaveCount(57);
-  await expect(tab.getByTestId('v2-agent-helpers-earlier')).toHaveCount(0);
-  // The working one first.
-  await expect(tab.getByTestId('v2-agent-helper-card').first()).toContainText('fake-claude: delegated audit');
-  // The tab's count: the active helpers only.
-  await expect(page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ })).toHaveText(/Helpers\s*1/);
-
-  // 11 minutes later (the clock ticks at most once a minute): only the working one, the rest folded.
-  await page.clock.fastForward(MINUTES_11);
-  await expect(tab.getByTestId('v2-agent-helper-card')).toHaveCount(1);
-  const toggle = tab.getByTestId('v2-agent-helpers-earlier');
-  await expect(toggle).toHaveText('Show 56 helpers finished earlier');
+  await expect(page).toHaveURL(`${world.baseUrl}/agents/${sessionId}`);
+  const panel = page.getByTestId('v2-side-helpers');
+  // The working one under Working, with what it does now; the 56 finished ones folded under one row.
+  const working = panel.getByTestId('v2-side-helpers-working');
+  await expect(working.getByTestId('v2-side-helper-row')).toHaveCount(1);
+  await expect(working.getByTestId('v2-side-helper-row').first()).toContainText('fake-claude: delegated audit');
+  const toggle = panel.getByTestId('v2-side-helpers-finished-toggle');
+  await expect(toggle).toHaveText(/56 finished/);
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel.getByTestId('v2-side-helpers-finished').getByTestId('v2-side-helper-row')).toHaveCount(0);
   await toggle.click();
-  await expect(tab.getByTestId('v2-agent-helper-card')).toHaveCount(51);
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  const more = tab.getByTestId('v2-agent-helpers-more');
-  await expect(more).toHaveText('Show 6 more (6 left)');
-  await more.click();
-  await expect(tab.getByTestId('v2-agent-helper-card')).toHaveCount(57);
-  await expect(more).toHaveCount(0);
+  await expect(panel.getByTestId('v2-side-helpers-finished').getByTestId('v2-side-helper-row')).toHaveCount(56);
   await toggle.click();
-  await expect(tab.getByTestId('v2-agent-helper-card')).toHaveCount(1);
-
-  // The side panel's Helpers: the same fold, its summary counts the active ones.
-  const group = page.getByTestId('v2-agent-side').getByTestId('v2-agent-group-helpers');
-  await expect(group.locator('summary')).toContainText('1 active');
-  await expect(group.getByTestId('v2-agent-side-helper')).toHaveCount(1);
-  await expect(group.getByTestId('v2-agent-helpers-earlier')).toHaveText('Show 56 helpers finished earlier');
-  await group.getByTestId('v2-agent-helpers-earlier').click();
-  await expect(group.getByTestId('v2-agent-side-helper')).toHaveCount(51);
-  await group.getByTestId('v2-agent-helpers-earlier').click();
-  await expect(group.getByTestId('v2-agent-side-helper')).toHaveCount(1);
+  await expect(panel.getByTestId('v2-side-helpers-finished').getByTestId('v2-side-helper-row')).toHaveCount(0);
+  // The panel's tab and the header's tab count the active helpers only; 11 minutes later the same.
+  await expect(page.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: /Helpers/ })).toHaveText(/Helpers\s*1/);
+  await expect(page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ })).toHaveText(/Helpers\s*1/);
+  await page.clock.fastForward(MINUTES_11);
+  await expect(working.getByTestId('v2-side-helper-row')).toHaveCount(1);
+  await expect(toggle).toHaveText(/56 finished/);
 
   // The Timeline: the two old subagents' lanes under one summary lane, expandable.
   await page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Timeline/ }).click();

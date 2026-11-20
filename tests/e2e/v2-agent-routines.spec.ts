@@ -123,6 +123,10 @@ test('desktop: the indicator, its popover, Pause / Resume, Run now, the chat row
   // The side panel's Routines group: the same set.
   const side = page.getByTestId('v2-agent-side');
   await expect(side).toBeVisible();
+  // D180: Details is the side panel's ⓘ tab, its groups closed.
+  await side.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: 'Details' }).click();
+  const routines = side.getByTestId('v2-agent-group-routines');
+  if ((await routines.getAttribute('open')) === null) await routines.locator('summary').click();
   const group = side.getByTestId('v2-agent-side-routines');
   await expect(group.getByTestId('v2-agent-routine')).toHaveCount(2);
   await expect(group.locator('[data-source="cli"]').getByTestId('v2-agent-routine-run')).toBeDisabled();

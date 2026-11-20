@@ -59,7 +59,7 @@ function rangeOf(header: unknown, size: number): { readonly start: number; reado
 }
 
 /**
- * SPIKE · side panel Files (`src/core/agent-files.ts` is the contract). The loopback
+ * D180 · side panel Files (`src/core/agent-files.ts` is the contract). The loopback
  * UI only: a paired phone is refused by name (`DEVICE_REFUSED`,
  * `src/server/devices/local-only.ts`) and the peer listener's allow-list does not have
  * these routes (`src/server/peers/service.ts`). An agent of a paired computer: the

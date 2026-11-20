@@ -1,5 +1,5 @@
 /**
- * SPIKE · the addresses that only open something in the side panel on a desktop or a
+ * D180 · the addresses that only open something in the side panel on a desktop or a
  * tablet-wide window (`…/changes`, `…/helpers`): the chat stays where it is, so the
  * address goes back to the agent's own. Pure.
  */

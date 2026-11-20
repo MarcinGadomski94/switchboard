@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { dataUrl, pageFrame, pageMetaTag, pagePolicy, pageRefs, refTarget, scanPage, withEdits } from '../../../src/server/agent-files/page.ts';
 
 /**
- * SPIKE · side panel Files: an HTML file shown as a page. The pure parts: what a
+ * D180 · side panel Files: an HTML file shown as a page. The pure parts: what a
  * page points at (read as a browser reads the page), which of that is a file next to
  * it, the rules the page runs under, and the frame it is served in.
  */

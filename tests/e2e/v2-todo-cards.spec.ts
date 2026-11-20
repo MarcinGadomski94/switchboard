@@ -170,6 +170,8 @@ test('Edit (title, priority, estimate, plan), mark done and reopen, delete with 
 
 test('the side panel shows the same cards, one under another', async ({ page }) => {
   await openWithHub(page, `${world.baseUrl}/agents/${sessionId}`);
+  // D180: Details is the side panel's ⓘ tab.
+  await page.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: 'Details' }).click();
   const group = page.getByTestId('v2-agent-group-tasks');
   await group.locator('summary').click();
   const cards = group.getByTestId('v2-todo-card');

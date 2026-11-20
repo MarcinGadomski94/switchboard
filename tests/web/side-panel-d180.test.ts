@@ -19,7 +19,7 @@ import {
   touchedText,
   unfoldSetFor,
 } from '../../src/web/v2/agent/files-view.ts';
-import { helperSections } from '../../src/web/v2/agent/helpers-view.ts';
+import { helperFailed, helperSections } from '../../src/web/v2/agent/helpers-view.ts';
 import { PANEL_NARROW, PANEL_WIDE, WIDE_MIN, escTarget, isWide, toggledWidth } from '../../src/web/v2/agent/panel-layout.ts';
 import type { OverviewItem } from '../../src/web/v2/agent/side-model.ts';
 
@@ -203,6 +203,13 @@ describe('syntax colours in the diff (diff-highlight.ts)', () => {
   });
 });
 
+describe("the Helpers tab's red dot (helpers-view.ts → helperFailed)", () => {
+  it('shows only when a helper failed, never for the main agent or a helper that waits', () => {
+    expect(helperFailed([{ kind: 'subagent', status: 'fail' }])).toBe(true);
+    expect(helperFailed([{ kind: 'main', status: 'fail' }, { kind: 'subagent', status: 'need' }, { kind: 'subagent', status: 'done' }])).toBe(false);
+  });
+});
+
 describe("the Helpers tab's sections (helpers-view.ts → helperSections)", () => {
   const agent = (id: string, sessionStatus: 'run' | 'need' | 'fail' | 'done', depth: 0 | 1 = 0, main = false): OverviewItem => ({
     kind: 'agent',
@@ -229,5 +236,13 @@ describe("the Helpers tab's sections (helpers-view.ts → helperSections)", () =
     ]);
     expect(sections.finishedCount).toBe(2);
     expect(sections.finished.map((item) => (item.kind === 'workflow' ? item.runId : item.id))).toEqual(['r2', 'h4', 's3']);
+    expect(sections.stoppedRuns).toEqual([]);
+  });
+
+  it('puts a stopped run that can resume in Needs you (Resume run), not among the finished', () => {
+    const stopped: OverviewItem = { ...(run('r3', false) as Extract<OverviewItem, { kind: 'workflow' }>), status: 'stopped', resume: 'Resume the run.' };
+    const sections = helperSections([stopped, agent('h5', 'done', 1)]);
+    expect(sections.stoppedRuns.map((item) => item.runId)).toEqual(['r3']);
+    expect([sections.finishedCount, sections.working.length]).toEqual([0, 0]);
   });
 });

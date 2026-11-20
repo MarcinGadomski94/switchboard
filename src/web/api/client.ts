@@ -217,7 +217,7 @@ function query(params: Readonly<Record<string, string | undefined>>): string {
   return text ? `?${text}` : '';
 }
 
-/** SPIKE: how an HTML file is asked for as a page (`src/core/agent-files.ts` → "A page"). */
+/** D180: how an HTML file is asked for as a page (`src/core/agent-files.ts` → "A page"). */
 export interface AgentPageAsk {
   /** The file looks like it holds secrets and the developer asked for it anyway. */
   readonly confirm: boolean;
@@ -453,7 +453,7 @@ export const api = {
   sessionDiffTargets: (id: string) => request<DiffTargets>('GET', `/api/sessions/${enc(id)}/diff/targets`),
   /** D152: which repos the session works in (its history), with their paths. */
   sessionWorksIn: (id: string) => request<SessionWorksIn>('GET', `/api/sessions/${enc(id)}/works-in`),
-  // SPIKE: the side panel's Files (`src/core/agent-files.ts`).
+  // D180: the side panel's Files (`src/core/agent-files.ts`).
   agentFiles: (id: string) => request<AgentFileList>('GET', `/api/sessions/${enc(id)}/files`),
   agentFileRoots: (id: string) => request<AgentFileRoots>('GET', `/api/sessions/${enc(id)}/files/roots`),
   agentDir: (id: string, path?: string) => request<AgentDirListing>('GET', `/api/sessions/${enc(id)}/files/dir${query({ path })}`),
@@ -467,7 +467,7 @@ export const api = {
   /** The address of an HTML file as a closed-off page, for a sandboxed frame's `src=`. */
   agentPageUrl: (id: string, path: string, how: AgentPageAsk): string => `/api/sessions/${enc(id)}/files/page${pageQuery(path, how)}`,
   openAgentFile: (id: string, path: string, how: AgentFileOpenHow) => request<null>('POST', `/api/sessions/${enc(id)}/files/open`, { path, how }),
-  // SPIKE: what each turn changed (`src/core/turn-changes.ts`).
+  // D180: what each turn changed (`src/core/turn-changes.ts`).
   turnChanges: (id: string) => request<TurnChanges>('GET', `/api/sessions/${enc(id)}/turn-changes`),
   /** From before turn `from` until after turn `to`; `to` = `null`: until now. */
   turnChangesDiff: (id: string, from: number, to: number | null) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/turn-changes/diff${query({ from: String(from), to: to === null ? undefined : String(to) })}`),

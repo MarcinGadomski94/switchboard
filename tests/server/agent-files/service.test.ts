@@ -8,7 +8,7 @@ import { fakeOpenerCommand } from '../../../tools/fake-opener/command.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 
 /**
- * SPIKE · side panel Files (`src/core/agent-files.ts`): which files may be read, what
+ * D180 · side panel Files (`src/core/agent-files.ts`): which files may be read, what
  * browsing lists, the secrets gate, text in pages, and handing a file to the OS
  * (through tools/fake-opener: nothing is ever opened on the machine running the tests).
  */

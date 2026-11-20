@@ -17,7 +17,7 @@ import { SIDE_DEFAULT_WIDTH, SIDE_SETTINGS_KEY, loadSide, shownSideTab } from '.
 import { lastRepliesOf, lastTurnChange } from '../../src/web/v2/agent/turn-changes.ts';
 
 /**
- * SPIKE · side panel: the pure parts of "what this turn changed", "since your
+ * D180 · side panel: the pure parts of "what this turn changed", "since your
  * review" and the comments on diff lines.
  */
 

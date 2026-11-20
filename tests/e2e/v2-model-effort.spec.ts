@@ -101,8 +101,11 @@ test('+ New: the CLI’s models and effort levels; the start spawns with them; t
   await page.keyboard.press('Escape');
 
   // How it works: Model and Effort selects on the agent's own list.
+  // D180: Details is the side panel's ⓘ tab; How it works starts closed, its summary names the engine, the model and the effort.
+  await page.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: 'Details' }).click();
   const how = page.getByTestId('v2-agent-side').getByTestId('v2-agent-group-how');
   await expect(how.locator('summary')).toContainText('Opus 5.5 · xhigh');
+  if ((await how.getAttribute('open')) === null) await how.locator('summary').click();
   const agentModel = how.getByTestId('v2-agent-model');
   await expect(agentModel).toHaveValue('opus');
   await expect(agentModel.locator('option')).toHaveText(CLAUDE_MODELS);

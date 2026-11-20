@@ -45,7 +45,7 @@ export function listId(panel: string): string {
 
 /** The list button at the far right of a file's or diff's header. */
 export function ListButton({ panel, expanded, onToggle, label }: { readonly panel: string; readonly expanded: boolean; readonly onToggle: () => void; readonly label: string }) {
-  return <IconButton icon="sidebar" label={label} onClick={onToggle} aria-expanded={expanded} aria-controls={listId(panel)} data-list-button="true" data-testid={`v2-side-${panel}-list-button`} />;
+  return <IconButton icon="sidebar" label={label} onClick={onToggle} aria-expanded={expanded} aria-controls={listId(panel)} data-list-button="true" data-tour="v2-side-list" data-testid={`v2-side-${panel}-list-button`} />;
 }
 
 export interface PanelSplitProps {

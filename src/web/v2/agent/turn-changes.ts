@@ -1,5 +1,5 @@
 /**
- * SPIKE · "N files changed" under the last reply of a turn. The agent view provides
+ * D180 · "N files changed" under the last reply of a turn. The agent view provides
  * what each turn changed (`src/core/turn-changes.ts`); the chat's reply rows read it
  * from the context. Without a provider (the peek, a helper's chat, the classic
  * theme) nothing shows.

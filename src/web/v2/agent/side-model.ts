@@ -59,7 +59,7 @@ export type OverviewItem =
 
 /**
  * The derived overview (D21), Workflow runs grouped (D51); finished helpers leave it (D37).
- * SPIKE · `everyHelper` (the side panel's Helpers tab, `helpers-view.ts`): they stay.
+ * D180 · `everyHelper` (the side panel's Helpers tab, `helpers-view.ts`): they stay.
  */
 export function overviewItems(session: Pick<SessionDetail, 'agents' | 'status' | 'task' | 'workflows'>, options: { readonly everyHelper?: boolean } = {}): OverviewItem[] {
   const shown = options.everyHelper ? session.agents : session.agents.filter((agent) => !isFinishedSubagent(agent));

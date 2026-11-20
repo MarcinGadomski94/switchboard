@@ -1,5 +1,5 @@
 /**
- * SPIKE · side panel (Details | Changes | Files), 2026-11-17. A throwaway contract
+ * D180 · side panel (Details | Changes | Files), 2026-11-17. The contract
  * between `src/server/api/agent-files.ts` and the v2 agent view's side panel. It is
  * not a decision yet and is not in `docs/handoff/contracts/local-api.md`.
  *

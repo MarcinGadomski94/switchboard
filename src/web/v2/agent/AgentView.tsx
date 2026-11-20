@@ -14,6 +14,7 @@ import { useShortcut } from '../shell/shortcuts.ts';
 import { type ChangesFocus, ChangesPanel } from './ChangesPanel.tsx';
 import { isWide, toggledWidth } from './panel-layout.ts';
 import { useHeadDiff } from './useHeadDiff.ts';
+import { helperFailed } from './helpers-view.ts';
 import type { ChangesView } from './changes-view.ts';
 import { ChatPane } from './ChatPane.tsx';
 import { CliTab } from './CliTab.tsx';
@@ -52,7 +53,7 @@ function useViewSettings(): readonly [ChatViewSettings, (next: ChatViewSettings)
   return [view, update];
 }
 
-/** SPIKE: the side panel's tab and width, remembered per browser. */
+/** D180: the side panel's tab and width, remembered per browser. */
 function useSideSettings(): readonly [SideSettings, (next: SideSettings) => void] {
   const [side, setSide] = useState<SideSettings>(() => loadSide(browserStorage()));
   const update = useCallback((next: SideSettings) => {
@@ -69,7 +70,7 @@ function useSideSettings(): readonly [SideSettings, (next: SideSettings) => void
  * side panel (Details: ⌘. hides it on a desktop, remembered; a drawer on a tablet;
  * a bottom sheet on a phone).
  *
- * SPIKE (side panel): on a desktop the panel has tabs for the work (Changes | Files |
+ * D180 (side panel): on a desktop the panel has tabs for the work (Changes | Files |
  * Helpers, the last only for an agent that has helpers), its left edge is a handle
  * that resizes it, and Details is no tab any more: it opens from the ⓘ at the end of
  * the tab row. Changes, the helpers and a helper's own chat open in the panel next to
@@ -86,10 +87,10 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const helperId = route.helperId ?? null;
   const desktop = layout === 'desktop';
   const phone = layout === 'phone';
-  // SPIKE: the tabbed panel exists on a desktop (beside the chat) and on a tablet-wide window (as the drawer); a phone keeps Details only.
+  // D180: the tabbed panel exists on a desktop (beside the chat) and on a tablet-wide window (as the drawer); a phone keeps Details only.
   const tabbed = !phone;
   const base = `/agents/${encodeURIComponent(sessionId)}`;
-  // SPIKE: there the Changes route shows the chat with the panel on Changes, and a helper's chat opens in the panel too (a phone keeps it in the chat's place).
+  // D180: there the Changes route shows the chat with the panel on Changes, and a helper's chat opens in the panel too (a phone keeps it in the chat's place).
   const panelRoute = tabbed && helperId === null && route.tab === 'changes';
   const helperInPanel = tabbed && helperId !== null;
   const helperFull = helperId !== null && !tabbed;
@@ -126,7 +127,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     },
     [setSide, setView, desktop],
   );
-  // SPIKE: what Changes shows (one of the Diff's views, since the last review, or one turn).
+  // D180: what Changes shows (one of the Diff's views, since the last review, or one turn).
   const [changesView, setChangesView] = useState<ChangesView>({ kind: 'scope' });
   /** Changes was opened by its route ("Open changes" on the To review strip or card): the view is picked once the agent is loaded. */
   const [openedByRoute, setOpenedByRoute] = useState(false);
@@ -162,7 +163,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     setChangesView({ kind: 'scope' });
     setOpenedByRoute(false);
   }, [openedByRoute]);
-  // SPIKE: the helpers. An agent that has (or had) a helper or a run gets the panel's Helpers tab; the header's Helpers tab and every link to a helper's own chat open there, beside the main chat.
+  // D180: the helpers. An agent that has (or had) a helper or a run gets the panel's Helpers tab; the header's Helpers tab and every link to a helper's own chat open there, beside the main chat.
   const hasHelpers = (data.session?.agents ?? []).some((agent) => agent.kind !== 'main') || (data.session?.workflows ?? []).length > 0;
   // A helper's own chat keeps its address (`…/helpers/:helperId`): Back closes it, a reload keeps it, and its link opens in a new browser tab as any link does. The panel shows it under Helpers.
   const panelHelper: PanelHelper | null = helperInPanel && helperId !== null ? { id: helperId, eventId: route.eventId ?? null } : null;
@@ -186,7 +187,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     [openSide],
   );
 
-  // SPIKE: the file the Files tab shows, and the files the chat links to. A file belongs to the agent it was opened for: another agent starts with none, without a render in between that would ask for the old file as the new agent's.
+  // D180: the file the Files tab shows, and the files the chat links to. A file belongs to the agent it was opened for: another agent starts with none, without a render in between that would ask for the old file as the new agent's.
   const [opened, setOpened] = useState<{ readonly sessionId: string; readonly file: OpenFile } | null>(null);
   const openFile = opened !== null && opened.sessionId === sessionId ? opened.file : null;
   const setOpenFile = useCallback((file: OpenFile | null): void => setOpened(file === null ? null : { sessionId, file }), [sessionId]);
@@ -201,7 +202,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   );
   const links = useMemo<FileLinks | null>(() => (tabbed && files.known.size > 0 ? { known: files.known, open: openInPanel } : null), [tabbed, files.known, openInPanel]);
 
-  // SPIKE: the panel's width (the handle on its left edge).
+  // D180: the panel's width (the handle on its left edge).
   const sectionRef = useRef<HTMLElement | null>(null);
   const [viewWidth, setViewWidth] = useState(0);
   useEffect(() => {
@@ -252,7 +253,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const { rows, lastEventId, fullText } = useChatRows(data);
   const working = data.session !== null && turnBusy(data.session);
   const split = useMemo(() => splitDock(rows, working), [rows, working]);
-  // SPIKE: what each turn changed: a chip under the turn's last reply opens Changes on that turn.
+  // D180: what each turn changed: a chip under the turn's last reply opens Changes on that turn.
   const turnChanges = useTurnChanges(data, tabbed);
   // The same set object while the same replies end their turns: a new one would render every reply again on each chat update.
   const lastRepliesKept = useRef<ReadonlySet<number>>(new Set());
@@ -264,7 +265,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     return next;
   }, [split.chat]);
   const turnLinks = useMemo<TurnChangeLinks | null>(() => (tabbed && turnChanges.byEvent.size > 0 ? { byEvent: turnChanges.byEvent, lastReplies, open: openTurn } : null), [tabbed, turnChanges.byEvent, lastReplies, openTurn]);
-  // SPIKE: the comments on diff lines go into the message box (the chat's dock), which only exists on the Chat tab.
+  // D180: the comments on diff lines go into the message box (the chat's dock), which only exists on the Chat tab.
   const [toCompose, setToCompose] = useState<string | null>(null);
   useEffect(() => {
     if (toCompose === null || tab !== 'chat' || helperFull) return;
@@ -287,7 +288,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const counts = { changes, results: data.session?.artifacts.length ?? 0, helpers: activeHelperCount(withPendingHelpers(data.session?.agents ?? [], data.activity?.background), data.session?.workflows ?? []) };
   const helperHref = useCallback((agentId: string) => `${base}/helpers/${encodeURIComponent(agentId)}`, [base]);
   const onTab = (next: AgentTab): void => {
-    // SPIKE: Changes and the helpers are in the side panel, next to the chat: their tabs open them there, without a detour through their address.
+    // D180: Changes and the helpers are in the side panel, next to the chat: their tabs open them there, without a detour through their address.
     if (tabbed && (next === 'changes' || (next === 'helpers' && hasHelpers))) {
       openSide(next);
       if (next === 'changes') setOpenedByRoute(true);
@@ -329,7 +330,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     [openSide],
   );
   /** D180: a helper failed: a red dot on the Helpers tab. */
-  const helperFailed = (data.session?.agents ?? []).some((agent) => agent.kind !== 'main' && agent.status === 'fail');
+  const failedHelper = helperFailed(data.session?.agents ?? []);
   // The panel's tabs and what they show: beside the chat on a desktop, in the drawer on a tablet-wide window.
   const sideTabs = (
     <Tabs<SideTab>
@@ -353,7 +354,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
                 label: (
                   <>
                     {AGENT_WORDS.helpers}
-                    {helperFailed ? <span className="v2-side-dot" role="img" aria-label={AGENT_WORDS.helperFailed} data-testid="v2-side-helpers-failed" /> : null}
+                    {failedHelper ? <span className="v2-side-dot" role="img" aria-label={AGENT_WORDS.helperFailed} data-testid="v2-side-helpers-failed" /> : null}
                   </>
                 ),
                 ...(counts.helpers ? { count: counts.helpers } : {}),
@@ -470,7 +471,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
               data-tour="v2-side-width"
               data-testid="v2-agent-side-width"
             />
-            <IconButton icon="x" label={`${AGENT_WORDS.hideSidePanel} (⌘.)`} onClick={toggleSide} />
+            <IconButton icon="x" label={`${AGENT_WORDS.hideSidePanel} (⌘.)`} onClick={toggleSide} data-testid="v2-agent-side-hide" />
           </div>
           {sidePane}
         </aside>

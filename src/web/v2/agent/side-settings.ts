@@ -1,5 +1,5 @@
 /**
- * SPIKE · the side panel's tab and width, remembered per browser. Kept apart from
+ * D180 · the side panel's tab and width, remembered per browser. Kept apart from
  * `view-settings.ts` so that file and its tests stay as they are. Pure, with the
  * storage passed in.
  */

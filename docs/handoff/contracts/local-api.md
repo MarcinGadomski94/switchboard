@@ -2536,3 +2536,17 @@ Setting: `terminals.idleHours` (`PUT /api/settings`; default 12, 0 = never, at m
 | DELETE | /api/sessions/{id}/cli-mode | — | 200 `Session` (back in chat mode, D72's continue) · 404 · 409 `not-cli-mode` · D72's refusals |
 
 `Session.cliMode?: { terminalId } | null`: the D170 terminal (on the session's computer) the agent runs in while in CLI mode; the session is `hooked` meanwhile. Migration `0058_session_cli_mode.sql`: `sessions.cli_terminal_id TEXT`.
+
+## The agent view's side panel (D180, 2.5.1, additive; no migration)
+
+Types: `src/core/agent-files.ts`, `src/core/turn-changes.ts`. Every route below is **local-only**: refused to a paired phone (`403 local-only`, `src/server/devices/local-only.ts`) and not on the peer listener's list (a paired computer's agent: refused there; this server answers `409 remote` when nothing forwards).
+
+- `GET /api/sessions/{id}/files` → `AgentFileList` `{ files: AgentFileRef[], truncated }`: the files the agent's conversation touched (its tool calls, the paths its replies name). **Additive:** `AgentFileRef.at: string | null` (ISO): the newest event that touched the file (the tool call, or the reply that named it); absent from a computer before 2.5.1.
+- `GET …/files/roots` → `AgentFileRoots` (its folder, its workspace root, the repos it works in); `GET …/files/dir?path=` → `AgentDirListing` (lazy, at most `AGENT_DIR_MAX` entries).
+- `GET …/files/meta?path=` → `AgentFileMeta` (kind, size, language, `secret` = why it looks like it holds secrets, else `null`); `GET …/files/text?path=&offset=[&confirm]` → `AgentFileText` (lines, at most `AGENT_FILE_TEXT_LINES` per read); `GET …/files/raw?path=[&confirm]` → the bytes (images, PDF, sound, film).
+- `GET …/files/page?path=&scripts=0|1[&confirm][&v=]` → an HTML file as its page (the frame document, `docs/security.md` → *Agent files*); `GET …/files/page/info?…` → `AgentPageInfo` (what was folded in, what was left out and why, whether it has scripts).
+- `POST …/files/open` `{ path, how: 'app' | 'folder' }` → 204: open it in its app (only a kind an app merely shows) or show it in its folder.
+- Errors `{ error, message }`: `invalid` 422, `missing` 404, `outside` 403, `secret` 409 (without `confirm`), `remote` 409, `too-large` 413.
+- `GET /api/sessions/{id}/turn-changes` → `TurnChanges` `{ turns: TurnChange[], latestTurn }`: each turn that changed files, **only the files the agent's own edit tools named in it** (D180).
+- `GET /api/sessions/{id}/turn-changes/diff?from=&to=` → `FileDiff[]`: from before turn `from` until turn `to` ended (without `to`: until now), the same files only. `404 no-checkpoint` when turn `from` has no save point; `404 not-found`, `422 invalid`, `500 unreadable`.
+- **Changed:** `GET /api/sessions/{id}/artifacts/{artifactId}/versions/{n}/raw` of an `html` version (not `?download`) answers a frame document holding the version (`HTML_FRAME_CSP`), not the bytes: `docs/security.md` → *Artifacts*.

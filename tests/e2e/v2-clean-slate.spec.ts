@@ -64,6 +64,14 @@ async function expectContinued(page: Page, id: string, title: string): Promise<s
   return freshId;
 }
 
+/** D180: Details is the side panel's ⓘ tab, its groups closed: open it and the group group. */
+async function openDetails(page: Page, group: string): Promise<void> {
+  const side = page.getByTestId('v2-agent-side');
+  await side.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: 'Details' }).click();
+  const box = side.getByTestId(`v2-agent-group-${group}`);
+  if ((await box.getAttribute('open')) === null) await box.locator('summary').click();
+}
+
 function cleanSlate(scope: Locator): { button: Locator; why: Locator } {
   return { button: scope.getByTestId('v2-agent-side-clean-slate'), why: scope.getByTestId('v2-agent-side-clean-slate-why') };
 }
@@ -77,6 +85,7 @@ test('the side panel: idle with a dev server left running → Continue with a cl
 
   await openWithHub(page, `${world.baseUrl}/agents/${encodeURIComponent(id)}`);
   const side = page.getByTestId('v2-agent-side');
+  await openDetails(page, 'mem');
   await expect(side.getByTestId('v2-agent-group-mem').locator('summary')).toContainText('85% used');
   const { button, why } = cleanSlate(side);
   await expect(button).toBeEnabled();
@@ -91,6 +100,7 @@ test('disabled with the reason while a turn runs; the ⋯ menu continues once it
   const id = await idleAgent(page, 'busy-slate', 'Fill it. [fake:usage 170000]');
   await openWithHub(page, `${world.baseUrl}/agents/${encodeURIComponent(id)}`);
   const side = page.getByTestId('v2-agent-side');
+  await openDetails(page, 'mem');
   const { button, why } = cleanSlate(side);
   await expect(button).toBeEnabled();
 

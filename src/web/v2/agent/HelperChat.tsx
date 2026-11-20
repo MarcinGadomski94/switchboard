@@ -40,7 +40,7 @@ function useWorkflowChat(sessionId: string, agentId: string | null, version: num
  * its result last; no composer (helpers take no messages), the live line instead.
  * Back (and Esc) return to the main chat.
  *
- * SPIKE (side panel): with `inPanel` it is shown in the side panel, beside the main
+ * D180 (side panel): with `inPanel` it is shown in the side panel, beside the main
  * chat, at the same address. Back (and Esc) then leave the list of helpers in the
  * panel, so the button says so. While it is open there Esc is its own, not the main
  * chat's Stop (`Dock.tsx`), unless the message box has the focus.

@@ -222,9 +222,9 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   // D124: the agent's turn_status and a session's Not waiting.
   await registerTurnStatusRoutes(app, context);
   await registerReviewRoutes(app, context);
-  // SPIKE: the side panel's Files (`src/core/agent-files.ts`).
+  // D180: the side panel's Files (`src/core/agent-files.ts`).
   await registerAgentFileRoutes(app, context);
-  // SPIKE: what each turn changed (`src/core/turn-changes.ts`).
+  // D180: what each turn changed (`src/core/turn-changes.ts`).
   await registerTurnChangesRoutes(app, context);
   // D127: the processes sessions leave running (and the agent's process_keep).
   await registerProcessRoutes(app, context);

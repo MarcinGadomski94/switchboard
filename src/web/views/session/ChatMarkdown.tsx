@@ -140,7 +140,7 @@ export const ChatMarkdown = memo(
     const latest = useRef(onSaveCode);
     latest.current = onSaveCode;
     const offersSave = onSaveCode !== null;
-    // SPIKE (side panel Files): with a provider, paths the conversation touched become links.
+    // D180 (side panel Files): with a provider, paths the conversation touched become links.
     const links = useContext(FileLinksContext);
     const components = useMemo<Components>(() => {
       const save = offersSave ? (code: string, language: string | null): void => latest.current?.(code, language) : null;

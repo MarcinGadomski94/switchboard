@@ -1,4 +1,4 @@
-/* SPIKE · the tabbed, resizable side panel of the agent view (Details | Changes | Files). */
+/* D180 · the tabbed, resizable side panel of the agent view (Details | Changes | Files). */
 
 /* The panel's width comes from the view (`--v2-ag-side`), no longer a fixed 344px. */
 .sb2 .v2-ag {

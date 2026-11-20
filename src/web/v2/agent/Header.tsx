@@ -112,7 +112,7 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
   const members = useTeamMembers();
   const name = session ? agentDisplayName(session, members) : '';
   useTabTitle(name);
-  // SPIKE (side panel): beside the chat it holds Changes, Files and Helpers, so the button names the panel; a phone's sheet is still Details.
+  // D180 (side panel): beside the chat it holds Changes, Files and Helpers, so the button names the panel; a phone's sheet is still Details.
   const sideWord = phone ? (sideShown ? AGENT_WORDS.hideDetailsLong : AGENT_WORDS.showDetails) : sideShown ? AGENT_WORDS.hideSidePanel : AGENT_WORDS.showSidePanel;
   const viewItems: MenuItem[] = [
     { id: 'comfortable', label: AGENT_WORDS.comfortable, icon: view.density === 'comfortable' ? 'check' : 'circle', onSelect: () => onView({ ...view, density: 'comfortable' }) },

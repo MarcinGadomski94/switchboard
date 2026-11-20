@@ -1,5 +1,5 @@
 /**
- * SPIKE · comments on the lines of a diff, collected in the side panel's Changes and
+ * D180 · comments on the lines of a diff, collected in the side panel's Changes and
  * handed to the agent as one message. Kept for this page's life only.
  */
 import { useCallback, useSyncExternalStore } from 'react';
