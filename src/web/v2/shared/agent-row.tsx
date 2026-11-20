@@ -2,7 +2,8 @@ import { type HTMLAttributes, type ReactNode, useEffect, useState } from 'react'
 import type { SessionActivity, SessionListItem } from '../../../core/api.ts';
 import type { SessionMachine } from '../../../core/peers.ts';
 import { api } from '../../api/client.ts';
-import { useLiveMachine } from '../../api/useMachines.ts';
+import { useLiveMachine, useMachines } from '../../api/useMachines.ts';
+import { rowComputerName } from '../shell/rail-model.ts';
 import { Avatar, Card, ComputerTag, Icon, StatusBadge } from '../components/index.ts';
 import { STATUS, TERMS, computerStateToV2 } from '../glossary.ts';
 import { agentDisplayName, teammateOf, useTeamMembers } from './teammates.ts';
@@ -65,6 +66,23 @@ export function useSelfMachineName(): string | null {
     };
   }, []);
   return name;
+}
+
+/** D181 · whether any computer is paired with this one (a pinned or recent row then names its computer). */
+export function useAnyPaired(): boolean {
+  return useMachines().length > 0;
+}
+
+/**
+ * D181 · the computer a pinned or recent agent runs on, short and muted at the row's end: a
+ * paired computer's (live state), else this computer's once a computer is paired
+ * ({@link rowComputerName}); nothing with no computer paired.
+ */
+export function RowComputerTag({ machine, anyPaired }: { readonly machine: SessionMachine | null | undefined; readonly anyPaired: boolean }) {
+  const self = useSelfMachineName();
+  if (machine) return <AgentComputerTag machine={machine} short />;
+  const name = rowComputerName(null, self, anyPaired);
+  return name ? <ComputerTag name={name} kind="laptop" short testId="v2-row-computer-self" /> : null;
 }
 
 /**

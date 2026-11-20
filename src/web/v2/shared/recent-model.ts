@@ -19,10 +19,25 @@ export interface RecentMark {
 export const RECENT_KEY = 'switchboard.v2.recent';
 /** Whether the rail's Recent section is open (per browser; open by default). */
 export const RECENT_OPEN_KEY = 'switchboard.v2.recentOpen';
-/** How many agents Recent shows. */
+/** How many agents Recent shows by default (D181: Settings › Appearance › Recent agents changes it, per browser). */
 export const RECENT_SHOWN = 5;
 /** How many marks are kept (more than shown, so a pin or a close does not empty the list). */
 export const RECENT_KEPT = 30;
+/** D181: where this browser keeps how many agents Recent shows. */
+export const RECENT_COUNT_KEY = 'switchboard.v2.recentCount';
+/** D181: the most Recent may show (Settings' upper bound). */
+export const RECENT_COUNT_MAX = 20;
+
+/**
+ * D181: how many agents Recent shows, read from this browser's stored value: a whole number
+ * 0–{@link RECENT_COUNT_MAX} (0 hides Recent); anything else (missing, malformed) is the
+ * default {@link RECENT_SHOWN}.
+ */
+export function readRecentCount(raw: string | null): number {
+  if (raw === null || !/^\d{1,3}$/.test(raw.trim())) return RECENT_SHOWN;
+  const value = Number(raw.trim());
+  return value <= RECENT_COUNT_MAX ? value : RECENT_COUNT_MAX;
+}
 
 /** `marks` with `id` marked at `at`: moved to the front, no duplicate, at most {@link RECENT_KEPT}. */
 export function touchRecent(marks: readonly RecentMark[], id: string, at: number): RecentMark[] {

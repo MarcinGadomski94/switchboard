@@ -13,7 +13,7 @@
  * | `/projects`, `/projects/:id` | Projects (P) |
  * | `/projects/:id/graph` | A project's graph alone, filling the window (P; classic has none: its plan page) |
  * | `/crews`, `/crews/:id` | Crews (P) |
- * | `/results` | Results (R) |
+ * | `/results` (D181: also `/artifacts`) | Artifacts (R) |
  * | `/search` | Search (R), the query in `?q=` |
  * | `/insights` | Insights (R) |
  * | `/settings[/:section[/:sub]]` | Settings (R): `usage`, `computers`, `phones`, `rules`, `appearance`, `advanced[/<classic section>]` |
@@ -88,6 +88,8 @@ export function parseV2Route(pathname: string): V2Route {
   const [head, a, b, c, d, e] = parts;
   if (head === undefined) return { area: 'home' };
   if (parts.length === 1 && (SIMPLE as readonly string[]).includes(head)) return { area: head as 'needs-you' };
+  // D181: the page is called Artifacts; its name as an address opens it too (the address stays /results).
+  if (parts.length === 1 && head === 'artifacts') return { area: 'results' };
   if (head === 'agents' && a) {
     if (b === 'helpers' && c && d === 'events' && isEventId(e)) return { area: 'agent', id: a, tab: 'chat', helperId: c, eventId: Number(e) };
     if (b === 'helpers' && c) return { area: 'agent', id: a, tab: 'chat', helperId: c };

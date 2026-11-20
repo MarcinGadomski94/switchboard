@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
-import { RECENT_KEY, type RecentMark, parseRecent, touchRecent } from './recent-model.ts';
+import { RECENT_COUNT_KEY, RECENT_KEY, RECENT_SHOWN, type RecentMark, parseRecent, readRecentCount, touchRecent } from './recent-model.ts';
 
-export { RECENT_OPEN_KEY, RECENT_SHOWN, recentAgents, type RecentMark } from './recent-model.ts';
+export { RECENT_COUNT_MAX, RECENT_OPEN_KEY, RECENT_SHOWN, recentAgents, type RecentMark } from './recent-model.ts';
 
 /**
  * Fix after 2.0 · this browser's Recent marks, live (`recent-model.ts`): the agent
@@ -67,4 +67,43 @@ export function clearRecent(): void {
 /** The marks, newest first, live. */
 export function useRecentMarks(): readonly RecentMark[] {
   return useSyncExternalStore(subscribe, snapshot, () => EMPTY);
+}
+
+// ── D181 · how many agents Recent shows (per browser, like the marks) ──
+
+let count: number | null = null;
+const countListeners = new Set<() => void>();
+
+function readCount(): number {
+  if (count === null) {
+    try {
+      count = readRecentCount(window.localStorage.getItem(RECENT_COUNT_KEY));
+    } catch {
+      count = RECENT_SHOWN;
+    }
+  }
+  return count;
+}
+
+/** Sets how many agents Recent shows in this browser (0–20; Settings › Appearance). */
+export function setRecentCount(next: number): void {
+  count = readRecentCount(String(Math.max(0, Math.round(next))));
+  try {
+    window.localStorage.setItem(RECENT_COUNT_KEY, String(count));
+  } catch {
+    // No storage: the number lasts until the page closes.
+  }
+  for (const listener of [...countListeners]) listener();
+}
+
+/** How many agents Recent shows in this browser, live (default 5). */
+export function useRecentCount(): number {
+  return useSyncExternalStore(
+    (listener) => {
+      countListeners.add(listener);
+      return () => countListeners.delete(listener);
+    },
+    readCount,
+    () => RECENT_SHOWN,
+  );
 }

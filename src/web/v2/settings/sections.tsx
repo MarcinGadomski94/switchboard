@@ -6,8 +6,9 @@ import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { standingDraftState } from '../../views/settings/standing-instruction.ts';
-import { Button, Card, EmptyState, Icon, Segmented, Skeleton, Switch, useToast } from '../components/index.ts';
-import { SETTINGS_LABELS, SETTINGS_WORDS as W } from '../glossary.ts';
+import { Button, Card, EmptyState, Icon, Segmented, Select, Skeleton, Switch, useToast } from '../components/index.ts';
+import { SETTINGS_LABELS, SETTINGS_WORDS as W, WORDS } from '../glossary.ts';
+import { RECENT_COUNT_MAX, setRecentCount, useRecentCount } from '../shared/recent.ts';
 import { type Density, DENSITIES, readDensity, writeDensity } from './density.ts';
 import { SchemeRow, ThemeRow } from './ThemeRow.tsx';
 
@@ -147,6 +148,7 @@ export function useDensity(): Density {
 /** D131 · lane R · Settings › Appearance: the theme (v2 / Classic), light / dark, the default text density, reduced motion. */
 export function AppearanceSection() {
   const current = useDensity();
+  const recentCount = useRecentCount();
   useEffect(() => {
     document.documentElement.dataset['density'] = current;
   }, [current]);
@@ -167,6 +169,20 @@ export function AppearanceSection() {
             value={current}
             onChange={setDensity}
             options={DENSITIES.map((value) => ({ value, label: value === 'compact' ? W.compact : W.comfortable }))}
+          />
+        </div>
+        {/* D181: how many agents the rail's Recent list shows (per browser, like Recent itself). */}
+        <div className="v2-set-row" data-row="recent-count">
+          <div className="v2-grow">
+            <b>{WORDS.recentCount}</b>
+            <div className="v2-muted v2-set-small">{WORDS.recentCountSub}</div>
+          </div>
+          <Select
+            aria-label={WORDS.recentCount}
+            data-testid="v2-recent-count"
+            value={String(recentCount)}
+            onChange={(event) => setRecentCount(Number(event.currentTarget.value))}
+            options={Array.from({ length: RECENT_COUNT_MAX + 1 }, (_, n) => ({ value: String(n), label: String(n) }))}
           />
         </div>
         <div className="v2-set-row" data-row="reduced-motion">

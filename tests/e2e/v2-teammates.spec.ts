@@ -113,18 +113,15 @@ test('the rail’s Recent: opening two agents lists them newest first', async ({
   await expect(page.getByTestId('v2-agent-title')).toBeVisible();
   await page.goto(`${world.baseUrl}/agents/${mate.sessionId}`);
   await expect(page.getByTestId('v2-agent-title')).toBeVisible();
+  // D181: Recent opens beside the rail (its clock button).
+  await page.getByTestId('v2-rail-recent-button').click();
   const items = page.getByTestId('v2-recent').getByTestId('v2-recent-item');
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toHaveAttribute('data-session', mate.sessionId);
   await expect(items.nth(1)).toHaveAttribute('data-session', plain);
-  // Folding is remembered; Clear recent empties it.
-  await page.getByTestId('v2-recent-toggle').click();
-  await expect(items).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByTestId('v2-recent-toggle')).toHaveAttribute('aria-expanded', 'false');
-  await page.getByTestId('v2-recent-toggle').click();
-  await expect(items).toHaveCount(2);
+  // Clear recent (its ⋯, a menu over the list) empties it.
   await page.getByTestId('v2-recent-menu').click();
   await page.getByTestId('v2-recent-menu-list').getByRole('menuitem', { name: 'Clear recent' }).click();
   await expect(page.getByTestId('v2-recent')).toHaveCount(0);
+  await expect(page.getByTestId('v2-rail-recent-flyout')).toContainText('The agents you open show up here.');
 });

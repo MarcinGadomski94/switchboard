@@ -200,7 +200,7 @@ const V2_4_50 = '2.4.50';
 const V2_5_1 = '2.5.1';
 /** The version the Terminals rail item (D170 follow-up) ships in (the next release after 2.5.1; adjust if it ships later). */
 const V2_5_2 = '2.5.2';
-/** The version D182 (the agent's terminal at the bottom of its conversation) ships in (adjust if it ships later). */
+/** The version D181 (the icon rail) and D182 (the agent terminal) ship in (adjust if it ships later). */
 const V2_5_4 = '2.5.4';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -2117,6 +2117,34 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-nav-terminals', 'v2-tab-more'],
         v2Route: '/terminals',
         missing: 'Terminals is in the sidebar on a computer, and under More on a phone.',
+      },
+    ],
+  },
+  // D181 (2.5.4): the sidebar as icons; Pinned and Recent open beside it; Artifacts; where pinned agents run; Recent's number (docs/v2.md → Rail).
+  {
+    id: 'icon-rail',
+    decision: 'D181',
+    version: V2_5_4,
+    title: 'A slimmer sidebar',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'icons',
+        title: 'Icons, with their names on hover',
+        what: 'The sidebar shows icons only, so the page gets the room. Point at an icon (or tab to it) to see its name and what its number counts. Results is now called Artifacts.',
+        todo: ['Point at an icon in the sidebar.'],
+        anchors: ['v2-nav-home', 'v2-nav-results'],
+        v2Route: '/',
+        missing: 'The sidebar shows on a computer or a tablet.',
+      },
+      {
+        id: 'lists',
+        title: 'Pinned and Recent, one click away',
+        what: 'The pin and the clock under the icons open your pinned agents, crews and projects, and the agents you used last, beside the sidebar. Each agent says which computer it runs on. Choose how many agents Recent lists in Settings › Appearance.',
+        todo: ['Click the pin in the sidebar.'],
+        anchors: ['v2-rail-pins', 'v2-recent'],
+        v2Route: '/',
+        missing: 'Pinned and Recent are in the sidebar on a computer or a tablet.',
       },
     ],
   },

@@ -53,6 +53,12 @@ test('pin a project from its card: its row shows Draft, then Working 0/1 with th
   await expect(page).toHaveURL(/\/projects$/);
   await expect.poll(() => pinnedIds(page)).toEqual([`plan~${planId}`]);
 
+  // D181: Pinned opens beside the rail.
+  const openPins = async (): Promise<void> => {
+    if ((await page.getByTestId('v2-rail-pins-flyout').count()) === 0) await page.getByTestId('v2-rail-pins-button').click();
+    await expect(page.getByTestId('v2-rail-pins')).toBeVisible();
+  };
+  await openPins();
   const row = page.getByTestId('v2-rail-pins').locator(`[data-testid="v2-pin-project"][data-plan="${planId}"]`);
   await expect(row).toBeVisible();
   await expect(row).toContainText('Pin me');
@@ -66,7 +72,7 @@ test('pin a project from its card: its row shows Draft, then Working 0/1 with th
   await expect(pulse).toBeVisible();
   await expect(page.getByTestId('v2-nav-projects')).toHaveAccessibleName(/a project is working/);
   await page.mouse.move(0, 0);
-  await page.getByTestId('v2-rail').screenshot({ path: path.join('test-results', 'v2-pinned-project-rail.png') });
+  await page.getByTestId('v2-rail-pins-flyout').screenshot({ path: path.join('test-results', 'v2-pinned-project-rail.png') });
 
   // The row opens the project; Unpin from its page's ⋯.
   await row.click();
@@ -74,7 +80,9 @@ test('pin a project from its card: its row shows Draft, then Working 0/1 with th
   await page.getByTestId('v2-project-menu').click();
   await page.getByRole('menuitem', { name: 'Unpin from sidebar' }).click();
   await expect.poll(() => pinnedIds(page)).toEqual([]);
+  await openPins();
   await expect(row).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   // Nothing works once it is cancelled: no pulse.
   expect((await world.call(page, 'POST', `/api/plans/${planId}/cancel`)).status).toBe(200);

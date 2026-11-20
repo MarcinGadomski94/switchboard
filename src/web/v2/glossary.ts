@@ -94,6 +94,11 @@ export const WORDS = {
   recent: 'Recent',
   recentActions: 'Recent: more',
   clearRecent: 'Clear recent',
+  /** D181: the rail's Recent list before any agent was opened. */
+  recentEmpty: 'The agents you open show up here.',
+  /** D181: Settings › Appearance › how many agents Recent shows. */
+  recentCount: 'Recent agents',
+  recentCountSub: 'How many agents the sidebar’s Recent list shows (0 hides it). In this browser.',
   thisComputer: 'this one',
   newThing: 'New',
   search: 'Search',
@@ -542,13 +547,14 @@ export function actionLabel(id: string, serverLabel: string): string {
 
 // ── Rail, tabs, shortcuts ──────────────────────────────────────────────
 
-/** The rail's seven destinations, in order. */
+/** The rail's eight destinations, in order (D181: icons, these are their names and tooltips). */
 export const RAIL_LABELS = {
   home: 'Home',
   agents: 'Agents',
   projects: 'Projects',
   crews: 'Crews',
-  results: 'Results',
+  // D181: Results is called Artifacts (the files agents save; the route stays /results).
+  results: 'Artifacts',
   tasks: TERMS.task.many,
   // 2.5.2 (D170): back to a terminal you left.
   terminals: 'Terminals',
@@ -566,7 +572,7 @@ export const PHONE_TABS = {
   home: 'Home',
   needs: 'Needs you',
   agents: 'Agents',
-  results: 'Results',
+  results: 'Artifacts',
   more: 'More',
 } as const;
 
@@ -575,7 +581,7 @@ export const AGENT_TAB_LABELS = {
   chat: 'Chat',
   cli: 'CLI',
   changes: 'Changes',
-  results: 'Results',
+  results: 'Artifacts',
   timeline: 'Timeline',
   helpers: 'Helpers',
 } as const;
@@ -806,7 +812,7 @@ export const THEME_LABELS = {
 
 /** Lane R · Results (`/results`) and the result drawer. */
 export const RESULTS_WORDS = {
-  title: 'Results',
+  title: 'Artifacts',
   sub: 'Files your agents made. Every version is kept.',
   layout: 'Layout',
   grid: 'Grid',
@@ -832,12 +838,12 @@ export const RESULTS_WORDS = {
     pdf: 'PDF',
     csv: 'Table',
   },
-  searchWithin: 'Search within results…',
-  searchLabel: 'Search within results',
-  loading: 'Loading results…',
-  loadFailed: 'The results could not be loaded.',
+  searchWithin: 'Search within artifacts…',
+  searchLabel: 'Search within artifacts',
+  loading: 'Loading artifacts…',
+  loadFailed: 'The artifacts could not be loaded.',
   tryAgain: 'Try again',
-  emptyTitle: 'No results yet',
+  emptyTitle: 'No artifacts yet',
   emptyText: 'Reports, diagrams, tables and files your agents save show up here, with every version.',
   emptyFilterTitle: (filter: string): string => `No ${filter.toLowerCase()} yet`,
   emptyFilterText: 'Try another type, or clear the search.',
@@ -884,7 +890,7 @@ export const SEARCH_WORDS = {
   sub: 'Every message, result, task and archived agent, on every computer.',
   input: 'Search',
   placeholder: 'Search messages, results, tasks and archived agents…',
-  types: { all: 'Everything', messages: 'Messages', results: 'Results', tasks: 'Tasks', closed: 'Archived agents' },
+  types: { all: 'Everything', messages: 'Messages', results: 'Artifacts', tasks: 'Tasks', closed: 'Archived agents' },
   computerAny: 'Any computer',
   folderAny: 'Any folder',
   dates: { any: 'Any time', today: 'Today', week: 'This week' },
@@ -1307,7 +1313,7 @@ export const PALETTE_WORDS = {
     quick: 'Quick capture',
     messages: 'Messages',
     agents: 'Agents & projects',
-    results: 'Results',
+    results: 'Artifacts',
     pages: 'Pages',
     settings: 'Settings',
     actions: 'Actions',
@@ -2255,7 +2261,7 @@ export const AGENT_WORDS = {
   finished: (n: number): string => `${n} finished`,
   noChanges: 'No changes yet',
   noChangesText: 'Changes appear here as soon as the agent edits a file.',
-  noResults: 'No results yet',
+  noResults: 'No artifacts yet',
   noResultsText: 'Files this agent makes show up here, with every version.',
   noHelpersTitle: 'No helpers',
   noHelpersText: 'When the agent splits work, each helper gets its own chat here.',

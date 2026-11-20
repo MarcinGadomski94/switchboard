@@ -2,7 +2,7 @@ import { INSTALL_APP_DESCRIPTION } from '../../views/settings/install-app.ts';
 import { MODEL_RULES_DESCRIPTION, MODEL_RULES_LABEL } from '../../views/settings/model-rules.ts';
 import { STANDING_INSTRUCTION_DESCRIPTION, STANDING_INSTRUCTION_LABEL } from '../../views/settings/standing-instruction.ts';
 import { START_AT_LOGIN_DESCRIPTION, START_AT_LOGIN_LABEL } from '../../views/settings/start-at-login.ts';
-import { ARCHIVE_WORDS, AUTO_CLEAN_WORDS, SETTINGS_LABELS, SETTINGS_WORDS as W, THEME_LABELS } from '../glossary.ts';
+import { ARCHIVE_WORDS, AUTO_CLEAN_WORDS, SETTINGS_LABELS, SETTINGS_WORDS as W, THEME_LABELS, WORDS } from '../glossary.ts';
 import type { V2SettingsSection } from '../routes.ts';
 import { type AdvancedKind, resolveAdvanced } from './settings-map.ts';
 
@@ -71,6 +71,8 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   entry('appearance.theme', at('appearance'), THEME_LABELS.row, THEME_LABELS.description, 'classic v2 look design skin old new', row('ui-theme')),
   entry('appearance.scheme', at('appearance'), 'Light or dark', 'Follows your computer unless you pick one.', 'dark mode light night colour color scheme automatic', row('ui-scheme')),
   entry('appearance.density', at('appearance'), W.density, W.densitySub, 'compact comfortable spacing font size chat', row('ui-density')),
+  // D181: how many agents the rail's Recent list shows.
+  entry('appearance.recent', at('appearance'), WORDS.recentCount, WORDS.recentCountSub, 'sidebar rail recent agents list number how many', row('recent-count')),
   entry('appearance.motion', at('appearance'), W.motionTitle, W.motionNote, 'animation animations reduce motion accessibility', row('reduced-motion')),
   // ── Computers (v2) ──
   entry('computers.self', at('computers'), W.thisComputer, W.computersSub, 'machine computer power battery peer', '[data-testid="v2-computer"][data-self]'),

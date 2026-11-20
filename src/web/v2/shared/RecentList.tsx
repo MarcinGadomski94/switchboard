@@ -4,17 +4,17 @@ import { useSessionListOf } from '../../api/session-list.ts';
 import { Icon, IconButton, Menu, StatusBadge } from '../components/index.ts';
 import { STATUS, WORDS } from '../glossary.ts';
 import { V2Link } from '../nav.tsx';
-import { AgentComputerTag, CrewTag } from './agent-row.tsx';
+import { CrewTag, RowComputerTag, useAnyPaired } from './agent-row.tsx';
 import { agentStatusOf } from './agent-line.ts';
 import { useNeedsYou } from './needs-you.ts';
-import { RECENT_OPEN_KEY, clearRecent, recentAgents, useRecentMarks } from './recent.ts';
+import { RECENT_OPEN_KEY, clearRecent, recentAgents, useRecentCount, useRecentMarks } from './recent.ts';
 import { agentDisplayName, teammateOf, useTeamMembers } from './teammates.ts';
 
-/** The Recent agents (open, not pinned, newest first), live. */
-export function useRecentAgents(pinned: readonly string[]): readonly SessionListItem[] {
+/** The Recent agents (open, not pinned, newest first; at most cap, D181: Settings' number), live. */
+export function useRecentAgents(pinned: readonly string[], cap: number): readonly SessionListItem[] {
   const marks = useRecentMarks();
   const sessions = useSessionListOf();
-  return useMemo(() => recentAgents(marks, sessions.data ?? [], pinned), [marks, sessions.data, pinned]);
+  return useMemo(() => recentAgents(marks, sessions.data ?? [], pinned, cap), [marks, sessions.data, pinned, cap]);
 }
 
 function readOpen(): boolean {
@@ -26,17 +26,20 @@ function readOpen(): boolean {
 }
 
 /**
- * Fix after 2.0 · the rail's **Recent** (under Pinned) and the phone More tab's:
- * the last 5 agents or conversations the developer interacted with, each with its
+ * Fix after 2.0 · the rail's **Recent** (D181: the list its clock button opens) and the phone More tab's:
+ * the last agents or conversations (5 by default; D181: Settings › Appearance › Recent agents) the developer interacted with, each with its
  * status (icon; the word in the tooltip), its name (a teammate's name with its
  * crew), a paired computer's tag and a Needs-you count; a click opens it. The
  * header folds the list (remembered) and its ⋯ clears it.
  */
-export function RecentList({ pinned, currentId, variant = 'rail' }: { readonly pinned: readonly string[]; readonly currentId: string | null; readonly variant?: 'rail' | 'phone' }) {
-  const agents = useRecentAgents(pinned);
+export function RecentList({ pinned, currentId, variant = 'flyout' }: { readonly pinned: readonly string[]; readonly currentId: string | null; readonly variant?: 'flyout' | 'phone' }) {
+  const agents = useRecentAgents(pinned, useRecentCount());
+  const anyPaired = useAnyPaired();
   const members = useTeamMembers();
   const { items } = useNeedsYou();
-  const [open, setOpen] = useState(readOpen);
+  const [stored, setOpen] = useState(readOpen);
+  // D181: the rail's list opens on a click, already folded out (its fold is the phone's).
+  const open = variant === 'flyout' || stored;
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [menu, setMenu] = useState(false);
   const needsOf = useMemo(() => {
@@ -59,13 +62,20 @@ export function RecentList({ pinned, currentId, variant = 'rail' }: { readonly p
   };
   if (agents.length === 0) return null;
   return (
-    <div className={variant === 'rail' ? 'v2-rail-pins v2-rail-recent' : 'v2-recent-phone'} role="group" aria-label={WORDS.recent} data-testid="v2-recent">
+    <div className={variant === 'flyout' ? 'v2-rail-pins v2-rail-recent' : 'v2-recent-phone'} role="group" aria-label={WORDS.recent} data-testid="v2-recent">
       <h5 className="v2-recent-head">
-        <button type="button" className="v2-recent-toggle" aria-expanded={open} onClick={toggle} data-testid="v2-recent-toggle">
-          <Icon name="clock" size="s" />
-          {WORDS.recent}
-          <Icon name="chev" size="s" className="v2-recent-chev" />
-        </button>
+        {variant === 'flyout' ? (
+          <span className="v2-recent-toggle">
+            <Icon name="clock" size="s" />
+            {WORDS.recent}
+          </span>
+        ) : (
+          <button type="button" className="v2-recent-toggle" aria-expanded={open} onClick={toggle} data-testid="v2-recent-toggle">
+            <Icon name="clock" size="s" />
+            {WORDS.recent}
+            <Icon name="chev" size="s" className="v2-recent-chev" />
+          </button>
+        )}
         <IconButton ref={setAnchor} icon="more" label={WORDS.recentActions} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} data-testid="v2-recent-menu" />
         <Menu items={[{ id: 'clear', label: WORDS.clearRecent, icon: 'x', onSelect: clearRecent }]} anchor={anchor} open={menu} onClose={() => setMenu(false)} label={WORDS.recentActions} testId="v2-recent-menu-list" />
       </h5>
@@ -82,7 +92,8 @@ export function RecentList({ pinned, currentId, variant = 'rail' }: { readonly p
                   {name}
                   {mate ? <CrewTag crew={mate.crewName} /> : null}
                 </span>
-                {session.machine ? <AgentComputerTag machine={session.machine} short /> : null}
+                {/* D181: the computer it runs on (once a computer is paired). */}
+                <RowComputerTag machine={session.machine} anyPaired={anyPaired} />
                 {needs > 0 ? (
                   <span className="v2-nav-badge" title={WORDS.needsYou} data-testid="v2-recent-needs">
                     {needs}

@@ -131,7 +131,7 @@ export function pageRows(): PaletteRow[] {
     page('agents', RAIL_LABELS.agents, 'agents', '/agents', 'sessions list chats board'),
     page('projects', RAIL_LABELS.projects, 'projects', '/projects', 'plans'),
     page('crews', RAIL_LABELS.crews, 'crew', '/crews', 'team teammates'),
-    page('results', RAIL_LABELS.results, 'results', '/results', 'artifacts files reports'),
+    page('results', RAIL_LABELS.results, 'results', '/results', 'results artifacts files reports'),
     page('search', WORDS.search, 'search', '/search', 'find'),
     page('insights', WORDS.insights, 'insights', '/insights', 'cost tokens forecast estimates'),
     page('tasks', RAIL_LABELS.tasks, 'task', '/tasks', 'todos board'),
