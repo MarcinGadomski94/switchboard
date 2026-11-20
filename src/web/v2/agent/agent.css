@@ -920,10 +920,33 @@
   background: var(--v2-surface-2);
 }
 
+/* D182 follow-up 2026-11-20: the bottom's one header row: the agent's status line (from the Dock) with the
+   Message | Terminal | Both tabs at its right end; laid out as the dock's own rows (its padding and column). */
 .sb2 .v2-ag-bottom-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 4px 12px 0;
+  padding: 6px 28px 0;
+}
+
+.sb2 .v2-ag-bottom-bar > .v2-ag-status {
+  max-width: var(--v2-ag-col);
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* The status text gives way first; the tabs never wrap or shrink. */
+.sb2 .v2-ag-bottom-tabs {
+  display: inline-flex;
+  flex: none;
+  margin-left: 4px;
+}
+
+.sb2 .v2-ag-bottom-tabs .v2-seg {
+  white-space: nowrap;
+}
+
+/* The status line sits in the header row: the dock below starts with its strips / message box. */
+.sb2 .v2-ag-bottom .v2-ag-dock {
+  padding-top: 4px;
 }
 
 .sb2 .v2-ag-bottom-term {

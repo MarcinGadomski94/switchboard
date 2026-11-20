@@ -6,6 +6,7 @@ import { DOCK_WORDS as W } from '../glossary.ts';
 import { TerminalView } from '../terminals/TerminalView.tsx';
 import '../terminals/terminals.css';
 import { type DockMode, type DockSettings, clampDockHeight, dockModes, loadDock, saveDock, showsTerminal, shownDockMode, toggledDockMode } from './bottom-dock.ts';
+import { type DockBar, DockBarContext } from './dock-bar.ts';
 import { browserStorage } from './useAgent.ts';
 import { peerTooOld } from './useAgentFiles.ts';
 
@@ -112,13 +113,19 @@ export function BottomDock({ sessionId, phone, refusal, computer = null, childre
   }));
   const terminalShown = showsTerminal(shown);
   const height = shown === 'both' ? clampDockHeight(settings.height, room()) : undefined;
+  // 2026-11-20: one header row: the agent's status line (rendered here by the Dock, D182 follow-up) and the tabs on its right.
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const tabs =
+    refusal === null ? (
+      <span className="v2-ag-bottom-tabs">
+        <Segmented<DockMode> options={options} value={shown} onChange={(mode) => update({ ...settings, mode })} label={W.label} size="s" testId="v2-agent-dock-modes" tour="v2-agent-dock-terminal" />
+      </span>
+    ) : null;
+  const bar: DockBar = { slot, tabs };
   return (
+    <DockBarContext.Provider value={bar}>
     <div className="v2-ag-bottom" ref={box} data-mode={shown} data-testid="v2-agent-bottom">
-      {refusal === null ? (
-        <div className="v2-ag-bottom-bar">
-          <Segmented<DockMode> options={options} value={shown} onChange={(mode) => update({ ...settings, mode })} label={W.label} size="s" testId="v2-agent-dock-modes" tour="v2-agent-dock-terminal" />
-        </div>
-      ) : null}
+      <div className="v2-ag-bottom-bar" ref={setSlot} data-testid="v2-agent-bottom-bar" />
       {terminal.kind !== 'none' ? (
         <div className="v2-ag-bottom-term" hidden={!terminalShown} style={height !== undefined ? { height } : undefined} data-testid="v2-agent-terminal" data-terminal-id={terminal.kind === 'open' ? terminal.id : undefined}>
           {terminal.kind === 'open' ? <TerminalView machine={machine} id={terminal.id} phone={phone} /> : null}
@@ -143,5 +150,6 @@ export function BottomDock({ sessionId, phone, refusal, computer = null, childre
         {children}
       </div>
     </div>
+    </DockBarContext.Provider>
   );
 }

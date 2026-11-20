@@ -26,6 +26,38 @@ test.afterAll(async () => {
   await world?.stop();
 });
 
+test('2026-11-20: the tabs share one row with the status line and Stop background tasks, in every mode', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await stubToolProbes(page);
+  await page.goto(`${world.baseUrl}/`);
+  // A background command that keeps running: the status line offers Stop background tasks (D164).
+  const { id } = await world.startSession(page, 'acme-bg-row', '[fake:background 60 sleep 60]');
+  await page.goto(`${world.baseUrl}/agents/${id}`);
+  const stop = page.getByTestId('v2-agent-stop-background');
+  await expect(stop).toBeVisible({ timeout: 30_000 });
+  const modes = page.getByTestId('v2-agent-dock-modes');
+  const bar = page.getByTestId('v2-agent-bottom-bar');
+  // One row: the status line (with Stop background tasks) and the tabs, in the dock's header row.
+  await expect(bar.getByTestId('v2-agent-status')).toBeVisible();
+  await expect(bar.getByTestId('v2-agent-dock-modes')).toBeVisible();
+  const centre = async (box: { y: number; height: number } | null): Promise<number> => (box ? box.y + box.height / 2 : Number.NaN);
+  const stopY = await centre(await stop.boundingBox());
+  const modesY = await centre(await modes.boundingBox());
+  expect(Math.abs(stopY - modesY)).toBeLessThan(4);
+  // The tabs are right of the button.
+  expect(((await modes.boundingBox())?.x ?? 0) > ((await stop.boundingBox())?.x ?? 0)).toBe(true);
+  if (process.env['DOCK_ROW_SHOTS']) await page.screenshot({ path: path.join(process.env['DOCK_ROW_SHOTS'], 'dock-row-1440.png') });
+  // Terminal: the same row stays above the terminal, so you can switch back.
+  await modes.locator('[data-value="terminal"]').click();
+  await expect(page.getByTestId('v2-agent-terminal')).toBeVisible();
+  await expect(stop).toBeVisible();
+  const terminalTop = (await page.getByTestId('v2-agent-terminal').boundingBox())?.y ?? 0;
+  expect(((await modes.boundingBox())?.y ?? Number.POSITIVE_INFINITY) < terminalTop).toBe(true);
+  await modes.locator('[data-value="message"]').click();
+  await expect(page.getByTestId('v2-agent-input')).toBeVisible();
+});
+
 test('Terminal in the agent’s folder, Both with the message box, closed when you leave the agent', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });

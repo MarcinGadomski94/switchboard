@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Attachment, SessionDetail, SessionTodo } from '../../../core/api.ts';
 import type { QueuedReason } from '../../../core/event-payload.ts';
 import { type ComposerDraft, draftField } from '../../../core/drafts.ts';
@@ -36,6 +37,7 @@ import { type ComposerMeasure, type DockMessage, type DockStatus, composerKey, c
 import { RoutinesIndicator } from './Routines.tsx';
 import type { AgentData } from './useAgent.ts';
 import { DraftChips } from './Attachments.tsx';
+import { useDockBar } from './dock-bar.ts';
 import { computerOf, continueAsAgent } from './agent-bits.ts';
 import { browserStorage } from './useAgent.ts';
 
@@ -348,9 +350,10 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
   const working = session !== null && turnBusy(session);
   const placeholder = composerPlaceholder({ conversation, working: working && !stopped, blocked, short: short || variant === 'phone' });
   const full = variant === 'full';
+  // D182 follow-up 2026-11-20: inside the bottom dock (not the peek sheet), the status line is its header row.
+  const bar = useDockBar();
 
-  return (
-    <div className="v2-ag-dock" data-variant={variant} data-dragging={drop.dragging ? 'true' : undefined} data-testid="v2-agent-dock" {...drop.handlers}>
+  const statusRow = (
       <StatusRow
         status={dockStatus({
           live,
@@ -373,7 +376,13 @@ export function Dock({ data, queued, paused, lastEventId, onSent, variant = 'ful
         queueOpen={queueOpen}
         onQueue={() => setQueueOpen((v) => !v)}
         routines={<RoutinesIndicator data={data} compact={!full} />}
+        tabs={bar?.tabs ?? null}
       />
+  );
+  return (
+    <div className="v2-ag-dock" data-variant={variant} data-dragging={drop.dragging ? 'true' : undefined} data-testid="v2-agent-dock" {...drop.handlers}>
+      {/* D182 follow-up 2026-11-20: inside the bottom dock, the status line is its header row (beside the Message | Terminal | Both tabs). */}
+      {bar ? (bar.slot ? createPortal(statusRow, bar.slot) : null) : statusRow}
       {stripOpen && !conversation && (todos.list?.todos.length ?? 0) > 0 ? <TaskStrip sessionId={sessionId} todos={todos} blocked={blocked} working={working} /> : null}
       {/* D163: MCP servers its running CLI needs a sign-in to. */}
       {!conversation && variant !== 'peek' ? <McpSignInNotice sessionId={sessionId} session={session} /> : null}
@@ -586,6 +595,7 @@ function StatusRow({
   queueOpen,
   onQueue,
   routines,
+  tabs,
 }: {
   readonly status: DockStatus;
   readonly live: ReturnType<typeof liveLine>;
@@ -603,6 +613,8 @@ function StatusRow({
   readonly onQueue: () => void;
   /** Fix after 2.0 · the agent's loops and schedules (`Routines.tsx`), after the tasks. */
   readonly routines: ReactNode;
+  /** D182 follow-up 2026-11-20: the bottom dock's Message | Terminal | Both tabs, at the row's right end. */
+  readonly tabs: ReactNode;
 }) {
   const icon = liveIcon(live.kind);
   const tasks = status.parts.find((part) => part.id === 'tasks') ?? null;
@@ -701,6 +713,7 @@ function StatusRow({
           {AGENT_WORDS.stopBackground}
         </Button>
       ) : null}
+      {tabs}
     </div>
   );
 }
