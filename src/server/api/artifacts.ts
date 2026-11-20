@@ -204,14 +204,18 @@ export async function registerArtifactRoutes(app: FastifyInstance, context: ApiC
       const raw = await artifacts.raw(request.params.id, request.params.artifactId, request.params.n);
       // D89 ruling: `?render` on a Mermaid version: the page that draws it, sandboxed like an HTML artifact.
       const page = request.query.render !== undefined && request.query.download === undefined ? await artifacts.mermaidView(raw) : null;
+      // D180: the Mermaid page goes through the same frame document as an HTML result (it cannot leave), never cached (an upgrade's rules apply at once).
       if (page !== null) {
         for (const [name, value] of Object.entries(artifactHeaders({ ...raw.artifact, kind: 'html' }, null, false))) reply.header(name, value);
-        return reply.send(page);
+        reply.header('content-security-policy', HTML_FRAME_CSP);
+        reply.header('cache-control', 'no-cache');
+        return reply.send(htmlArtifactFrame(page, raw.artifact.title));
       }
       for (const [name, value] of Object.entries(artifactHeaders(raw.artifact, raw.version.mediaType, request.query.download !== undefined))) reply.header(name, value);
-      // D180: an HTML result is shown inside a frame document whose `frame-src blob:` keeps it where it is (a sandboxed page may otherwise send its own frame anywhere).
+      // D180: an HTML result is shown inside a frame document whose `frame-src blob:` keeps it where it is (a sandboxed page may otherwise send its own frame anywhere); never cached, so an upgraded install never shows one under older rules.
       if (raw.artifact.kind === 'html' && request.query.download === undefined) {
         reply.header('content-security-policy', HTML_FRAME_CSP);
+        reply.header('cache-control', 'no-cache');
         return reply.send(htmlArtifactFrame(raw.bytes.toString('utf8'), raw.artifact.title));
       }
       return reply.send(raw.bytes);

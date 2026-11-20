@@ -50,7 +50,7 @@ export interface SessionReview {
 export const REVIEW_FILES_MAX = 50;
 
 /** The tool calls that edit files (as `src/server/worktrees/touched.ts`'s `EDIT_TOOLS`). */
-export const REVIEW_EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+export const REVIEW_EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Delete'];
 
 /**
  * A pending review with one more file-changing turn (its `paths`), ended at `at` (ISO). A new

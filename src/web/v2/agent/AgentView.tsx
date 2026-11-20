@@ -1,4 +1,5 @@
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isRemoteId } from '../../../core/peers.ts';
 import type { TurnChange } from '../../../core/turn-changes.ts';
 import { useLayout } from '../../shell/useLayout.ts';
 import { COMPOSER_INSERT_EVENT } from '../../views/session/ChatTab.tsx';
@@ -192,7 +193,9 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const openFile = opened !== null && opened.sessionId === sessionId ? opened.file : null;
   const setOpenFile = useCallback((file: OpenFile | null): void => setOpened(file === null ? null : { sessionId, file }), [sessionId]);
   // Read again when the agent's turns change, and when the Files tab is opened (not on every event of a running turn).
-  const files = useAgentFiles(sessionId, tabbed, `${turnsKey(data)}:${side.tab === 'files' && sideShown ? 'open' : ''}`);
+  // D180: an agent of a paired computer: its files and turn changes are read on its own computer only (the routes are local-only), never asked from here.
+  const local = !isRemoteId(sessionId);
+  const files = useAgentFiles(sessionId, tabbed && local, `${turnsKey(data)}:${side.tab === 'files' && sideShown ? 'open' : ''}`);
   const openInPanel = useCallback(
     (path: string, line: number | null): void => {
       setOpenFile({ path, line });
@@ -254,7 +257,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const working = data.session !== null && turnBusy(data.session);
   const split = useMemo(() => splitDock(rows, working), [rows, working]);
   // D180: what each turn changed: a chip under the turn's last reply opens Changes on that turn.
-  const turnChanges = useTurnChanges(data, tabbed);
+  const turnChanges = useTurnChanges(data, tabbed && local);
   // The same set object while the same replies end their turns: a new one would render every reply again on each chat update.
   const lastRepliesKept = useRef<ReadonlySet<number>>(new Set());
   const lastReplies = useMemo(() => {

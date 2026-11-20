@@ -33,7 +33,8 @@ import type { HubBus } from '../hub/bus.ts';
  */
 
 /** The file-editing tools whose `file_path` / `notebook_path` names a touched file. */
-export const EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+/** The tools that change a file. D180: `Delete` is how the Codex bridge records a file it deletes (`cli/codex/bridge.ts`). */
+export const EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Delete'];
 
 /** End snapshots kept in memory (oldest dropped first). */
 const MAX_ENDS = 2_000;

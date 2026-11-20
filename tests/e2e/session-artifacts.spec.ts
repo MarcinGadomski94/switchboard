@@ -155,7 +155,8 @@ test('a Mermaid diagram is drawn inside its sandboxed frame; one Mermaid cannot 
   await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${good.artifact.id}`);
   const frame = page.getByTestId('artifact-mermaid');
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
-  const inner = page.frameLocator('[data-testid="artifact-mermaid"]');
+  // D180: drawn in a frame of its frame document (as an HTML result).
+  const inner = page.frameLocator('[data-testid="artifact-mermaid"]').frameLocator('iframe');
   await expect(inner.locator('body')).toHaveAttribute('data-state', 'drawn', { timeout: 15_000 });
   await expect(inner.locator('#d svg')).toBeVisible();
   await expect(inner.locator('#d svg')).toContainText('Lobby');
@@ -164,7 +165,7 @@ test('a Mermaid diagram is drawn inside its sandboxed frame; one Mermaid cannot 
   await expect(page.getByTestId('artifact-source')).toContainText('A[Lobby] --> B{Partner?}');
 
   await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${bad.artifact.id}`);
-  const broken = page.frameLocator('[data-testid="artifact-mermaid"]');
+  const broken = page.frameLocator('[data-testid="artifact-mermaid"]').frameLocator('iframe');
   await expect(broken.locator('body')).toHaveAttribute('data-state', 'failed', { timeout: 15_000 });
   await expect(broken.locator('#src')).toBeVisible();
   await expect(broken.locator('#src')).toContainText('A --> --> {{');

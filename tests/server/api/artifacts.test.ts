@@ -206,6 +206,7 @@ describe('D89 · saving', () => {
     expect(HTML_FRAME_CSP).toContain('frame-src blob:');
     expect(HTML_FRAME_CSP).toContain("frame-ancestors 'self'");
     expect(page.headers['x-content-type-options']).toBe('nosniff');
+    expect(page.headers['cache-control']).toBe('no-cache');
     const frame = page.body as unknown as string;
     // The rules are stated in the frame document too (a header can be taken off on the way), and the result carries its own just after its doctype.
     expect(frame).toContain('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'');
@@ -238,8 +239,12 @@ describe('D89 · saving', () => {
     const diagram = (await agent('POST', '/agent/v1/artifacts', { title: 'Flow <1>', kind: 'mermaid', content: 'graph TD; A-->B<script>' })).body as ArtifactSaveResult;
     const page = await ui('GET', `/api/sessions/${session}/artifacts/${diagram.artifact.id}/versions/1/raw?render`);
     expect(page.headers['content-type']).toBe('text/html; charset=utf-8');
-    expect(page.headers['content-security-policy']).toBe(HTML_ARTIFACT_CSP);
-    const html = String(page.body);
+    // D180: in the HTML result's frame document (it cannot leave), never cached.
+    expect(page.headers['content-security-policy']).toBe(HTML_FRAME_CSP);
+    expect(page.headers['cache-control']).toBe('no-cache');
+    const frame = String(page.body);
+    expect(frame).toContain('<title>Flow &lt;1&gt;</title>');
+    const html = JSON.parse(/<script type="application\/json" id="page"[^>]*>([\s\S]*?)<\/script>/.exec(frame)?.[1] ?? '""') as string;
     expect(html).toContain('<title>Flow &lt;1&gt;</title>');
     expect(html).toContain('<pre id="src">graph TD; A--&gt;B&lt;script&gt;</pre>');
     expect(html).toContain('globalThis.mermaid = { stub: "<\\/script>" };');

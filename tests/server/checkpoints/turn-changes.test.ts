@@ -55,8 +55,8 @@ async function write(file: string, content: string): Promise<void> {
 }
 
 /** D180: the session's own edit tool names `absolute` (what makes a file count to its turn). */
-async function toolNames(absolute: string, of: string = sessionId): Promise<void> {
-  await store.events.append({ sessionId: of, kind: 'impl', label: 'Write', payload: { type: 'tool', name: 'Write', input: { file_path: absolute } } });
+async function toolNames(absolute: string, of: string = sessionId, tool = 'Write'): Promise<void> {
+  await store.events.append({ sessionId: of, kind: 'impl', label: tool, payload: { type: 'tool', name: tool, input: { file_path: absolute } } });
 }
 
 /** The agent writes `file` (relative to the repo) with its Write tool. */
@@ -219,6 +219,15 @@ describe('what each turn changed (the save points before each turn)', () => {
     const files = await changes.diff(sessionId, 1, null);
     expect(files).toHaveLength(101);
     expect(files.some((file) => file.path === 'gen/mine.txt')).toBe(false);
+  });
+
+  it('D180: a turn that only deleted a file (the Codex bridge records it as a Delete tool) gets its chip', async () => {
+    const first = await turn('Delete the readme', async () => {
+      await rm(path.join(repo, 'README.md'));
+      await toolNames(path.join(repo, 'README.md'), sessionId, 'Delete');
+    });
+    expect((await changes.list(sessionId)).turns).toEqual([{ turn: 1, eventId: first.id, through: 1, files: 1, added: 0, removed: 1 }]);
+    expect((await changes.diff(sessionId, 1, 1)).map((file) => file.path)).toEqual(['README.md']);
   });
 
   it('D180: a path with glob characters is read as itself (`[draft].txt` would also match `d.txt` as a glob)', async () => {
