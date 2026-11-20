@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.1 (2026-11-20)
+
+### Agents
+- **A new side panel in the agent view:** Changes, Files and Helpers, with the agent's details behind ⓘ. ⟷ switches the panel between narrow and wide; from 760 px the list sits beside the file or diff, narrower it pops over it. See `docs/v2.md` (D180).
+  - **Changes:** one picker for a single reply, Last turn, For review, Since last save point, Whole separate copy and All unsaved; a file tree; syntax colours in the diff; Side by side when wide; comments on single lines; Mark reviewed. Each turn's "N files changed" counts only that agent's own edits.
+  - **Files:** what the agent touched (wrote, edited, read, mentioned), then the project tree with one mark per file; a reader with back and forward, a clickable path, changed lines marked, and "View changes". Markdown and HTML show rendered or as source; an HTML page's scripts are off until you allow them.
+  - **Helpers:** Needs you, Working, the finished ones folded, and the apps they left running.
+  - **Details** (ⓘ): folded groups, each with a one-line summary.
+- Thanks to a fellow developer for the design and the first version of this panel.
+
+### Security
+- **An HTML result or Mermaid diagram stays in its frame:** it is shown inside a frame document whose rules (repeated in the page itself) keep it from navigating elsewhere, and it is never cached.
+- **The frame helper keeps Switchboard's own pages protected:** it no longer removes the security header from Switchboard's own frames (only from its capability check).
 ## 2.4.52 (2026-11-18)
 
 ### Paired computers
