@@ -214,10 +214,12 @@ export function registerPeerForwarding(app: FastifyInstance, peers: PeerService)
       if (typeof value === 'string') path = path.replace(`:${name}`, encodeURIComponent(value));
     }
     // D57: an attachment is bytes: passed on with its serving headers (never parsed as JSON). D89: an artifact version's too.
-    if (request.method === 'GET' && (route === ATTACHMENT_ROUTE || route === ARTIFACT_RAW_ROUTE)) {
+    // D180 follow-up 2026-11-20: an agent file's bytes and its page view too (the serving rules, CSP included, come along).
+    if (request.method === 'GET' && (route === ATTACHMENT_ROUTE || route === ARTIFACT_RAW_ROUTE || route === AGENT_FILE_RAW_ROUTE || route === AGENT_FILE_PAGE_ROUTE)) {
       const raw = await peers.forwardRaw(machineId, `${path}${queryOf(request.url)}`);
       if (raw.bytes === null) return reply.code(raw.status).send(raw.body ?? undefined);
-      reply.code(raw.status).header('cache-control', 'private, no-cache');
+      // An agent file is read fresh each time (as on its own computer: `no-store`).
+      reply.code(raw.status).header('cache-control', route === AGENT_FILE_RAW_ROUTE || route === AGENT_FILE_PAGE_ROUTE ? 'no-store' : 'private, no-cache');
       for (const [name, value] of Object.entries(raw.headers)) reply.header(name, value);
       return reply.send(raw.bytes);
     }
@@ -231,6 +233,10 @@ const ATTACHMENT_ROUTE = '/api/sessions/:id/attachments/:attachmentId';
 
 /** D89: an artifact version's bytes (`api/artifacts.ts` → `ARTIFACT_RAW_ROUTE`; its peer answer is bytes too). */
 const ARTIFACT_RAW_ROUTE = '/api/sessions/:id/artifacts/:artifactId/versions/:n/raw';
+
+/** D180 follow-up: an agent file's bytes and its HTML page view (`api/agent-files.ts`; their peer answers are bytes). */
+const AGENT_FILE_RAW_ROUTE = '/api/sessions/:id/files/raw';
+const AGENT_FILE_PAGE_ROUTE = '/api/sessions/:id/files/page';
 
 /** `true` when the request came in through the peer API (answer this machine's own data only). */
 export function isPeerRequest(request: FastifyRequest): boolean {

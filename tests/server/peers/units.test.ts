@@ -98,6 +98,12 @@ describe('D48 peer API allow-list', () => {
     expect(peerApiAllowed('PUT', '/api/sessions/abc/profile-pin')).toBe(true);
     expect(peerApiAllowed('GET', '/api/accounts/profiles/p1')).toBe(false);
     expect(peerApiAllowed('POST', '/api/accounts/profiles/p1/other')).toBe(false);
+    // D180 follow-up 2026-11-20: an agent's files and turn changes, read only; never Open in its app.
+    for (const route of ['files', 'files/roots', 'files/dir', 'files/meta', 'files/text', 'files/raw', 'files/page', 'files/page/info', 'turn-changes', 'turn-changes/diff']) {
+      expect(peerApiAllowed('GET', `/api/sessions/s1/${route}?path=x`), route).toBe(true);
+    }
+    expect(peerApiAllowed('POST', '/api/sessions/s1/files/open')).toBe(false);
+    expect(peerApiAllowed('GET', '/api/sessions/s1/files/other')).toBe(false);
     expect(peerApiAllowed('POST', '/api/questions/batch/b/answers')).toBe(true);
     expect(peerApiAllowed('POST', '/api/inbox/i/actions/allow-once')).toBe(true);
     expect(peerApiAllowed('POST', '/api/branching/preflight')).toBe(true);

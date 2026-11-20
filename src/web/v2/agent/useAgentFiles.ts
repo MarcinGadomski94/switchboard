@@ -9,6 +9,7 @@ import type { AgentFileRef } from '../../../core/agent-files.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import type { FileLinkTarget } from '../../views/session/file-links.ts';
+import { AGENT_WORDS } from '../glossary.ts';
 
 export interface AgentFilesState {
   /** `null` while loading or after an error. */
@@ -22,8 +23,19 @@ export interface AgentFilesState {
 
 const NONE: ReadonlyMap<string, FileLinkTarget> = new Map();
 
+/**
+ * D180 follow-up 2026-11-20: a paired computer from before 2.5.4 does not have the agent-file
+ * routes on its peer API (403 `peer-forbidden`, "… is not part of the peer API").
+ */
+export function peerTooOld(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 403) return false;
+  const body = error.body as { error?: unknown; message?: unknown } | null;
+  return body?.error === 'peer-forbidden' && typeof body.message === 'string' && body.message.includes('not part of the peer API');
+}
+
 /** What a failed call says: the server's own message when it sent one. */
 export function apiErrorText(error: unknown): string {
+  if (peerTooOld(error)) return AGENT_WORDS.updateToSeeFiles(null);
   if (error instanceof ApiError) {
     const message = (error.body as { message?: unknown } | null)?.message;
     if (typeof message === 'string' && message !== '') return message;

@@ -136,6 +136,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/sessions\/[^/]+\/diff\/targets$/],
   // D90 ruling: the session tab's "Diff · n" of the view shown (a peer without it answers 404: the tab falls back to the detail's files).
   ['GET', /^\/api\/sessions\/[^/]+\/diff\/count$/],
+  // D180 follow-up 2026-11-20 (developer: "work across computers"): the side panel's Files and a turn's changes of that
+  // machine's agent, READ only, with that machine's own checks (its folders, secrets held back until asked). Never
+  // `POST …/files/open` (it would open an app on that machine): the route refuses a peer request too.
+  ['GET', /^\/api\/sessions\/[^/]+\/files(?:\/(?:roots|dir|meta|text|raw|page|page\/info))?$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/turn-changes(?:\/diff)?$/],
   // D51: a Workflow agent's conversation (its transcript on that machine).
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
   // Fix · long messages: a cut event's whole text (from the transcript on that machine).
@@ -346,7 +351,7 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */
-export const PEER_ATTACHMENT_GET = /^\/api\/sessions\/[^/]+\/(?:attachments\/[^/]+|artifacts\/[^/]+\/versions\/\d+\/raw)$/;
+export const PEER_ATTACHMENT_GET = /^\/api\/sessions\/[^/]+\/(?:attachments\/[^/]+|artifacts\/[^/]+\/versions\/\d+\/raw|files\/raw|files\/page)$/;
 
 /** `true` when the peer API may serve `method path` (`url` may carry a query). */
 export function peerApiAllowed(method: string, url: string): boolean {

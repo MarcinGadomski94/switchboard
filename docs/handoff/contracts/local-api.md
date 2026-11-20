@@ -2539,7 +2539,7 @@ Setting: `terminals.idleHours` (`PUT /api/settings`; default 12, 0 = never, at m
 
 ## The agent view's side panel (D180, 2.5.1, additive; no migration)
 
-Types: `src/core/agent-files.ts`, `src/core/turn-changes.ts`. Every route below is **local-only**: refused to a paired phone (`403 local-only`, `src/server/devices/local-only.ts`) and not on the peer listener's list (a paired computer's agent: refused there; this server answers `409 remote` when nothing forwards).
+Types: `src/core/agent-files.ts`, `src/core/turn-changes.ts`. Every route below is refused to a paired phone (`403 local-only`, `src/server/devices/local-only.ts`). A paired computer's agent (`r~<machine>~<id>`): since 2026-11-20 the GET routes are forwarded to that computer and answered there (read-only, its own checks; `files/raw` and `files/page` as bytes with their serving headers, `no-store`); `POST …/files/open` is refused to a peer (`403 peer-forbidden`). A computer from before 2.5.4 refuses the GET routes too (`403 peer-forbidden`, "… is not part of the peer API"). This server answers `409 remote` when nothing forwards.
 
 - `GET /api/sessions/{id}/files` → `AgentFileList` `{ files: AgentFileRef[], truncated }`: the files the agent's conversation touched (its tool calls, the paths its replies name). **Additive:** `AgentFileRef.at: string | null` (ISO): the newest event that touched the file (the tool call, or the reply that named it); absent from a computer before 2.5.1.
 - `GET …/files/roots` → `AgentFileRoots` (its folder, its workspace root, the repos it works in); `GET …/files/dir?path=` → `AgentDirListing` (lazy, at most `AGENT_DIR_MAX` entries).

@@ -47,7 +47,7 @@ export interface PeerRawAnswer {
 }
 
 /** D57: the headers of a peer's attachment answer that are passed on (the serving rules travel with it). */
-export const PEER_RAW_HEADERS = ['content-type', 'content-disposition', 'x-content-type-options', 'content-security-policy'] as const;
+export const PEER_RAW_HEADERS = ['content-type', 'content-disposition', 'x-content-type-options', 'content-security-policy', 'cross-origin-resource-policy', 'referrer-policy'] as const;
 
 /** Thrown when a peer cannot be reached (connection refused, timeout, no address). */
 export class PeerUnreachableError extends Error {

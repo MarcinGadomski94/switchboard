@@ -233,7 +233,7 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
  * the flows that act on this computer itself.
  */
 export const DEVICE_REFUSED: readonly DeviceRule[] = [
-  // D180 (side panel): an agent's files and what each of its turns changed are read on this computer only.
+  // D180 (side panel): an agent's files and what each of its turns changed are never a phone's (2026-11-20: a paired computer reads them, read-only, over the peer API).
   ['*', /^\/api\/sessions\/[^/]+\/files(?:\/.*)?$/],
   ['*', /^\/api\/sessions\/[^/]+\/turn-changes(?:\/.*)?$/],
   // D165: profiles are managed and switched on the computer; moving an agent between profiles too.

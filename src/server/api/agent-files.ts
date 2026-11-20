@@ -5,6 +5,7 @@ import { isRemoteId } from '../../core/peers.ts';
 import { pageFrame, pagePolicy } from '../agent-files/page.ts';
 import { AGENT_FILE_STATUS, AgentFileError, AgentFileService, type AgentFileSession, type PageOptions } from '../agent-files/service.ts';
 import type { ApiContext } from '../routes.ts';
+import { isPeerRequest } from './machines.ts';
 
 interface IdParams {
   readonly id: string;
@@ -59,12 +60,13 @@ function rangeOf(header: unknown, size: number): { readonly start: number; reado
 }
 
 /**
- * D180 · side panel Files (`src/core/agent-files.ts` is the contract). The loopback
- * UI only: a paired phone is refused by name (`DEVICE_REFUSED`,
- * `src/server/devices/local-only.ts`) and the peer listener's allow-list does not have
- * these routes (`src/server/peers/service.ts`). An agent of a paired computer: the
- * request is forwarded there first (`api/machines.ts`) and refused by that computer;
- * the 409 `remote` below is this server's own answer when nothing forwards.
+ * D180 · side panel Files (`src/core/agent-files.ts` is the contract). A paired phone is
+ * refused by name (`DEVICE_REFUSED`, `src/server/devices/local-only.ts`). D180 follow-up
+ * 2026-11-20: a paired computer reads them over the peer API (its allow-list has the GET
+ * routes, `src/server/peers/service.ts`), with the same checks; `POST …/files/open` is
+ * refused to it (it would open an app on this computer). An agent of a paired computer:
+ * the request is forwarded there (`api/machines.ts`); the 409 `remote` below is this
+ * server's own answer when nothing forwards.
  */
 export async function registerAgentFileRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, providers, config } = context;
@@ -212,6 +214,8 @@ export async function registerAgentFileRoutes(app: FastifyInstance, context: Api
   });
 
   app.post<{ Params: IdParams; Body: unknown }>('/api/sessions/:id/files/open', async (request, reply) => {
+    // Never for a paired computer (the peer API does not allow it either): it would open an app or a folder window here.
+    if (isPeerRequest(request)) return reply.code(403).send({ error: 'peer-forbidden', message: 'Opening a file in its app happens on the computer it is on.' });
     const session = await sessionOf(request.params.id, reply);
     if (!session) return reply;
     const body = (request.body ?? {}) as { path?: unknown; how?: unknown };

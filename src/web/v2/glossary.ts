@@ -2250,6 +2250,8 @@ export const AGENT_WORDS = {
   copyPath: 'Copy path',
   openInApp: 'Open in its app',
   showInFolder: 'Show in folder',
+  /** D180 follow-up: a paired computer from before 2.5.4 does not share its agents' files. */
+  updateToSeeFiles: (computer: string | null): string => `Update Switchboard on ${computer ?? 'that computer'} to see this agent’s files here.`,
   backFile: 'Back',
   forwardFile: 'Forward',
   rendered: 'Rendered',

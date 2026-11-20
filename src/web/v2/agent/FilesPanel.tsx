@@ -31,7 +31,7 @@ import { type FileSignal, addedLines, breadcrumb, changedByPath, changedUnder, f
 import { PAGE_SCRIPTS_HINT, pageFootText, pageLeftNote, pageOpensAs, pageScriptsAction } from './page-view.ts';
 import { escTarget } from './panel-layout.ts';
 import { ListButton, PanelSplit, usePanelEsc } from './PanelSplit.tsx';
-import { type AgentFilesState, apiErrorCode, apiErrorText } from './useAgentFiles.ts';
+import { type AgentFilesState, apiErrorCode, apiErrorText, peerTooOld } from './useAgentFiles.ts';
 import type { HeadDiffState } from './useHeadDiff.ts';
 
 /** The file the reader shows. */
@@ -389,9 +389,11 @@ interface ReaderProps {
   readonly onFolder: (dir: string) => void;
   readonly onViewChanges: (path: string) => void;
   readonly listButton: ReactNode;
+  /** A paired computer's agent: Open in its app / Show in folder would act on that computer (refused there): not offered. */
+  readonly remote: boolean;
 }
 
-function Reader({ sessionId, file, roots, touched, change, canBack, canForward, onBack, onForward, onFolder, onViewChanges, listButton }: ReaderProps) {
+function Reader({ sessionId, file, roots, touched, change, canBack, canForward, onBack, onForward, onFolder, onViewChanges, listButton, remote }: ReaderProps) {
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
   useEffect(() => setConfirm(false), [file.path]);
@@ -470,6 +472,7 @@ function Reader({ sessionId, file, roots, touched, change, canBack, canForward, 
           title="No preview for this kind of file"
           text={`${info.mime} · ${sizeText(info.size)} · changed ${dateText(info.modifiedAt)}`}
           action={
+            remote ? undefined : (
             <span className="v2-row" style={{ gap: 8 }}>
               {opensInApp(info.name) ? (
                 <Button size="sm" onClick={() => openWith('app')}>
@@ -480,6 +483,7 @@ function Reader({ sessionId, file, roots, touched, change, canBack, canForward, 
                 {AGENT_WORDS.showInFolder}
               </Button>
             </span>
+            )
           }
           testId="v2-file-binary"
         />
@@ -513,8 +517,8 @@ function Reader({ sessionId, file, roots, touched, change, canBack, canForward, 
           items={[
             { id: 'copy', label: AGENT_WORDS.copyPath, icon: 'copy', onSelect: copy },
             // Only what its app merely shows (documents, pictures, sound, film): never something the system could run.
-            ...(opensInApp(name) ? [{ id: 'app', label: AGENT_WORDS.openInApp, icon: 'external', onSelect: () => openWith('app') }] : []),
-            { id: 'folder', label: AGENT_WORDS.showInFolder, icon: 'folder', onSelect: () => openWith('folder') },
+            ...(!remote && opensInApp(name) ? [{ id: 'app', label: AGENT_WORDS.openInApp, icon: 'external', onSelect: () => openWith('app') }] : []),
+            ...(remote ? [] : [{ id: 'folder', label: AGENT_WORDS.showInFolder, icon: 'folder', onSelect: () => openWith('folder') }]),
           ]}
           anchor={moreAnchor}
           open={moreOpen}
@@ -591,9 +595,11 @@ export interface FilesPanelProps {
   readonly onOpen: (file: OpenFile) => void;
   readonly onClose: () => void;
   readonly onViewChanges: (path: string) => void;
+  /** D180 follow-up 2026-11-20: the paired computer an agent runs on (its files are read from there; nothing opens in an app here). `null`: this computer. */
+  readonly computer?: string | null;
 }
 
-export function FilesPanel({ sessionId, files, head, wide, backToList, open, onOpen, onClose, onViewChanges }: FilesPanelProps) {
+export function FilesPanel({ sessionId, files, head, wide, backToList, open, onOpen, onClose, onViewChanges, computer = null }: FilesPanelProps) {
   const [tab, update] = useFilesTab(sessionId);
   const scroll = useKeptScroll(sessionId);
   const [filter, setFilter] = useState('');
@@ -790,7 +796,8 @@ export function FilesPanel({ sessionId, files, head, wide, backToList, open, onO
     <div className="v2-ag-files2" ref={listRef} data-testid="v2-side-files">
       <input className="v2-field v2-ag-files-filter" type="search" placeholder={AGENT_WORDS.filterFiles} aria-label="Filter the files" value={filter} onChange={(event) => setFilter(event.target.value)} data-testid="v2-files-filter" />
       <div className="v2-ag-files-scroll" ref={scroll.ref} onScroll={scroll.onScroll}>
-        {files.error && files.files === null ? <p className="v2-ag-small v2-ag-files-pad">{files.error}</p> : null}
+        {/* The tree says it once when that computer is too old (the touched list fails the same way). */}
+        {files.error && files.files === null && !(fetched.error && peerTooOld(fetched.error)) ? <p className="v2-ag-small v2-ag-files-pad">{files.error}</p> : null}
         {files.files && files.files.length > 0 ? (
           <section className="v2-ag-files-touched" aria-label={AGENT_WORDS.touchedByAgent} data-testid="v2-files-touched">
             <h4 className="v2-ag-files-h">
@@ -829,7 +836,11 @@ export function FilesPanel({ sessionId, files, head, wide, backToList, open, onO
           </section>
         ) : null}
         <div className="v2-ag-tree" data-testid="v2-files-tree">
-          {fetched.error && roots === null ? <p className="v2-ag-small v2-ag-files-pad">{apiErrorText(fetched.error)}</p> : null}
+          {fetched.error && roots === null ? (
+            <p className="v2-ag-small v2-ag-files-pad" data-testid="v2-files-error">
+              {peerTooOld(fetched.error) ? AGENT_WORDS.updateToSeeFiles(computer) : apiErrorText(fetched.error)}
+            </p>
+          ) : null}
           {roots === null && !fetched.error ? (
             <div className="v2-ag-files-pad">
               <Skeleton lines={5} height={14} />
@@ -865,6 +876,7 @@ export function FilesPanel({ sessionId, files, head, wide, backToList, open, onO
       onFolder={showFolder}
       onViewChanges={onViewChanges}
       listButton={listButton}
+      remote={computer !== null}
     />
   ) : null;
   return <PanelSplit panel="files" wide={wide} docked={docked} popover={popover} onClosePopover={() => setPopover(false)} list={list} content={reader} testId="v2-side-files-split" />;
