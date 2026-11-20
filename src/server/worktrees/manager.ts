@@ -52,7 +52,7 @@ import type { SessionWorksIn, WorksInEvidence as WorksInEvidenceKind, WorksInRep
 import { type EvidenceCounts, evidenceKinds, rankByEvidence } from '../../core/works-in-evidence.ts';
 import { WorksInEvidence } from './works-in.ts';
 import { redactUrl } from '../../core/takeover.ts';
-import { SessionTouchedFiles, canonicalPath } from './touched.ts';
+import { SessionTouchedFiles, canonicalPath, editedAbsolute, insideRelative } from './touched.ts';
 import { CheckpointGit } from '../checkpoints/git.ts';
 import { type ReviewPending, readSessionReview } from '../../core/review.ts';
 import { toWorktree } from './wire.ts';
@@ -1473,6 +1473,8 @@ export class WorktreeManager implements DiffProvider {
         return [];
       }
     });
+    // 2026-11-20 (D174 follow-up): the review's files in no git working tree (a workspace folder's own files).
+    if (review !== null) per.push(await this.#reviewLoose(session, review, file).catch((error: unknown) => (this.#onError(error), [])));
     return per.flat();
   }
 
@@ -1538,7 +1540,9 @@ export class WorktreeManager implements DiffProvider {
         return 0;
       }
     });
-    return { scope: shown, files: counts.reduce((sum, n) => sum + n, 0) };
+    // 2026-11-20 (D174 follow-up): and the review's files in no git working tree.
+    const loose = shown === 'review' && review !== null ? (await this.#reviewLoose(session, review, undefined).catch((error: unknown) => (this.#onError(error), []))).length : 0;
+    return { scope: shown, files: counts.reduce((sum, n) => sum + n, 0) + loose };
   }
 
   /** {@link #diffTarget}'s file count from names only. */
@@ -1755,6 +1759,35 @@ export class WorktreeManager implements DiffProvider {
     const untrackedPaths = new Set(succeeded(untracked) ? splitNulList(untracked.stdout) : []);
     const branch = target.branch ?? (await this.#currentBranch(target.dir));
     return parsed.map((entry) => toFileDiff(target.solution, branch, entry, dirty === null || dirty.has(entry.path) || untrackedPaths.has(entry.path)));
+  }
+
+  /**
+   * D174 follow-up (2026-11-20, `docs/worktrees.md` → *For review (D174)*): the review's files
+   * (as its tool calls named them, at most `REVIEW_FILES_MAX`) that lie inside the session's
+   * folder but in **no git working tree** (a workspace folder's own files: a report, a note),
+   * each shown as a new file with its content now (git has no earlier version to compare). A
+   * file in a repository is left to that repository's diff; a file gone or outside the folder,
+   * out. Before, such a review's For review was empty ("Open changes shows nothing").
+   */
+  async #reviewLoose(session: SessionRecord, review: ReviewPending, file: string | undefined): Promise<FileDiff[]> {
+    const folder = session.root ?? session.cwd;
+    const top = folder ? await realOrNull(folder) : null;
+    if (top === null) return [];
+    const out: FileDiff[] = [];
+    const seen = new Set<string>();
+    for (const written of review.files) {
+      const absolute = editedAbsolute(session, written);
+      if (absolute === null) continue;
+      const canonical = await canonicalPath(absolute);
+      const relative = insideRelative(top, canonical);
+      if (relative === null || seen.has(relative) || (file !== undefined && file !== relative)) continue;
+      seen.add(relative);
+      if ((await topOfDir(path.dirname(canonical))) !== null) continue;
+      const info = await lstat(canonical).catch(() => null);
+      if (!info?.isFile()) continue;
+      out.push(toFileDiff(path.basename(top), null, await this.#untracked(top, relative), true));
+    }
+    return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   }
 
   /**
