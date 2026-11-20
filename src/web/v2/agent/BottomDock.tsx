@@ -1,4 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { parseRemoteId } from '../../../core/peers.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { Button, Segmented } from '../components/index.ts';
 import { DOCK_WORDS as W } from '../glossary.ts';
@@ -6,9 +7,10 @@ import { TerminalView } from '../terminals/TerminalView.tsx';
 import '../terminals/terminals.css';
 import { type DockMode, type DockSettings, clampDockHeight, dockModes, loadDock, saveDock, showsTerminal, shownDockMode, toggledDockMode } from './bottom-dock.ts';
 import { browserStorage } from './useAgent.ts';
+import { peerTooOld } from './useAgentFiles.ts';
 
 /** The terminal's state: none yet, starting, running (its id), or failed (why). */
-type AgentTerminal = { readonly kind: 'none' } | { readonly kind: 'starting' } | { readonly kind: 'open'; readonly id: string } | { readonly kind: 'failed'; readonly message: string };
+type AgentTerminal = { readonly kind: 'none' } | { readonly kind: 'starting' } | { readonly kind: 'open'; readonly id: string } | { readonly kind: 'failed'; readonly message: string } | { readonly kind: 'too-old' };
 
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -25,8 +27,14 @@ function errorText(error: unknown): string {
  * first time it is shown, kept while you stay in the conversation (switching back to Message only
  * hides it) and closed when you leave it. Ctrl+` shows or hides it. `children` is the message box,
  * kept mounted (its draft stays) while the terminal fills the bottom.
+ *
+ * D182 follow-up 2026-11-20: a paired computer's agent (`r~<machine>~<id>`): the start is forwarded to
+ * that computer (the terminal runs there, in the agent's folder); its socket and its close go through
+ * the paired-machine proxy (`/api/machines/{machine}/api/terminals/{id}…`). `computer` names it in the
+ * "update Switchboard there" note of a computer from before 2.5.5.
  */
-export function BottomDock({ sessionId, phone, refusal, children }: { readonly sessionId: string; readonly phone: boolean; readonly refusal: string | null; readonly children: ReactNode }) {
+export function BottomDock({ sessionId, phone, refusal, computer = null, children }: { readonly sessionId: string; readonly phone: boolean; readonly refusal: string | null; readonly computer?: string | null; readonly children: ReactNode }) {
+  const machine = parseRemoteId(sessionId)?.machineId ?? null;
   const [settings, setSettings] = useState<DockSettings>(() => loadDock(browserStorage()));
   const update = useCallback((next: DockSettings): void => {
     setSettings(next);
@@ -44,7 +52,7 @@ export function BottomDock({ sessionId, phone, refusal, children }: { readonly s
         openId.current = info.id;
         setTerminal({ kind: 'open', id: info.id });
       },
-      (caught: unknown) => setTerminal({ kind: 'failed', message: errorText(caught) }),
+      (caught: unknown) => (peerTooOld(caught) ? setTerminal({ kind: 'too-old' }) : setTerminal({ kind: 'failed', message: errorText(caught) })),
     );
   }, [sessionId]);
   useEffect(() => {
@@ -54,10 +62,10 @@ export function BottomDock({ sessionId, phone, refusal, children }: { readonly s
     () => () => {
       const id = openId.current;
       openId.current = null;
-      // The server closes it by itself shortly after its last tab anyway (AGENT_TERMINAL_GRACE_MS).
-      if (id) void machineApi(null).closeTerminal(id).catch(() => undefined);
+      // The server closes it by itself shortly after its last tab anyway (AGENT_TERMINAL_GRACE_MS); a paired computer's, there.
+      if (id) void machineApi(machine).closeTerminal(id).catch(() => undefined);
     },
-    [],
+    [machine],
   );
 
   // Ctrl+`: the terminal when it isn't shown, the message box when it is.
@@ -113,8 +121,13 @@ export function BottomDock({ sessionId, phone, refusal, children }: { readonly s
       ) : null}
       {terminal.kind !== 'none' ? (
         <div className="v2-ag-bottom-term" hidden={!terminalShown} style={height !== undefined ? { height } : undefined} data-testid="v2-agent-terminal" data-terminal-id={terminal.kind === 'open' ? terminal.id : undefined}>
-          {terminal.kind === 'open' ? <TerminalView machine={null} id={terminal.id} phone={phone} /> : null}
+          {terminal.kind === 'open' ? <TerminalView machine={machine} id={terminal.id} phone={phone} /> : null}
           {terminal.kind === 'starting' ? <div className="v2-ag-bottom-note" role="status">{W.starting}</div> : null}
+          {terminal.kind === 'too-old' ? (
+            <div className="v2-ag-bottom-note" role="status" data-testid="v2-agent-terminal-too-old">
+              {W.updateToOpen(computer)}
+            </div>
+          ) : null}
           {terminal.kind === 'failed' ? (
             <div className="v2-ag-bottom-note" role="alert" data-testid="v2-agent-terminal-error">
               {W.failed(terminal.message)}{' '}

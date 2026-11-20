@@ -77,9 +77,11 @@ export function toggledDockMode(mode: DockMode): DockMode {
   return showsTerminal(mode) ? 'message' : 'terminal';
 }
 
-/** Why the agent's terminal can't open from here (`null` = it can); while the agent loads, not yet. */
-export function agentTerminalRefusal(agent: { readonly remote: boolean; readonly closed: boolean; readonly missing: boolean }): string | null {
-  if (agent.remote) return 'This agent runs on another computer: open a terminal there (Terminals → New terminal, that computer).';
+/**
+ * Why the agent's terminal can't open from here (`null` = it can); while the agent loads, not yet.
+ * D182 follow-up 2026-11-20: a paired computer's agent can (its terminal starts on that computer).
+ */
+export function agentTerminalRefusal(agent: { readonly closed: boolean; readonly missing: boolean }): string | null {
   if (agent.closed) return 'This agent is archived.';
   if (agent.missing) return 'Loading…';
   return null;

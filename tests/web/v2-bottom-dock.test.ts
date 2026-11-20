@@ -58,10 +58,9 @@ describe('D182 · the bottom dock', () => {
     expect(clampDockHeight(400, 40)).toBe(DOCK_MIN_HEIGHT);
   });
 
-  it('refuses the terminal for a paired computer’s agent, an archived one, and until the agent has loaded', () => {
-    expect(agentTerminalRefusal({ remote: false, closed: false, missing: false })).toBeNull();
-    expect(agentTerminalRefusal({ remote: true, closed: false, missing: false })).toContain('another computer');
-    expect(agentTerminalRefusal({ remote: false, closed: true, missing: false })).toContain('archived');
-    expect(agentTerminalRefusal({ remote: false, closed: false, missing: true })).not.toBeNull();
+  it('refuses the terminal for an archived agent and until the agent has loaded; a paired computer’s agent gets one (D182 follow-up)', () => {
+    expect(agentTerminalRefusal({ closed: false, missing: false })).toBeNull();
+    expect(agentTerminalRefusal({ closed: true, missing: false })).toContain('archived');
+    expect(agentTerminalRefusal({ closed: false, missing: true })).not.toBeNull();
   });
 });

@@ -711,6 +711,8 @@ export const DOCK_WORDS = {
   bothTitle: 'The terminal above the message box',
   starting: 'Starting the terminal…',
   failed: (why: string): string => `The terminal couldn’t start: ${why}`,
+  /** D182 follow-up: a paired computer from before 2.5.5 has no agent terminal on its peer API. */
+  updateToOpen: (computer: string | null): string => `Update Switchboard on ${computer ?? 'that computer'} to open this agent’s terminal here.`,
   tryAgain: 'Try again',
   resize: 'Resize the terminal',
 } as const;

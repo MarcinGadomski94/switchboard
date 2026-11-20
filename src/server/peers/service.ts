@@ -174,6 +174,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/terminals(?:\/[^/]+)?$/],
   ['POST', /^\/api\/terminals$/],
   ['DELETE', /^\/api\/terminals\/[^/]+$/],
+  // D182 follow-up 2026-11-20: the terminal at the bottom of that computer's agent's conversation (started there, in the
+  // agent's folder, with its own checks); its socket and close are D170's above.
+  ['POST', /^\/api\/sessions\/[^/]+\/terminal$/],
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/questions\/batch\/[^/]+\/answers$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

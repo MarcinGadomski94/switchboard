@@ -24,8 +24,11 @@ import { TerminalError, type TerminalProgram, type TerminalService, availableShe
  * - D182 `POST /api/sessions/{id}/terminal` `{ shell?, cols?, rows? }` → 201 the terminal at the bottom
  *   of the agent's conversation, in the agent's folder (`cwd`, else its root) on this computer: not
  *   listed, closed {@link AGENT_TERMINAL_GRACE_MS} after its last tab (the page also closes it when you
- *   leave). 409 `remote` (a paired computer's agent), `closed`, `folder-missing`; 404 another
- *   profile's agent (the D165 guard) or none.
+ *   leave). 409 `closed`, `folder-missing`; 404 another profile's agent (the D165 guard) or none.
+ *   D182 follow-up 2026-11-20: a paired computer's agent (`r~<machine>~<id>`) is forwarded to its
+ *   computer like every session route (on the peer API there): the terminal starts there, in the
+ *   agent's folder, and is reached through `/api/machines/{machineId}/api/terminals/{id}…` (socket, close).
+ *   409 `remote` only for a remote id that reached this handler unforwarded (a peer's own request).
  * - `GET /api/machines/{machineId}/api/terminals/{id}/socket` (WebSocket): a paired computer's
  *   terminal, piped through the peer link (`/peer/v1/terminals/{id}/socket`). Its other routes go
  *   through the paired-machine proxy as `/api/machines/{machineId}/api/terminals…`.
@@ -126,6 +129,7 @@ export async function registerTerminalRoutes(
     try {
       const scope = request.userProfileScope;
       if (scope === null) throw new TerminalError(403, 'choose-profile', 'Choose a profile first.');
+      // A paired computer's agent is forwarded before this handler (registerPeerForwarding); only a peer's own request gets here with one.
       if (isRemoteId(request.params.id)) throw new TerminalError(409, 'remote', 'This agent runs on another computer: open a terminal there.');
       const record = options.session ? await options.session(request.params.id) : null;
       if (!record) throw new TerminalError(404, 'not-found', `no agent ${request.params.id}`);

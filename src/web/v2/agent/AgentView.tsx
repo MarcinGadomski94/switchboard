@@ -423,7 +423,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
                     />
                   </TurnChangesContext.Provider>
                   {/* D182: the message box, the agent's terminal, or both; a new agent is a new bottom (the last one's terminal closes). */}
-                  <BottomDock key={sessionId} sessionId={sessionId} phone={phone} refusal={agentTerminalRefusal({ remote, closed: data.closed, missing: data.session === null })}>
+                  <BottomDock key={sessionId} sessionId={sessionId} phone={phone} refusal={agentTerminalRefusal({ closed: data.closed, missing: data.session === null })} computer={remote ? (data.session?.machine?.name ?? null) : null}>
                     <Dock
                       data={data}
                       queued={split.queued}

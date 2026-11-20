@@ -19,10 +19,11 @@ A terminal keeps running when you leave its page. Before 2.5.2 the Terminals pag
 
 Under an agent's conversation, **Message | Terminal | Both** switches between the message box, a terminal, or both at once (the terminal above the message box; drag the line between them; Ctrl+` shows or hides the terminal; the choice and the height are remembered in this browser; a phone has the two tabs only).
 
-- **Where:** the default shell in the agent's folder (its working folder: the workspace root for a workspace agent), on this computer, in the agent's profile. `POST /api/sessions/{id}/terminal` → the terminal (its socket, input and close are the ones above).
+- **Where:** the default shell in the agent's folder (its working folder: the workspace root for a workspace agent), **on the computer the agent runs on**, in the agent's profile. `POST /api/sessions/{id}/terminal` → the terminal (its socket, input and close are the ones above).
+- **A paired computer's agent** (2026-11-20): the start is forwarded to that computer (the route is on the peer API there), so the terminal runs there, in the agent's folder, with that computer's checks; this page reaches it like any terminal on a paired computer (*Paired computers* below: the socket through `/api/machines/{machine}/api/terminals/{id}/socket`, the Close as `DELETE /api/machines/{machine}/api/terminals/{id}`). Leaving the conversation closes it there; a dropped connection closes it there after the grace. A computer on an older Switchboard says "Update Switchboard on … to open this agent's terminal here".
 - **When:** it starts the first time Terminal or Both is shown. Back to Message only hides it. **Leaving the conversation closes it** (another agent or page, or the agent's CLI / Results / Timeline tab); a closed browser tab or a lost connection closes it 20 s after its last tab (`AGENT_TERMINAL_GRACE_MS`), so a reload reconnects.
-- **Not on the Terminals page** (it lives with its conversation); it counts toward the 16.
-- **Not for** a paired computer's agent (open a terminal on that computer from the Terminals page), an archived agent, or an agent whose folder is gone.
+- **Not on the Terminals page** (it lives with its conversation); it counts toward the 16 of the computer it runs on.
+- **Not for** an archived agent, or an agent whose folder is gone.
 
 ## Limits and settings
 

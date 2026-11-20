@@ -2519,6 +2519,7 @@ Scope: the lists answer only the request's profile; a route keyed by another pro
 | DELETE | /api/terminals/{id} | — | 204 (its program and every attached socket end) · 404 |
 | GET (WebSocket) | /api/terminals/{id}/socket | — | the terminal (frames below) |
 | GET (WebSocket) | /api/machines/{machineId}/api/terminals/{id}/socket | — | a paired computer's terminal, piped through `/peer/v1/terminals/{id}/socket` (bearer, the requester's profile) |
+| POST | /api/sessions/{id}/terminal | `{ shell?, cols?, rows? }` | D182: 201 `TerminalInfo` (`sessionId` set; not listed by `GET /api/terminals`; closed 20 s after its last socket) in the agent's folder, on the agent's computer · 403 `choose-profile` · 404 (another profile's agent, none) · 409 `closed` / `folder-missing` · 422 `no-shell`. On `DEVICE_ALLOWED`; since 2026-11-20 on `PEER_API_ALLOW` too: an `r~<machine>~<id>` agent is forwarded to its computer, and its terminal is then reached as `/api/machines/{machine}/api/terminals/{id}…` (an older computer answers 403 `peer-forbidden`) |
 
 `TerminalInfo` `{ id, title, shell, cwd, cols, rows, createdAt, lastActiveAt, clients, exited: { code, signal } \| null }`.
 
