@@ -11,7 +11,9 @@ import { useV2Router } from '../nav.tsx';
 import type { AgentTab, V2Route } from '../routes.ts';
 import { markRecent } from '../shared/recent.ts';
 import { useShortcut } from '../shell/shortcuts.ts';
-import { ChangesPanel } from './ChangesPanel.tsx';
+import { type ChangesFocus, ChangesPanel } from './ChangesPanel.tsx';
+import { isWide, toggledWidth } from './panel-layout.ts';
+import { useHeadDiff } from './useHeadDiff.ts';
 import type { ChangesView } from './changes-view.ts';
 import { ChatPane } from './ChatPane.tsx';
 import { CliTab } from './CliTab.tsx';
@@ -154,12 +156,12 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
     leavePanelRoute();
   }, [panelRoute, openSide, leavePanelRoute]);
   const review = data.session && !data.session.closedAt ? (data.session.review ?? null) : null;
-  // Opened while a review waits: what changed since the last one. Decided when the agent's detail is there (a tab that never showed this agent has none yet).
+  // D180: opened by its route (the To review strip's or card's Open changes, which picked For review with showReviewScope; the header's Changes): the Diff's own view, not a turn picked before.
   useEffect(() => {
-    if (!openedByRoute || data.session === null) return;
-    if (review !== null) setChangesView({ kind: 'review' });
+    if (!openedByRoute) return;
+    setChangesView({ kind: 'scope' });
     setOpenedByRoute(false);
-  }, [openedByRoute, data.session, review]);
+  }, [openedByRoute]);
   // SPIKE: the helpers. An agent that has (or had) a helper or a run gets the panel's Helpers tab; the header's Helpers tab and every link to a helper's own chat open there, beside the main chat.
   const hasHelpers = (data.session?.agents ?? []).some((agent) => agent.kind !== 'main') || (data.session?.workflows ?? []).length > 0;
   // A helper's own chat keeps its address (`…/helpers/:helperId`): Back closes it, a reload keeps it, and its link opens in a new browser tab as any link does. The panel shows it under Helpers.
@@ -306,22 +308,58 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const missing = data.detailError?.status === 404;
   const onSave = (text: string, kind: 'markdown' | 'code', language: string | null): void => openSaveResult({ sessionId, text, kind, language });
 
-  const details = <SidePanel data={data} helperHref={helperHref} helpersElsewhere={tabbed && hasHelpers} />;
+  const details = <SidePanel data={data} helperHref={helperHref} helpersElsewhere={tabbed && hasHelpers} folded={tabbed} />;
   // What the panel shows: the remembered tab, or Changes while that one has nothing for this agent.
   const sideTab = shownSideTab(side.tab, { helpers: helpersTab });
-  // SPIKE: the panel's tabs and what they show: beside the chat on a desktop, in the drawer on a tablet-wide window.
+  // D180: wide (≥ 760 px) the list sits beside the file or diff; the tablet drawer is narrow.
+  const wide = desktop && isWide(sideWidth);
+  /** Counts clicks on the tab already shown: Files and Changes go back to their list. */
+  const [again, setAgain] = useState<{ readonly tab: SideTab; readonly n: number }>({ tab: 'changes', n: 0 });
+  const backTo = (tab: SideTab): number => (again.tab === tab ? again.n : 0);
+  // D180: one `head` diff for Files' signals and Changes' Since last save point, read only while one of them shows.
+  const head = useHeadDiff(sessionId, tabbed && sideShown && (sideTab === 'files' || sideTab === 'changes'));
+  // D180: "View changes" from Files: Changes on that file, Since last save point.
+  const [changesFocus, setChangesFocus] = useState<ChangesFocus | null>(null);
+  const viewChanges = useCallback(
+    (path: string): void => {
+      setChangesView({ kind: 'scope' });
+      setChangesFocus((current) => ({ path, n: (current?.n ?? 0) + 1 }));
+      openSide('changes');
+    },
+    [openSide],
+  );
+  /** D180: a helper failed: a red dot on the Helpers tab. */
+  const helperFailed = (data.session?.agents ?? []).some((agent) => agent.kind !== 'main' && agent.status === 'fail');
+  // The panel's tabs and what they show: beside the chat on a desktop, in the drawer on a tablet-wide window.
   const sideTabs = (
     <Tabs<SideTab>
       label="Side panel"
       value={sideTab}
-      onChange={(next) => setSide({ ...side, tab: next })}
+      onChange={(next) => {
+        if (next === sideTab) setAgain((current) => ({ tab: next, n: current.tab === next ? current.n + 1 : 1 }));
+        else setSide({ ...side, tab: next });
+      }}
       panelId="v2-agent-side-pane"
       testId="v2-agent-side-tabs"
       tabs={[
-        { id: 'changes', label: 'Changes', ...(changes ? { count: changes } : {}) },
-        { id: 'files', label: 'Files', ...(files.files && files.files.length > 0 ? { count: files.files.length } : {}) },
-        // Only for an agent that has helpers; the count is those at work now.
-        ...(helpersTab ? [{ id: 'helpers' as const, label: AGENT_WORDS.helpers, ...(counts.helpers ? { count: counts.helpers } : {}) }] : []),
+        { id: 'changes', label: 'Changes', tour: 'v2-side-tabs', ...(changes ? { count: changes } : {}) },
+        { id: 'files', label: 'Files' },
+        // Only for an agent that has helpers; the count is those at work now, the red dot a failed one.
+        ...(helpersTab
+          ? [
+              {
+                id: 'helpers' as const,
+                tour: 'v2-side-helpers',
+                label: (
+                  <>
+                    {AGENT_WORDS.helpers}
+                    {helperFailed ? <span className="v2-side-dot" role="img" aria-label={AGENT_WORDS.helperFailed} data-testid="v2-side-helpers-failed" /> : null}
+                  </>
+                ),
+                ...(counts.helpers ? { count: counts.helpers } : {}),
+              },
+            ]
+          : []),
         // Details is the ⓘ at the end of the row (its name is for screen readers and the tooltip).
         { id: 'details', icon: 'info', label: <span className="v2-sr">{AGENT_WORDS.details}</span>, title: AGENT_WORDS.details },
       ]}
@@ -339,11 +377,15 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
           view={changesView}
           onView={setChangesView}
           turns={turnChanges}
+          head={head}
+          wide={wide}
+          backToList={backTo('changes')}
+          focus={changesFocus}
           onSendComments={sendComments}
           sendBlocked={data.blocked ?? (data.closed ? 'This agent is archived: it takes no messages.' : null)}
         />
       ) : null}
-      {sideTab === 'files' ? <FilesPanel sessionId={sessionId} files={files} open={openFile} onOpen={setOpenFile} onClose={() => setOpenFile(null)} /> : null}
+      {sideTab === 'files' ? <FilesPanel sessionId={sessionId} files={files} head={head} wide={wide} backToList={backTo('files')} open={openFile} onOpen={setOpenFile} onClose={() => setOpenFile(null)} onViewChanges={viewChanges} /> : null}
     </div>
   );
   return (
@@ -420,6 +462,14 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
           />
           <div className="v2-ag-side-top">
             {sideTabs}
+            {/* D180: ⟷ switches the panel between 560 and 820 px (clamped by the room the view has). */}
+            <IconButton
+              icon={wide ? 'narrow' : 'widen'}
+              label={wide ? AGENT_WORDS.panelNarrower : AGENT_WORDS.panelWider}
+              onClick={() => setSide({ ...side, width: clampSide(toggledWidth(sideWidth, sideMax(viewWidth)), viewWidth) })}
+              data-tour="v2-side-width"
+              data-testid="v2-agent-side-width"
+            />
             <IconButton icon="x" label={`${AGENT_WORDS.hideSidePanel} (⌘.)`} onClick={toggleSide} />
           </div>
           {sidePane}

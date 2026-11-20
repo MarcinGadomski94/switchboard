@@ -70,10 +70,13 @@ export async function registerAgentFileRoutes(app: FastifyInstance, context: Api
   const { store, providers, config } = context;
   const service = new AgentFileService({
     worksIn: async (id) => (providers.diff?.worksIn ? providers.diff.worksIn(id) : { repos: [] }),
-    toolPaths: (id, names) => store.events.editedFilePaths(id, names),
+    toolPaths: (id, names) => store.events.editedFilePathTimes(id, names),
     replyTexts: async (id, limit) => {
       const events = await store.events.assistantTextsNewestFirst(id, { agentId: null, words: [], limit });
-      return events.map((event) => (event.payload as { text?: unknown } | null)?.text).filter((text): text is string => typeof text === 'string' && text !== '');
+      return events.flatMap((event) => {
+        const text = (event.payload as { text?: unknown } | null)?.text;
+        return typeof text === 'string' && text !== '' ? [{ text, at: event.ts }] : [];
+      });
     },
     platform: process.platform,
     openPrefix: config.openCommand,

@@ -1,21 +1,25 @@
 /**
- * SPIKE · side panel: what each turn changed (contract and limits: `src/core/turn-changes.ts`).
- * Throwaway: no decision, no docs entry yet.
+ * D180 · side panel: what each turn changed (contract and limits: `src/core/turn-changes.ts`).
  *
  * Reads only: the turn rows of `turn_checkpoints` and their trees (D80). "Now" is a
  * snapshot taken the way a save point is (`CheckpointGit.snapshot`: a throw-away
  * index, so the developer's index, HEAD and files are never touched; it adds objects
  * to the repo for content git has not seen, as every save point does).
+ *
+ * D180 (the developer, 2026-11-20): a turn's changes are only this agent's: the files its own
+ * edit tools (Write, Edit, MultiEdit, NotebookEdit) named during the turn. Another agent or a
+ * person editing the same working tree meanwhile does not count to it.
  */
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDiff } from '../../core/api.ts';
-import { readSessionReview } from '../../core/review.ts';
 import type { TurnChange, TurnChanges, TurnChangesErrorCode } from '../../core/turn-changes.ts';
 import { parsePatch, toFileDiff } from '../../core/worktrees.ts';
 import type { CheckpointRecord } from '../db/repos/checkpoints.ts';
+import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { mapLimit } from '../map-limit.ts';
+import { EDIT_TOOLS, canonicalPath, editedAbsolute, insideRelative } from '../worktrees/touched.ts';
 import { CheckpointGit, type TreeSnapshot } from './git.ts';
 
 /** HTTP status per error code. */
@@ -35,6 +39,11 @@ export function treeLabels(tops: readonly string[]): Map<string, string> {
     labels.set(top, (uses.get(name) ?? 0) > 1 ? `${path.basename(path.dirname(top))}/${name}` : name);
   }
   return labels;
+}
+
+/** D180: git's arguments that limit a diff to `paths` (literal, never globs); none for `null` (the whole tree). */
+export function pathspec(paths: readonly string[] | null): string[] {
+  return paths === null ? [] : ['--', ...paths.map((file) => `:(literal)${file}`)];
 }
 
 /** A refusal the route turns into `{ error, message }`. */
@@ -141,12 +150,31 @@ export class TurnChangesService {
     }
   }
 
-  /** How many files and lines differ between two trees; `null` when git cannot say (a tree is gone). */
-  async #count(top: string, from: string, to: string): Promise<Counts | null> {
-    const key = `${from}\u0000${to}`;
+  /**
+   * D180: the files this agent's own edit tools named in the events after `afterEventId` and
+   * before `beforeEventId` (`null`: until now), as paths inside the working tree `top`
+   * (`/`-separated). `null` when the turn's message is unknown (`afterEventId` null): then the
+   * whole tree counts, as before.
+   */
+  async #own(session: Pick<SessionRecord, 'id' | 'cwd'>, top: string, afterEventId: number | null, beforeEventId: number | null): Promise<string[] | null> {
+    if (afterEventId === null) return null;
+    const repo = await canonicalPath(top);
+    const out = new Set<string>();
+    for (const written of await this.#store.events.editedFilePathsBetween(session.id, EDIT_TOOLS, afterEventId, beforeEventId)) {
+      const absolute = editedAbsolute(session, written);
+      if (absolute === null) continue;
+      const relative = insideRelative(repo, await canonicalPath(absolute));
+      if (relative !== null) out.add(relative);
+    }
+    return [...out].sort();
+  }
+
+  /** How many files and lines differ between two trees (`own`: only those paths); `null` when git cannot say (a tree is gone). */
+  async #count(top: string, from: string, to: string, own: readonly string[] | null): Promise<Counts | null> {
+    const key = `${from}\u0000${to}\u0000${own === null ? '*' : own.join('\u0000')}`;
     const known = this.#counts.get(key);
     if (known) return known;
-    const result = await this.#git.try(top, ['diff-tree', '-r', '-z', '--no-renames', '--numstat', from, to]);
+    const result = await this.#git.try(top, ['diff-tree', '-r', '-z', '--no-renames', '--numstat', from, to, ...pathspec(own)]);
     if (!result.ok) return null;
     let files = 0;
     let added = 0;
@@ -175,15 +203,17 @@ export class TurnChangesService {
     const byRepo = await this.#rows(sessionId);
     const latestTurn = await this.#store.events.countUserMessages(sessionId);
 
-    // Per working tree: each save point against where its turn ended, else the next save point, else (the newest) the files now.
+    // Per working tree: each save point against where its turn ended, else the next save point, else (the newest) the files now; only the files this agent edited in those turns (D180).
     const perRepo = await mapLimit([...byRepo], REPO_CONCURRENCY, async ([top, rows]): Promise<TurnChange[]> => {
       const found: TurnChange[] = [];
       try {
         for (const [index, row] of rows.entries()) {
           const next = rows[index + 1];
+          const own = await this.#own(session, top, row.eventId, next?.eventId ?? null);
+          if (own !== null && own.length === 0) continue;
           const toTree = (await this.#ended(sessionId, row, next)) ?? (next ? next.tree : ((await this.#now(top))?.tree ?? null));
           if (toTree === null || toTree === row.tree) continue;
-          const counts = await this.#count(top, row.tree, toTree);
+          const counts = await this.#count(top, row.tree, toTree, own);
           if (!counts || counts.files === 0) continue;
           found.push({ turn: row.turnSeq, eventId: row.eventId, through: next ? next.turnSeq - 1 : Math.max(latestTurn, row.turnSeq), ...counts });
         }
@@ -201,27 +231,7 @@ export class TurnChangesService {
       );
     }
 
-    return { turns: [...merged.values()].sort((a, b) => a.turn - b.turn), latestTurn, reviewFrom: await this.#reviewFrom(readSessionReview(session.review).pending?.since ?? null, byRepo) };
-  }
-
-  /**
-   * D166: the turn the pending review starts at: the newest turn with a save point
-   * that began before the review's first turn ended (`since`). A turn begins with its
-   * message (the event's time): the save point's own row is stored in the background
-   * and can be later than a quick turn's end.
-   */
-  async #reviewFrom(since: string | null, byRepo: ReadonlyMap<string, readonly CheckpointRecord[]>): Promise<number | null> {
-    if (since === null) return null;
-    const sinceMs = Date.parse(since);
-    const turns = new Map<number, CheckpointRecord>();
-    for (const rows of byRepo.values()) {
-      for (const row of rows) if (!turns.has(row.turnSeq) || (turns.get(row.turnSeq)?.eventId === null && row.eventId !== null)) turns.set(row.turnSeq, row);
-    }
-    for (const turn of [...turns.keys()].sort((a, b) => b - a)) {
-      const row = turns.get(turn);
-      if (row && (await this.#began(row)) <= sinceMs) return turn;
-    }
-    return null;
+    return { turns: [...merged.values()].sort((a, b) => a.turn - b.turn), latestTurn };
   }
 
   /**
@@ -242,7 +252,7 @@ export class TurnChangesService {
     const problems: string[] = [];
     const perRepo = await mapLimit([...byRepo], REPO_CONCURRENCY, async ([top, rows]): Promise<FileDiff[]> => {
       try {
-        return await this.#diffTree(sessionId, top, rows, from, to, labels.get(top) ?? path.basename(top));
+        return await this.#diffTree(session, top, rows, from, to, labels.get(top) ?? path.basename(top));
       } catch (error) {
         // One working tree that cannot be read does not take the others' diff away.
         problems.push(error instanceof Error ? error.message : String(error));
@@ -255,11 +265,14 @@ export class TurnChangesService {
   }
 
   /** {@link diff} for one working tree. */
-  async #diffTree(sessionId: string, top: string, rows: readonly CheckpointRecord[], from: number, to: number | null, solution: string): Promise<FileDiff[]> {
+  async #diffTree(session: Pick<SessionRecord, 'id' | 'cwd'>, top: string, rows: readonly CheckpointRecord[], from: number, to: number | null, solution: string): Promise<FileDiff[]> {
+    const sessionId = session.id;
     const fromRow = rows.find((row) => row.turnSeq >= from);
     if (!fromRow) return [];
     let toTree: string | null = null;
     let branch: string | null = fromRow.branch;
+    /** D180: the next turn's message after the range (the edits counted end there), `null` = until now. */
+    let beforeEventId: number | null = null;
     if (to !== null) {
       if (fromRow.turnSeq > to) return [];
       // The save point whose turns include `to` (the last one at or before it), and the first one after.
@@ -268,7 +281,10 @@ export class TurnChangesService {
       const after = rows.find((row) => row.turnSeq > to);
       toTree = (await this.#ended(sessionId, last, after)) ?? after?.tree ?? null;
       branch = (after ?? last).branch;
+      beforeEventId = after?.eventId ?? null;
     }
+    const own = await this.#own(session, top, fromRow.eventId, beforeEventId);
+    if (own !== null && own.length === 0) return [];
     // Until now: the files as they are (also what was changed by hand).
     const live = toTree === null;
     // A working tree that is gone (a removed copy) or cannot be compared is a problem of this tree: `diff` leaves it out when another tree has changes, and says so when none has.
@@ -280,7 +296,7 @@ export class TurnChangesService {
       branch = now.branch;
     }
     if (toTree === fromRow.tree) return [];
-    const patch = await this.#git.try(top, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', fromRow.tree, toTree]);
+    const patch = await this.#git.try(top, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', fromRow.tree, toTree, ...pathspec(own)]);
     if (!patch.ok) throw new TurnChangesError('unreadable', (await this.#gone(top)) ? gone : `git could not compare ${path.basename(top)}: ${patch.error}`);
     return parsePatch(patch.raw).map((file) => toFileDiff(solution, branch, file, live));
   }

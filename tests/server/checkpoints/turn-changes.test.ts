@@ -13,9 +13,10 @@ import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
- * SPIKE · side panel: what each turn changed, read from the save points Switchboard
+ * D180 · side panel: what each turn changed, read from the save points Switchboard
  * takes before every turn (D80, `docs/undo.md`). A turn's changes are the difference
- * between its save point and the next one (the newest turn: the files as they are now).
+ * between its save point and the next one (the newest turn: the files as they are now),
+ * limited to the files the agent's own edit tools named in it.
  */
 
 let tmp: string;
@@ -47,9 +48,27 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return result.stdout.trim();
 }
 
+/** An edit by hand (or by another agent): no tool event of this session names it. */
 async function write(file: string, content: string): Promise<void> {
   await mkdir(path.dirname(path.join(repo, file)), { recursive: true });
   await writeFile(path.join(repo, file), content);
+}
+
+/** D180: the session's own edit tool names `absolute` (what makes a file count to its turn). */
+async function toolNames(absolute: string, of: string = sessionId): Promise<void> {
+  await store.events.append({ sessionId: of, kind: 'impl', label: 'Write', payload: { type: 'tool', name: 'Write', input: { file_path: absolute } } });
+}
+
+/** The agent writes `file` (relative to the repo) with its Write tool. */
+async function agentWrite(file: string, content: string): Promise<void> {
+  await write(file, content);
+  await toolNames(path.join(repo, file));
+}
+
+/** The agent's tools named `file` and it is gone afterwards (a Write, then a delete). */
+async function agentRemove(file: string): Promise<void> {
+  await rm(path.join(repo, file));
+  await toolNames(path.join(repo, file));
 }
 
 /** What a read must leave byte-identical: the status (ignored files too), the index file and HEAD. */
@@ -115,13 +134,13 @@ afterEach(async () => {
 describe('what each turn changed (the save points before each turn)', () => {
   it('lists each turn that changed files with its file and line counts, and leaves out a turn that changed nothing', async () => {
     const first = await turn('Change three files', async () => {
-      await write('src/app.txt', 'v1\nv2\n');
-      await write('notes/new.txt', 'a\nb\n');
-      await rm(path.join(repo, 'README.md'));
+      await agentWrite('src/app.txt', 'v1\nv2\n');
+      await agentWrite('notes/new.txt', 'a\nb\n');
+      await agentRemove('README.md');
     });
     await turn('Only answer');
     const third = await turn('One more line', async () => {
-      await write('src/app.txt', 'v1\nv2\nv3\n');
+      await agentWrite('src/app.txt', 'v1\nv2\nv3\n');
     });
 
     expect(await changes.list(sessionId)).toEqual({
@@ -130,18 +149,17 @@ describe('what each turn changed (the save points before each turn)', () => {
         { turn: 3, eventId: third.id, through: 3, files: 1, added: 1, removed: 0 },
       ],
       latestTurn: 3,
-      reviewFrom: null,
     });
   });
 
   it("the diff of one turn holds only that turn's lines: an edited, a new and a deleted file", async () => {
     await turn('Change three files', async () => {
-      await write('src/app.txt', 'v1\nv2\n');
-      await write('notes/new.txt', 'a\nb\n');
-      await rm(path.join(repo, 'README.md'));
+      await agentWrite('src/app.txt', 'v1\nv2\n');
+      await agentWrite('notes/new.txt', 'a\nb\n');
+      await agentRemove('README.md');
     });
     await turn('One more line', async () => {
-      await write('src/app.txt', 'v1\nv2\nv3\n');
+      await agentWrite('src/app.txt', 'v1\nv2\nv3\n');
     });
 
     expect(await changes.diff(sessionId, 1, 1)).toEqual([
@@ -153,9 +171,9 @@ describe('what each turn changed (the save points before each turn)', () => {
 
   it("the newest turn is compared with the files as they are now: untracked files count, ignored files never, and nothing of the developer's is touched", async () => {
     await turn('Add a line and two files', async () => {
-      await write('src/app.txt', 'v1\nv2\n');
-      await write('notes/later.txt', 'new\n');
-      await write('debug.log', 'ignored\n');
+      await agentWrite('src/app.txt', 'v1\nv2\n');
+      await agentWrite('notes/later.txt', 'new\n');
+      await agentWrite('debug.log', 'ignored\n');
     });
     const before = await fingerprint();
 
@@ -170,39 +188,43 @@ describe('what each turn changed (the save points before each turn)', () => {
     expect(await fingerprint()).toEqual(before);
   });
 
-  it('"since your last review" starts at the turn that began before the pending review\'s first turn ended, and runs until now', async () => {
-    await turn('Reviewed already', async () => {
-      await write('src/app.txt', 'v1\nv2\n');
+  it('D180: in a working copy shared with another agent, a turn counts only the files its own agent edited', async () => {
+    const other = (await store.sessions.create({ name: 'neighbour', claudeSessionId: randomUUID(), cwd: repo })).id;
+    const first = await turn('Change the app', async () => {
+      await agentWrite('src/app.txt', 'v1\nv2\n');
+      // Meanwhile the other agent in the same folder writes two files with its own tools.
+      await write('notes/neighbour.txt', 'theirs\n');
+      await toolNames(path.join(repo, 'notes/neighbour.txt'), other);
+      await write('README.md', 'hello\nedited by the neighbour\n');
+      await toolNames(path.join(repo, 'README.md'), other);
     });
-    const began = clock + 60_000;
-    // A quick turn: it ended half a minute after its message, before its save point's row was stored (45 s).
-    await turn(
-      'First turn not reviewed',
-      async () => {
-        await write('notes/two.txt', 'two\n');
-      },
-      45_000,
-    );
-    // The pending review starts where that turn ended (D166).
-    const since = new Date(began + 30_000).toISOString();
-    await turn('Second turn not reviewed', async () => {
-      await write('notes/three.txt', 'three\n');
+    // A turn in which only the other agent changed something: no chip for this one.
+    await turn('Only answer', async () => {
+      await write('notes/later.txt', 'theirs\n');
+      await toolNames(path.join(repo, 'notes/later.txt'), other);
     });
-    await store.sessions.update(sessionId, { review: { pending: { since, turns: 2, fileCount: 2, files: ['notes/two.txt', 'notes/three.txt'] }, cursor: null } });
 
-    const listed = await changes.list(sessionId);
-    expect(listed.reviewFrom).toBe(2);
-    const files = await changes.diff(sessionId, 2, null);
-    expect(files.map((file) => file.path)).toEqual(['notes/three.txt', 'notes/two.txt']);
+    expect((await changes.list(sessionId)).turns).toEqual([{ turn: 1, eventId: first.id, through: 1, files: 1, added: 1, removed: 0 }]);
+    expect((await changes.diff(sessionId, 1, 1)).map((file) => file.path)).toEqual(['src/app.txt']);
+    expect((await changes.diff(sessionId, 1, null)).map((file) => file.path)).toEqual(['src/app.txt']);
+    expect(await changes.diff(sessionId, 2, 2)).toEqual([]);
+  });
+
+  it('D180: a path with glob characters is read as itself (`[draft].txt` would also match `d.txt` as a glob)', async () => {
+    await turn('Odd names', async () => {
+      await agentWrite('notes/[draft].txt', 'odd\n');
+    });
+    await write('notes/d.txt', 'not the agent’s\n');
+    expect((await changes.diff(sessionId, 1, null)).map((file) => file.path)).toEqual(['notes/[draft].txt']);
   });
 
   it('a turn without a save point of its own is covered by the turn before it', async () => {
     const first = await turn('With a save point', async () => {
-      await write('notes/one.txt', 'one\n');
+      await agentWrite('notes/one.txt', 'one\n');
     });
     await store.settings.set('sessions.checkpoints', false);
     await turn('Without a save point', async () => {
-      await write('notes/two.txt', 'two\n');
+      await agentWrite('notes/two.txt', 'two\n');
     });
     await store.settings.set('sessions.checkpoints', true);
     await turn('Only answer');
@@ -211,12 +233,12 @@ describe('what each turn changed (the save points before each turn)', () => {
     expect((await changes.diff(sessionId, 1, 1)).map((file) => file.path)).toEqual(['notes/one.txt', 'notes/two.txt']);
   });
 
-  it('a turn ends where the agent stopped: what changes afterwards is not counted to it, but shows in "until now"', async () => {
+  it('a turn ends where the agent stopped: what changes afterwards by hand is not counted to it', async () => {
     // The snapshots the Diff takes when a turn ends (D90), as the app wires them.
     const touched = new SessionTouchedFiles({ store, env, now: () => clock });
     const bounded = new TurnChangesService({ store, env, ends: touched });
     await turn('Write a note', async () => {
-      await write('notes/agent.txt', 'by the agent\n');
+      await agentWrite('notes/agent.txt', 'by the agent\n');
     });
     touched.turnEnded(sessionId);
     await touched.idle();
@@ -226,11 +248,12 @@ describe('what each turn changed (the save points before each turn)', () => {
     expect((await bounded.list(sessionId)).turns).toEqual([expect.objectContaining({ turn: 1, files: 1, added: 1, removed: 0 })]);
     const ofTurn = await bounded.diff(sessionId, 1, 1);
     expect(ofTurn.map((file) => [file.path, file.uncommitted])).toEqual([['notes/agent.txt', false]]);
-    expect((await bounded.diff(sessionId, 1, null)).map((file) => file.path)).toEqual(['notes/agent.txt', 'notes/mine.txt']);
+    // D180: an edit by hand is no turn's: not even "until now".
+    expect((await bounded.diff(sessionId, 1, null)).map((file) => file.path)).toEqual(['notes/agent.txt']);
 
     // The next turn starts from what is there (the edit by hand is before it, not part of it).
     await turn('One more', async () => {
-      await write('notes/agent.txt', 'by the agent\nagain\n');
+      await agentWrite('notes/agent.txt', 'by the agent\nagain\n');
     });
     touched.turnEnded(sessionId);
     await touched.idle();
@@ -242,7 +265,7 @@ describe('what each turn changed (the save points before each turn)', () => {
     const touched = new SessionTouchedFiles({ store, env, now: () => clock });
     const bounded = new TurnChangesService({ store, env, ends: touched });
     await turn('First', async () => {
-      await write('notes/one.txt', 'one\n');
+      await agentWrite('notes/one.txt', 'one\n');
     });
     touched.turnEnded(sessionId);
     await touched.idle();
@@ -252,7 +275,7 @@ describe('what each turn changed (the save points before each turn)', () => {
     clock += 60_000;
     const capture = await checkpoints.capture(sessionId);
     const event = await store.events.append({ sessionId, kind: 'text', label: 'Second', payload: { type: 'user', text: 'Second', origin: 'user', delivered: true } });
-    await write('notes/two.txt', 'two\n');
+    await agentWrite('notes/two.txt', 'two\n');
     clock += 1_000;
     touched.turnEnded(sessionId);
     await touched.idle();
@@ -267,7 +290,7 @@ describe('what each turn changed (the save points before each turn)', () => {
 
   it('reading right when a turn ends waits for its end snapshot instead of taking the files as they are a moment later', async () => {
     await turn('Write a note', async () => {
-      await write('notes/agent.txt', 'by the agent\n');
+      await agentWrite('notes/agent.txt', 'by the agent\n');
     });
     // The end snapshot is being taken (held here) while an edit by hand already lands.
     const real = new CheckpointGit({ env });
@@ -327,8 +350,9 @@ describe('what each turn changed (the save points before each turn)', () => {
     it('counts both trees in a turn, and tells two trees with the same folder name apart', async () => {
       await useTwoTrees(path.join('elsewhere', 'repo'));
       const first = await turn('Change both', async () => {
-        await write('notes/a.txt', 'a\n');
+        await agentWrite('notes/a.txt', 'a\n');
         await writeFile(path.join(other, 'b.txt'), 'b\nb\n');
+        await toolNames(path.join(other, 'b.txt'));
       });
       await turn('Only answer');
 
@@ -339,8 +363,9 @@ describe('what each turn changed (the save points before each turn)', () => {
     it("leaves out a working tree that is gone (a removed copy) instead of failing the turn's diff", async () => {
       await useTwoTrees('copy');
       await turn('Change both', async () => {
-        await write('notes/a.txt', 'a\n');
+        await agentWrite('notes/a.txt', 'a\n');
         await writeFile(path.join(other, 'b.txt'), 'b\n');
+        await toolNames(path.join(other, 'b.txt'));
       });
       await turn('Only answer');
       await rm(other, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -353,7 +378,7 @@ describe('what each turn changed (the save points before each turn)', () => {
 
   it('says so when the only working tree cannot be read, instead of answering "nothing changed"', async () => {
     await turn('Write a note', async () => {
-      await write('notes/agent.txt', 'by the agent\n');
+      await agentWrite('notes/agent.txt', 'by the agent\n');
     });
     // The folder is still there, but git no longer reads it as a repository.
     await rename(path.join(repo, '.git', 'HEAD'), path.join(repo, '.git', 'HEAD.away'));
@@ -365,7 +390,7 @@ describe('what each turn changed (the save points before each turn)', () => {
 
   it('says that the working tree is gone when it was the only one, for one turn and for "until now"', async () => {
     await turn('Write a note', async () => {
-      await write('notes/agent.txt', 'by the agent\n');
+      await agentWrite('notes/agent.txt', 'by the agent\n');
     });
     await turn('Only answer');
     await rm(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -376,7 +401,7 @@ describe('what each turn changed (the save points before each turn)', () => {
   });
 
   it('refuses a turn that has no save point, and lists nothing for a session without save points', async () => {
-    expect(await changes.list(sessionId)).toEqual({ turns: [], latestTurn: 0, reviewFrom: null });
+    expect(await changes.list(sessionId)).toEqual({ turns: [], latestTurn: 0 });
     await turn('One turn');
     await expect(changes.diff(sessionId, 7, null)).rejects.toMatchObject({ code: 'no-checkpoint' });
     await expect(changes.diff(sessionId, 7, null)).rejects.toBeInstanceOf(TurnChangesError);

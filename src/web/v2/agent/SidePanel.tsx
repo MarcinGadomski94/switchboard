@@ -37,15 +37,21 @@ function errorText(caught: unknown): string {
 export type GroupKey = 'mem' | 'how' | 'helpers' | 'overview' | 'bg' | 'tasks' | 'routines' | 'handoff' | 'adv';
 
 const OPEN_KEY = 'switchboard.v2.agentPanelGroups';
+/** D180: the groups' open state in the side panel's ⓘ (closed by default, each with its one-line summary). */
+const FOLDED_OPEN_KEY = 'switchboard.v2.agentPanelGroupsFolded';
 /** The prototype's defaults: Working memory and Helpers open. */
 const DEFAULT_OPEN: Readonly<Record<GroupKey, boolean>> = { mem: true, how: true, helpers: true, overview: false, bg: false, tasks: false, routines: true, handoff: false, adv: false };
 
-function loadOpen(): Record<GroupKey, boolean> {
+/** D180: in the side panel every group starts closed. */
+const FOLDED_DEFAULT: Readonly<Record<GroupKey, boolean>> = { mem: false, how: false, helpers: false, overview: false, bg: false, tasks: false, routines: false, handoff: false, adv: false };
+
+function loadOpen(folded: boolean): Record<GroupKey, boolean> {
+  const defaults = folded ? FOLDED_DEFAULT : DEFAULT_OPEN;
   try {
-    const raw = browserStorage()?.getItem(OPEN_KEY);
-    return raw ? { ...DEFAULT_OPEN, ...(JSON.parse(raw) as Partial<Record<GroupKey, boolean>>) } : { ...DEFAULT_OPEN };
+    const raw = browserStorage()?.getItem(folded ? FOLDED_OPEN_KEY : OPEN_KEY);
+    return raw ? { ...defaults, ...(JSON.parse(raw) as Partial<Record<GroupKey, boolean>>) } : { ...defaults };
   } catch {
-    return { ...DEFAULT_OPEN };
+    return { ...defaults };
   }
 }
 
@@ -102,14 +108,28 @@ function HelpersGroup({ data, helperHref, open, onToggle }: { readonly data: Age
  * own chats, D36), Background apps (D127: Keep / Stop), Tasks (D68), Handoff note &
  * terminal, Advanced (branch, separate copy, path, CLI, Remote Control, hooked).
  */
-export function SidePanel({ data, onHide, helperHref, helpersElsewhere = false }: { readonly data: AgentData; readonly onHide?: () => void; readonly helperHref: (agentId: string) => string; /** SPIKE: the helpers, the agents overview and the background apps are shown elsewhere (the side panel's Helpers tab): left out here. */ readonly helpersElsewhere?: boolean }) {
-  const [open, setOpen] = useState(loadOpen);
+export function SidePanel({
+  data,
+  onHide,
+  helperHref,
+  helpersElsewhere = false,
+  folded = false,
+}: {
+  readonly data: AgentData;
+  readonly onHide?: () => void;
+  readonly helperHref: (agentId: string) => string;
+  /** D180: the helpers, the agents overview and the background apps are shown elsewhere (the side panel's Helpers tab): left out here. */
+  readonly helpersElsewhere?: boolean;
+  /** D180: the side panel's ⓘ: every group closed by default (remembered apart from the phone's sheet), Works in folded too. */
+  readonly folded?: boolean;
+}) {
+  const [open, setOpen] = useState(() => loadOpen(folded));
   const toggle = (id: GroupKey, value: boolean): void => {
     setOpen((current) => {
       if (current[id] === value) return current;
       const next = { ...current, [id]: value };
       try {
-        browserStorage()?.setItem(OPEN_KEY, JSON.stringify(next));
+        browserStorage()?.setItem(folded ? FOLDED_OPEN_KEY : OPEN_KEY, JSON.stringify(next));
       } catch {
         // Storage blocked: remembered for this page only.
       }
@@ -139,14 +159,14 @@ export function SidePanel({ data, onHide, helperHref, helpersElsewhere = false }
       ) : null}
       {/* Lane X · D99 / D107: the project it belongs to, and what agents know for its folder. */}
       {data.conversation ? null : <ProjectLine sessionId={data.sessionId} />}
-      {data.conversation ? null : <WorksInLine sessionId={data.sessionId} status={session.status === 'run' ? 'run' : `${session.status}:${session.lastActivityAt ?? ''}`} />}
+      {data.conversation ? null : <WorksInLine sessionId={data.sessionId} status={session.status === 'run' ? 'run' : `${session.status}:${session.lastActivityAt ?? ''}`} folded={folded} />}
       {data.conversation ? null : <NotesLine sessionId={data.sessionId} folderPath={session.folderPath} remote={Boolean(session.machine)} />}
       {data.conversation ? null : (
         <Group id="mem" title={AGENT_WORDS.workingMemory} icon="cpu" summary={pct === null ? AGENT_WORDS.memoryUnknown : AGENT_WORDS.memoryUsed(Math.round(pct))} open={open.mem} onToggle={toggle}>
           <MemoryGroup data={data} />
         </Group>
       )}
-      <Group id="how" title={AGENT_WORDS.howItWorks} icon="sliders" summary={modelSummary(session.model)} open={open.how} onToggle={toggle}>
+      <Group id="how" title={AGENT_WORDS.howItWorks} icon="sliders" summary={folded ? howSummary(session) : modelSummary(session.model)} open={open.how} onToggle={toggle}>
         <HowGroup data={data} />
       </Group>
       {data.conversation || helpersElsewhere ? null : (
@@ -159,7 +179,7 @@ export function SidePanel({ data, onHide, helperHref, helpersElsewhere = false }
         </Group>
       )}
       {data.conversation ? null : (
-        <Group id="tasks" title={AGENT_WORDS.tasks} icon="rules" summary={session.openTodoCount ? `${session.openTodoCount} open` : undefined} open={open.tasks} onToggle={toggle}>
+        <Group id="tasks" title={AGENT_WORDS.tasks} icon="rules" summary={session.openTodoCount ? `${session.openTodoCount} open` : folded ? 'none' : undefined} open={open.tasks} onToggle={toggle}>
           <TasksGroup sessionId={data.sessionId} blocked={data.blocked} working={data.session !== null && turnBusy(data.session)} />
         </Group>
       )}
@@ -468,6 +488,11 @@ function HandoffGroup({ data }: { readonly data: AgentData }) {
       )}
     </>
   );
+}
+
+/** D180: How it works' one-line summary in the side panel: "Claude Code · Default · medium" (the engine, the model, the effort). */
+function howSummary(session: NonNullable<AgentData['session']>): string {
+  return `${CLI_LABELS[readCliProvider(session.provider)]} · ${modelSummary(session.model)}`;
 }
 
 function AdvancedGroup({ data }: { readonly data: AgentData }) {

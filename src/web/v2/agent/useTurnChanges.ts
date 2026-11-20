@@ -1,5 +1,5 @@
 /**
- * SPIKE · what each of the agent's turns changed (`GET …/turn-changes`), read again
+ * D180 · what each of the agent's turns changed (`GET …/turn-changes`), read again
  * when a turn starts or ends, a review is marked or a revert happens: not on every
  * event of a running turn (each read may snapshot the agent's working trees).
  */
@@ -13,8 +13,6 @@ import type { AgentData } from './useAgent.ts';
 export interface TurnChangesState {
   /** By the event id of your message that started the turn. */
   readonly byEvent: ReadonlyMap<number, TurnChange>;
-  /** D166: the turn the pending review starts at, `null` without one. */
-  readonly reviewFrom: number | null;
   readonly latestTurn: number;
   /** What the last turn changed (the panel's "Last turn"), `null` when it changed nothing. */
   readonly last: TurnChange | null;
@@ -44,5 +42,5 @@ export function useTurnChanges(data: AgentData, enabled: boolean): TurnChangesSt
     for (const change of answer.turns) if (change.eventId !== null) map.set(change.eventId, change);
     return map.size === 0 ? NONE : map;
   }, [answer]);
-  return useMemo(() => ({ byEvent, reviewFrom: answer?.reviewFrom ?? null, latestTurn: answer?.latestTurn ?? 0, last: answer ? lastTurnChange(answer.turns, answer.latestTurn) : null }), [byEvent, answer]);
+  return useMemo(() => ({ byEvent, latestTurn: answer?.latestTurn ?? 0, last: answer ? lastTurnChange(answer.turns, answer.latestTurn) : null }), [byEvent, answer]);
 }

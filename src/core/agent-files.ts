@@ -96,6 +96,12 @@ export interface AgentFileRef {
   readonly line: number | null;
   /** `false` when the file is gone (deleted or moved since). */
   readonly exists: boolean;
+  /**
+   * Additive (D180): when the newest event that touched the file happened (ISO): the tool call
+   * that wrote, edited or read it, or the reply that named it; `null` when not known (absent
+   * from a computer before 2.5.1).
+   */
+  readonly at?: string | null;
 }
 
 /** `GET …/files`: newest first. */

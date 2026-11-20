@@ -393,6 +393,41 @@ export class EventRepository {
     return { paths: [...paths], lastId, firstId };
   }
 
+  /**
+   * D180: {@link editedFilePaths} with the time of the newest tool call that named each path
+   * (the Files panel's "wrote 10:38").
+   */
+  async editedFilePathTimes(sessionId: string, names: readonly string[]): Promise<Array<{ readonly path: string; readonly at: string }>> {
+    if (names.length === 0) return [];
+    const marks = names.map(() => '?').join(', ');
+    return this.#table
+      .statement(
+        `SELECT COALESCE(json_extract(payload, '$.input.file_path'), json_extract(payload, '$.input.notebook_path')) AS p, MAX(ts) AS at FROM events ` +
+          `WHERE session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') IN (${marks}) GROUP BY p`,
+      )
+      .all(sessionId, ...names)
+      .flatMap((row) => (typeof row['p'] === 'string' && row['p'] !== '' && typeof row['at'] === 'string' ? [{ path: row['p'], at: row['at'] }] : []));
+  }
+
+  /**
+   * D180: the distinct paths the session's edit tool calls (`names`) named in the events after
+   * `afterId` and, when `beforeId` is given, before it (one turn: from its message to the next
+   * turn's), as written (absolute or cwd-relative).
+   */
+  async editedFilePathsBetween(sessionId: string, names: readonly string[], afterId: number, beforeId: number | null): Promise<string[]> {
+    if (names.length === 0) return [];
+    const marks = names.map(() => '?').join(', ');
+    const upper = beforeId === null ? '' : ' AND id < ?';
+    return this.#table
+      .statement(
+        `SELECT DISTINCT COALESCE(json_extract(payload, '$.input.file_path'), json_extract(payload, '$.input.notebook_path')) AS p FROM events ` +
+          `WHERE id > ?${upper} AND session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') IN (${marks})`,
+      )
+      .all(...(beforeId === null ? [afterId] : [afterId, beforeId]), sessionId, ...names)
+      .map((row) => row['p'])
+      .filter((value): value is string => typeof value === 'string' && value !== '');
+  }
+
   /** D174: the session's newest user message at or before event `uptoId` (its id and time), `null` when there is none. */
   async userMessageAtOrBefore(sessionId: string, uptoId: number): Promise<{ readonly id: number; readonly ts: string } | null> {
     const row = this.#table

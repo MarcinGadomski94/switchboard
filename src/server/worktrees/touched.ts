@@ -332,7 +332,8 @@ export class SessionTouchedFiles {
 }
 
 /** An edit tool's path made absolute (a relative one is the session's cwd's); `null` when it cannot be. */
-function editedAbsolute(session: Pick<SessionRecord, 'cwd'>, written: string): string | null {
+/** An edit tool's path as written (absolute, or relative to the session's folder) made absolute; `null` without a folder to resolve it from. */
+export function editedAbsolute(session: Pick<SessionRecord, 'cwd'>, written: string): string | null {
   return path.isAbsolute(written) ? written : session.cwd ? path.resolve(session.cwd, written) : null;
 }
 

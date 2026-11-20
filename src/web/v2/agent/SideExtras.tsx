@@ -296,6 +296,36 @@ function AgentRow({ data, item, href }: { readonly data: AgentData; readonly ite
   );
 }
 
+/**
+ * D180 · one line of the side panel's Helpers sections: the helper's name (the link to its own
+ * chat), and on the right what it does now with the time (working, in blue), or its status word
+ * (`look`: red for a failed one, amber for one that waits, muted for a finished one).
+ */
+export function HelperLine({ data, item, href, look, indent = false }: { readonly data: AgentData; readonly item: Extract<OverviewItem, { kind: 'agent' }>; readonly href: string | null; readonly look: 'working' | 'failed' | 'waiting' | 'finished'; readonly indent?: boolean }) {
+  const now = useTick(TICK_MS);
+  const agent = data.session?.agents.find((candidate) => candidate.id === item.id) ?? null;
+  const entry = agent ? agentActivity(data.activity, agent) : null;
+  const live = entry ? overviewActivityLabel(entry, null, now, data.activity?.background ?? []) : null;
+  const text = look === 'working' && live ? `${live.text}${live.time ? ` ${live.time}` : ''}` : item.statusText;
+  const name = item.description || item.name;
+  return (
+    <div className="v2-sp-hrow" data-look={look} data-indent={indent ? 'true' : undefined} data-agent-id={item.id} data-testid="v2-side-helper-row">
+      <span className="v2-sp-hname v2-grow" title={[item.name, item.description].filter(Boolean).join(' · ')}>
+        {href ? (
+          <V2Link to={href} className="v2-ag-ov-open" title={AGENT_WORDS.openHelperChat}>
+            {name}
+          </V2Link>
+        ) : (
+          name
+        )}
+      </span>
+      <span className="v2-sp-hstate" title={text}>
+        {text.replace(/^[●✓✕⏸]\s*/u, '')}
+      </span>
+    </div>
+  );
+}
+
 function WorkflowRows({ data, item }: { readonly data: AgentData; readonly item: Extract<OverviewItem, { kind: 'workflow' }> }) {
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const session = data.session;
@@ -357,7 +387,7 @@ function WorkflowRows({ data, item }: { readonly data: AgentData; readonly item:
  * run → idle between two renders, and stays put while a turn runs); it never holds
  * the panel up: "…" while the answer is on its way, "No repo found yet" when empty.
  */
-export function WorksInLine({ sessionId, status }: { readonly sessionId: string; readonly status: string | null | undefined }) {
+export function WorksInLine({ sessionId, status, folded = false }: { readonly sessionId: string; readonly status: string | null | undefined; /** D180: the side panel's ⓘ: a closed group with its one-line summary ("acme-notes · main"). */ readonly folded?: boolean }) {
   // `undefined`: being read the first time; `null`: it could not be read (the line is hidden).
   const [repos, setRepos] = useState<readonly WorksInRepo[] | null | undefined>(undefined);
   useEffect(() => {
@@ -372,12 +402,39 @@ export function WorksInLine({ sessionId, status }: { readonly sessionId: string;
   }, [sessionId, status]);
   useEffect(() => setRepos(undefined), [sessionId]);
   if (repos === null) return null;
+  const state = repos === undefined ? 'loading' : repos.length === 0 ? 'empty' : 'found';
+  if (folded) {
+    return (
+      <details className="v2-ag-grp" data-group="works-in" data-testid="v2-agent-works-in" data-tour="v2-agent-works-in" data-state={state}>
+        <summary>
+          <Icon name="folder" size="s" />
+          Works in
+          <span className="v2-ag-grp-sum">{repos === undefined ? '…' : worksInSummary(repos)}</span>
+          <Icon name="chev" size="s" className="v2-ag-chev" />
+        </summary>
+        <div className="v2-ag-grp-b">
+          <WorksInList repos={repos ?? []} />
+        </div>
+      </details>
+    );
+  }
   return (
-    <div className="v2-ag-xline" data-testid="v2-agent-works-in" data-tour="v2-agent-works-in" data-state={repos === undefined ? 'loading' : repos.length === 0 ? 'empty' : 'found'}>
+    <div className="v2-ag-xline" data-testid="v2-agent-works-in" data-tour="v2-agent-works-in" data-state={state}>
       <div className="v2-ag-xlink" style={{ cursor: 'default' }}>
         <Icon name="folder" size="s" />
         <span className="v2-grow v2-ag-xtext">
           <b>Works in · {repos === undefined ? '…' : worksInSummary(repos)}</b>
+          <WorksInList repos={repos ?? []} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** The repos of {@link WorksInLine}, one entry per repo with its worktrees nested. */
+function WorksInList({ repos }: { readonly repos: readonly WorksInRepo[] }) {
+  return (
+        <>
           {groupByRepo(repos ?? []).map((group) => {
             // D153: one entry per repo, its worktrees nested under it (never N entries with one name).
             const row = (repo: WorksInRepo, nested: boolean) => {
@@ -418,8 +475,6 @@ export function WorksInLine({ sessionId, status }: { readonly sessionId: string;
               </span>
             );
           })}
-        </span>
-      </div>
-    </div>
+        </>
   );
 }

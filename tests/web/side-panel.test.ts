@@ -6,7 +6,8 @@ import { FILES_TAB_START, fold, unfold, withListing } from '../../src/web/v2/age
 import { linksSignature } from '../../src/web/v2/agent/useAgentFiles.ts';
 import type { ChatRow } from '../../src/web/v2/agent/chat-model.ts';
 import { type TreeFile, changedTree, fileState, firstFileKey } from '../../src/web/v2/agent/changes-tree.ts';
-import { shownChoice, shownView, viewChoices, viewKey } from '../../src/web/v2/agent/changes-view.ts';
+import { shownChoice, viewChoices, viewKey } from '../../src/web/v2/agent/changes-view.ts';
+import { scopeOptions } from '../../src/web/views/session/diff.ts';
 import { type DiffComment, commentsAt, reviewMessage } from '../../src/web/v2/agent/diff-comments.ts';
 import { helpersOverview } from '../../src/web/v2/agent/helpers-view.ts';
 import { type OverviewItem, foldOverview, overviewItems, overviewSummary } from '../../src/web/v2/agent/side-model.ts';
@@ -44,8 +45,8 @@ describe('the "N files changed" chip', () => {
 describe('what the Files tab remembers per agent', () => {
   const listing = (dir: string, names: readonly string[]): AgentDirListing => ({ dir, root: 'C:\\work', parent: null, truncated: false, entries: names.map((name) => ({ name, path: `${dir}\\${name}`, type: 'file' as const, size: 1, modifiedAt: null })) });
 
-  it('starts on Browse with nothing unfolded', () => {
-    expect(FILES_TAB_START).toMatchObject({ mode: 'browse', roots: null, dirs: {}, opened: false });
+  it('starts with nothing unfolded, nothing opened, and "Touched by this agent" cut to its first rows', () => {
+    expect(FILES_TAB_START).toMatchObject({ roots: null, dirs: {}, opened: false, showAll: false, history: { items: [], at: -1 } });
   });
 
   it('unfolds a folder (loading until its listing comes), folds it again, and keeps the other folders as they are', () => {
@@ -127,55 +128,49 @@ describe("the chat links' lookup", () => {
   });
 });
 
-describe('the views the Changes panel offers', () => {
-  it("offers only the Diff's own views without a picked turn or a pending review", () => {
-    expect(viewChoices({ kind: 'scope' }, null, ['head', 'branch'], WORDS)).toEqual([
-      { value: 'head', label: 'Since last save point' },
-      { value: 'branch', label: 'Whole separate copy' },
-    ]);
+describe('the views the Changes panel offers (D180, with D174 For review)', () => {
+  const targets = (review: boolean, worktree = false, inPlace = false) => ({
+    worktrees: worktree ? [{ repo: 'acme', path: 'C:\\w', branch: 'b', base: null, commits: 0 }] : [],
+    inPlace: inPlace ? ['acme'] : [],
+    ...(review ? { review: { since: '2026-11-20T10:00:00.000Z' } } : {}),
   });
 
-  it('puts the picked turn first, then "Since your review" while a review is pending, then the Diff\'s views', () => {
-    expect(viewChoices({ kind: 'turn', change: change(4, 5) }, 3, ['head', 'repo'], WORDS)).toEqual([
-      { value: 'turn', label: 'Turns 4–5' },
-      { value: 'review', label: 'Since your review' },
+  it("offers the Diff's own views without a picked turn: For review only while a review is pending, first", () => {
+    // Line under test: `viewChoices` pushing the scopes in `scopeOptions`' order.
+    expect(viewChoices({ kind: 'scope' }, scopeOptions(targets(false, true) as never), WORDS).map((choice) => choice.label)).toEqual(['Since last save point', 'Whole separate copy']);
+    expect(viewChoices({ kind: 'scope' }, scopeOptions(targets(true, true, true) as never), WORDS).map((choice) => choice.label)).toEqual(['For review', 'Since last save point', 'Whole separate copy', 'All unsaved']);
+  });
+
+  it('puts a picked turn first, then Last turn, then For review and the other views', () => {
+    const last = change(5);
+    expect(viewChoices({ kind: 'turn', change: change(4, 4) }, ['review', 'head', 'repo'], WORDS, last)).toEqual([
+      { value: 'turn', label: 'Turn 4' },
+      { value: 'last', label: 'Last turn' },
+      { value: 'review', label: 'For review' },
       { value: 'head', label: 'Since last save point' },
       { value: 'repo', label: 'All unsaved' },
     ]);
+    // A turn range keeps its label.
+    expect(viewChoices({ kind: 'turn', change: change(4, 5) }, ['head'], WORDS)[0]).toEqual({ value: 'turn', label: 'Turns 4–5' });
   });
 
-  it('falls back to the Diff\'s view when "Since your review" is picked and no review is pending any more', () => {
-    expect(shownView({ kind: 'review' }, null)).toEqual({ kind: 'scope' });
-    expect(shownView({ kind: 'review' }, 3)).toEqual({ kind: 'review' });
-    expect(shownView({ kind: 'turn', change: change(2) }, null)).toEqual({ kind: 'turn', change: change(2) });
-  });
-
-  it('fetches again when the turn, the review\'s first turn or the Diff\'s view changes', () => {
-    const keys = [viewKey({ kind: 'scope' }, 3, 'head'), viewKey({ kind: 'scope' }, 3, 'branch'), viewKey({ kind: 'review' }, 3, 'head'), viewKey({ kind: 'review' }, 4, 'head'), viewKey({ kind: 'turn', change: change(4) }, 3, 'head'), viewKey({ kind: 'turn', change: change(5) }, 3, 'head')];
-    expect(new Set(keys).size).toBe(6);
-    // The Diff's view does not matter while a turn or the review is shown.
-    expect(viewKey({ kind: 'review' }, 3, 'head')).toBe(viewKey({ kind: 'review' }, 3, 'branch'));
+  it("fetches again when the turn or the Diff's view changes; the Diff's view does not matter while a turn is shown", () => {
+    const keys = [viewKey({ kind: 'scope' }, 'head'), viewKey({ kind: 'scope' }, 'branch'), viewKey({ kind: 'scope' }, 'review'), viewKey({ kind: 'turn', change: change(4) }, 'head'), viewKey({ kind: 'turn', change: change(5) }, 'head')];
+    expect(new Set(keys).size).toBe(5);
+    expect(viewKey({ kind: 'turn', change: change(4) }, 'head')).toBe(viewKey({ kind: 'turn', change: change(4) }, 'branch'));
   });
 
   it('always offers "Last turn" when the last turn changed something, and names a picked turn only when it is another one', () => {
     const last = change(5);
-    // Nothing picked: "Last turn" stands before the Diff's views.
-    expect(viewChoices({ kind: 'scope' }, null, ['head'], WORDS, last)).toEqual([
+    expect(viewChoices({ kind: 'scope' }, ['head'], WORDS, last)).toEqual([
       { value: 'last', label: 'Last turn' },
       { value: 'head', label: 'Since last save point' },
     ]);
     // The last turn itself is picked (from its chip): it is "Last turn", not "Turn 5" as well.
-    expect(viewChoices({ kind: 'turn', change: last }, null, ['head'], WORDS, last).map((choice) => choice.value)).toEqual(['last', 'head']);
+    expect(viewChoices({ kind: 'turn', change: last }, ['head'], WORDS, last).map((choice) => choice.value)).toEqual(['last', 'head']);
     expect(shownChoice({ kind: 'turn', change: last }, 'head', last)).toBe('last');
-    // An earlier turn is picked: both are offered.
-    expect(viewChoices({ kind: 'turn', change: change(3) }, 4, ['head'], WORDS, last).map((choice) => [choice.value, choice.label])).toEqual([
-      ['turn', 'Turn 3'],
-      ['last', 'Last turn'],
-      ['review', 'Since your review'],
-      ['head', 'Since last save point'],
-    ]);
     expect(shownChoice({ kind: 'turn', change: change(3) }, 'head', last)).toBe('turn');
-    expect([shownChoice({ kind: 'review' }, 'head', last), shownChoice({ kind: 'scope' }, 'branch', last)]).toEqual(['review', 'branch']);
+    expect([shownChoice({ kind: 'scope' }, 'review', last), shownChoice({ kind: 'scope' }, 'branch', last)]).toEqual(['review', 'branch']);
   });
 
   it('takes for the last turn the newest turn with changes, when it reaches the agent\'s latest turn', () => {

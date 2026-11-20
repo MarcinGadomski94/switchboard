@@ -89,6 +89,10 @@ export const ICON_PATHS = {
   'arrow-r': `<path d="M5 12h14M13 6l6 6-6 6"/>`,
   'expand': `<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>`,
   'shrink': `<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>`,
+  // D180: the side panel's list button (a window with its right-hand list) and ⟷ / >< (its width).
+  'sidebar': `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>`,
+  'widen': `<path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/>`,
+  'narrow': `<path d="M3 12h6M15 12h6M6 8l4 4-4 4M18 8l-4 4 4 4"/>`,
 } as const;
 
 /** An icon name. */

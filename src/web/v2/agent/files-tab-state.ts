@@ -1,30 +1,32 @@
 /**
- * SPIKE · what the side panel's Files tab remembers per agent while the page lives:
- * which list it shows, the folders unfolded in Browse (and what they hold), and where
- * each list was scrolled. Kept outside the components, so the tree is as it was left
- * after a file was opened, another tab was shown or the panel was hidden.
+ * D180 · what the side panel's Files remembers per agent while the page lives: the folders
+ * unfolded in its tree (and what they hold), where the list was scrolled, whether
+ * "Touched by this agent" shows all its rows, and the reader's back / forward history. Kept
+ * outside the components, so the list is as it was left after a file was opened, another tab
+ * was shown or the panel was hidden.
  */
 import { useCallback, useSyncExternalStore } from 'react';
 import type { AgentDirListing, AgentFileRoot } from '../../../core/agent-files.ts';
-
-/** `browse`: the tree over the agent's folders; `touched`: the files its conversation touched. */
-export type FilesMode = 'browse' | 'touched';
+import { EMPTY_HISTORY, type ReaderHistory } from './files-view.ts';
 
 /** One unfolded folder: its listing, `loading` until it comes, or why it could not be read. */
 export type DirState = AgentDirListing | 'loading' | { readonly error: string };
 
 export interface FilesTabState {
-  readonly mode: FilesMode;
   /** The agent's folders (the tree's first level); `null` before they were read. */
   readonly roots: readonly AgentFileRoot[] | null;
   /** The unfolded folders, by path. */
   readonly dirs: Readonly<Record<string, DirState>>;
   /** The first folder was unfolded by itself once (never again: it may have been folded on purpose). */
   readonly opened: boolean;
+  /** "Touched by this agent" shows every row ("Show all"). */
+  readonly showAll: boolean;
+  /** The files opened in the reader for this agent (back / forward). */
+  readonly history: ReaderHistory;
 }
 
-/** A tab nobody touched yet: Browse, nothing unfolded. */
-export const FILES_TAB_START: FilesTabState = { mode: 'browse', roots: null, dirs: {}, opened: false };
+/** A tab nobody touched yet: nothing unfolded, nothing opened. */
+export const FILES_TAB_START: FilesTabState = { roots: null, dirs: {}, opened: false, showAll: false, history: EMPTY_HISTORY };
 
 /** `dir` unfolded: `loading` until {@link withListing} brings what it holds (an unfolded one stays as it is). */
 export function unfold(state: FilesTabState, dir: string): FilesTabState {
@@ -81,11 +83,16 @@ export function useFilesTab(sessionId: string): readonly [FilesTabState, (change
 }
 
 /** Where a list of the agent's tab was scrolled (px), 0 when never. */
-export function filesScroll(sessionId: string, mode: FilesMode): number {
-  return scrolls.get(`${sessionId}\u0000${mode}`) ?? 0;
+export function filesScroll(sessionId: string): number {
+  return scrolls.get(`${sessionId}\u0000list`) ?? 0;
 }
 
 /** Remembers it (not a render: nothing listens). */
-export function rememberFilesScroll(sessionId: string, mode: FilesMode, top: number): void {
-  scrolls.set(`${sessionId}\u0000${mode}`, top);
+export function rememberFilesScroll(sessionId: string, top: number): void {
+  scrolls.set(`${sessionId}\u0000list`, top);
+}
+
+/** Every folder of `dirs` unfolded (`loading` until read; the unfolded ones stay as they are). */
+export function unfoldAll(state: FilesTabState, dirs: readonly string[]): FilesTabState {
+  return dirs.reduce(unfold, state);
 }

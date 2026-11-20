@@ -129,30 +129,12 @@ body.v2-ag-resizing iframe {
   padding: 14px;
 }
 
-/*
- * The tree of changed files and the picked file's diff. Narrow panel: the tree above
- * the diff. Wide panel (the container query below): the tree in a column at the right
- * of the diff, as the files of a change are listed in an editor.
- */
-.sb2 .v2-ag-chg {
-  container: v2-ag-chg / inline-size;
-}
-
-.sb2 .v2-ag-chg-body {
+/* D180: the tree of changed files fills its place in the frame (`PanelSplit`, the rules at the end). */
+.sb2 .v2-ag-chg-tree {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--v2-border);
-}
-
-.sb2 .v2-ag-chg-tree {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  max-height: 38%;
-  min-height: 0;
-  border-bottom: 1px solid var(--v2-border);
   background: var(--v2-surface);
 }
 
@@ -212,23 +194,6 @@ body.v2-ag-resizing iframe {
 
 .sb2 .v2-ag-chg-row[data-state='deleted'] .v2-ag-tree-name {
   text-decoration: line-through;
-}
-
-@container v2-ag-chg (min-width: 760px) {
-  .sb2 .v2-ag-chg-body {
-    flex-direction: row-reverse;
-  }
-
-  .sb2 .v2-ag-chg-tree {
-    width: clamp(240px, 34%, 380px);
-    max-height: none;
-    border-bottom: 0;
-    border-left: 1px solid var(--v2-border);
-  }
-
-  .sb2 .v2-ag-chg-diff {
-    min-width: 0;
-  }
 }
 
 .sb2 .v2-ag-files-row:focus-visible,
@@ -596,15 +561,14 @@ body.v2-ag-resizing iframe {
 }
 
 .sb2 .v2-ag-files-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'name chips' 'dir chips';
-  column-gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
-  padding: 7px 14px;
+  min-height: 28px;
+  padding: 2px 14px;
   background: none;
   border: 0;
-  border-bottom: 1px solid var(--v2-border);
   color: var(--v2-text);
   font-size: 13.5px;
   text-align: left;
@@ -622,7 +586,8 @@ body.v2-ag-resizing iframe {
 }
 
 .sb2 .v2-ag-files-name {
-  grid-area: name;
+  flex: none;
+  max-width: 55%;
   overflow: hidden;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -630,7 +595,7 @@ body.v2-ag-resizing iframe {
 }
 
 .sb2 .v2-ag-files-dir {
-  grid-area: dir;
+  min-width: 0;
   overflow: hidden;
   color: var(--v2-muted);
   font-size: 12px;
@@ -1053,4 +1018,289 @@ body.v2-ag-resizing iframe {
 .sb2 .v2-ag-chg-diff-h .v2-mono {
   flex: 1 1 160px;
   min-width: 0;
+}
+
+/* ── D180: the frame Files and Changes share (PanelSplit.tsx) ── */
+.sb2 .v2-sp-split {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-sp-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sb2 .v2-sp-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--v2-surface);
+}
+
+/* Narrow, nothing opened: the list fills the panel. */
+.sb2 .v2-sp-split[data-mode='list'] .v2-sp-list {
+  flex: 1;
+}
+
+/* Wide: the list docked on the outer (right) edge. */
+.sb2 .v2-sp-split[data-mode='docked'] .v2-sp-list {
+  flex: none;
+  width: 290px;
+  border-left: 1px solid var(--v2-border);
+}
+
+/* The list is never taken away (its folds and scroll stay): only hidden. */
+.sb2 .v2-sp-list:not([data-shown]) {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Narrow: the list pops over the content's right side, under its header (as Cursor's explorer). */
+.sb2 .v2-sp-split[data-mode='popover'] .v2-sp-list {
+  position: absolute;
+  z-index: 5;
+  top: 42px;
+  right: 8px;
+  bottom: 8px;
+  width: min(370px, calc(100% - 16px));
+  border: 1px solid var(--v2-border);
+  border-radius: 10px;
+  box-shadow: var(--v2-shadow-lg, 0 10px 28px rgb(0 0 0 / 22%));
+}
+
+.sb2 .v2-ag-chg-diff {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sb2 .v2-ag-chg-diff .v2-ag-split-grid {
+  overflow: auto;
+}
+
+/* Syntax colours in the diff sit on top of the added / removed backgrounds. */
+.sb2 .v2-ag-chg-text.hljs {
+  background: transparent;
+}
+
+/* ── D180: Files' one view ── */
+.sb2 .v2-ag-files-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sb2 .v2-ag-files-scroll .v2-ag-tree {
+  overflow: visible;
+}
+
+.sb2 .v2-ag-files-h {
+  margin: 10px 14px 4px;
+  color: var(--v2-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.sb2 .v2-ag-files-touched {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-ag-files-row[aria-current='true'],
+.sb2 .v2-ag-tree-row[aria-current='true'] {
+  background: var(--v2-accent-soft);
+  font-weight: 600;
+}
+
+.sb2 .v2-ag-files-row[data-what='deleted'] .v2-ag-files-name {
+  text-decoration: line-through;
+}
+
+.sb2 .v2-ag-files-when {
+  flex: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-files-more {
+  margin: 4px 14px 0;
+}
+
+.sb2 .v2-ag-files-sig {
+  flex: none;
+  color: var(--v2-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-files-sig[data-signal='new'],
+.sb2 .v2-ag-files-sig[data-signal='changed'] {
+  color: var(--v2-green);
+}
+
+.sb2 .v2-ag-files-sig[data-signal='deleted'] {
+  color: var(--v2-red);
+}
+
+.sb2 .v2-link-btn {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--v2-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sb2 .v2-link-btn:hover {
+  text-decoration: underline;
+}
+
+/* The reader's header: back / forward · the breadcrumb · ⋯ · the list button. */
+.sb2 .v2-ag-fv-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.sb2 .v2-ag-fv-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sb2 .v2-ag-fv-crumb-b {
+  padding: 2px 3px;
+  overflow: hidden;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--v2-muted);
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.sb2 .v2-ag-fv-crumb-b:hover {
+  background: var(--v2-accent-soft);
+  color: var(--v2-text);
+}
+
+.sb2 .v2-ag-fv-crumb-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb2 .v2-ag-fv-info {
+  flex: none;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--v2-border);
+  color: var(--v2-text);
+}
+
+/* The lines the agent's uncommitted change adds: a 3 px green bar and a faint green background. */
+.sb2 .v2-ag-src-added {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--v2-ag-src-line);
+  border-left: 3px solid var(--v2-green);
+  background: color-mix(in srgb, var(--v2-green) 10%, transparent);
+  pointer-events: none;
+}
+
+/* ── D180: the Helpers tab's sections ── */
+.sb2 .v2-side-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--v2-red);
+  vertical-align: middle;
+}
+
+.sb2 .v2-sp-hsec {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.sb2 .v2-sp-hrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 2px 14px;
+  font-size: 13px;
+}
+
+.sb2 .v2-sp-hrow[data-indent='true'] {
+  padding-left: 34px;
+}
+
+.sb2 .v2-sp-hname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-sp-hstate {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-sp-hrow[data-look='working'] .v2-sp-hstate {
+  color: var(--v2-blue);
+}
+
+.sb2 .v2-sp-hrow[data-look='failed'] .v2-sp-hstate {
+  color: var(--v2-red);
+}
+
+.sb2 .v2-sp-hrow[data-look='waiting'] .v2-sp-hstate {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-sp-hrow[data-look='finished'] {
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-sp-hfold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 30px;
+  padding: 2px 14px;
+  background: none;
+  border: 0;
+  color: var(--v2-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
 }

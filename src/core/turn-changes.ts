@@ -1,17 +1,19 @@
 /**
- * SPIKE · side panel, 2026-11-18: what each turn changed. A throwaway contract between
- * `src/server/api/turn-changes.ts` and the v2 agent view (the "N files changed" chip
- * under a reply, and the Changes panel's "This turn" and "Since your review" views).
- * Not a decision yet, and not in `docs/handoff/contracts/local-api.md`.
+ * D180 · what each turn changed: the contract between `src/server/api/turn-changes.ts` and
+ * the v2 agent view (the "N files changed" chip under a turn's last reply, and the side
+ * panel's "Last turn" / "Turn N" views of Changes). In `docs/handoff/contracts/local-api.md`.
  *
  * The data are the save points Switchboard takes before every turn (D80,
  * `docs/undo.md`) and the snapshots it takes when a turn ends (D90,
  * `src/server/worktrees/touched.ts`): a turn's changes are the difference between
  * its save point and where it ended. The end snapshots live in memory, so for a turn
- * that ended before the last restart the next save point stands in (what you changed
- * by hand in between then counts to that turn), and for the newest such turn, the
- * files as they are now. Whatever changed the files during a turn counts (the agent's
- * tools, its commands, or you by hand).
+ * that ended before the last restart the next save point stands in, and for the newest
+ * such turn, the files as they are now.
+ *
+ * D180 (the developer, 2026-11-20): only this agent's files count: those its own edit tools
+ * (Write, Edit, MultiEdit, NotebookEdit) named during the turn. In a working copy shared with
+ * other agents or with you, their edits during the turn are left out; a file the agent changed
+ * only through a shell command is left out too.
  *
  * Routes, for the loopback UI only (as the side panel's Files: refused to a paired
  * phone by name, not on the peer listener's list; a request for an agent of a paired
@@ -30,11 +32,9 @@
  * content git has not seen), so the UI reads these routes when turns change, not on
  * every event of a running turn.
  *
- * Known limits, found by review and not solved here:
- * - Whole working trees are compared. In a tree the agent shares with other agents or
- *   with you (it works "in place"), their changes during the turn, and for "since your
- *   review" until now, count too. The Diff's own view narrows such a tree to the files
- *   the agent touched (D90); this does not.
+ * Known limits:
+ * - A file this agent edited that another agent or you also edited during the same turn
+ *   shows all of that file's changes (the comparison is per file, not per edit).
  * - The save points' own limits (`docs/undo.md` → *Known limits*): a repo the agent
  *   first edits during a turn has its first save point at the next turn, so that
  *   turn's edits there are not shown (the To review strip still counts them); a
@@ -47,9 +47,6 @@
  * - `through` and "Turns N–M" can name a turn that is not counted yet (a message that
  *   is held, or whose save point is still being stored), and with several working
  *   trees the widest range of any of them is named.
- * - `reviewFrom` is the newest turn with a save point that began before the review's
- *   first turn ended: when that first turn has no save point of its own, an earlier,
- *   already reviewed turn is included.
  * - No cap on a diff's size, and no paging.
  */
 
@@ -73,12 +70,6 @@ export interface TurnChanges {
   readonly turns: readonly TurnChange[];
   /** The agent's newest turn (its messages from you so far). */
   readonly latestTurn: number;
-  /**
-   * D166: the turn the pending review starts at ("since your last review" = from
-   * before this turn until now); `null` without a pending review, or without a save
-   * point from before its first turn ended.
-   */
-  readonly reviewFrom: number | null;
 }
 
 /** `unreadable` (500): git could not read any of the agent's working trees (one that is merely gone is left out). */

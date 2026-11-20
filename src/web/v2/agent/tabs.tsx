@@ -34,7 +34,7 @@ const SCOPE_NOTES: Readonly<Record<DiffScope, string>> = {
 const SCOPE_ORDER: readonly DiffScope[] = ['review', 'head', 'branch', 'repo'];
 
 /** D174: the diff layout picked in this browser (Unified / Side by side), shared by every Changes tab. */
-function useDiffLayout(): readonly [DiffLayout, (layout: DiffLayout) => void] {
+export function useDiffLayout(): readonly [DiffLayout, (layout: DiffLayout) => void] {
   const [layout, setLayout] = useState<DiffLayout>(() => loadDiffLayout(browserStorage()));
   const pick = useCallback((next: DiffLayout) => {
     saveDiffLayout(browserStorage(), next);
@@ -185,7 +185,7 @@ export function ChangesTab({ sessionId, reviewSince = null }: { readonly session
 }
 
 /** D174: one row of the side-by-side diff: the left and right cells, each with its line number. */
-function SplitPair({ left, right }: { readonly left: SideCell; readonly right: SideCell }) {
+export function SplitPair({ left, right }: { readonly left: SideCell; readonly right: SideCell }) {
   return (
     <>
       <div className="v2-ag-split-cell" data-tone={left.tone} data-testid="v2-agent-split-left">

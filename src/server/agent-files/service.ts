@@ -69,10 +69,10 @@ export interface AgentFileSession {
 export interface AgentFileDeps {
   /** The repos the agent works in (`providers.diff.worksIn`); empty without a provider. */
   worksIn(sessionId: string): Promise<SessionWorksIn>;
-  /** Paths named by the session's tool calls with one of `names` (`store.events.editedFilePaths`). */
-  toolPaths(sessionId: string, names: readonly string[]): Promise<string[]>;
-  /** The agent's reply texts, newest first. */
-  replyTexts(sessionId: string, limit: number): Promise<string[]>;
+  /** Paths named by the session's tool calls with one of `names` (`store.events.editedFilePathTimes`); D180: with the newest call's time when known. */
+  toolPaths(sessionId: string, names: readonly string[]): Promise<ReadonlyArray<string | { readonly path: string; readonly at: string | null }>>;
+  /** The agent's reply texts, newest first; D180: with each reply's time when known. */
+  replyTexts(sessionId: string, limit: number): Promise<ReadonlyArray<string | { readonly text: string; readonly at: string | null }>>;
   readonly platform: NodeJS.Platform;
   /** `SWITCHBOARD_OPEN_COMMAND`: an argv prefix for the OS openers (tests), else `null`. */
   readonly openPrefix: readonly string[] | null;
@@ -177,6 +177,8 @@ interface FoundFile {
   line: number | null;
   exists: boolean;
   modified: number;
+  /** D180: the newest event that touched it (ISO), `null` when unknown. */
+  at: string | null;
 }
 
 export class AgentFileService {
@@ -274,7 +276,7 @@ export class AgentFileService {
 
   async #readConversation(session: AgentFileSession, roots: readonly AgentFileRoot[]): Promise<Map<string, FoundFile>> {
     const found = new Map<string, FoundFile>();
-    const note = async (real: string, source: AgentFileSource, exists: boolean): Promise<FoundFile> => {
+    const note = async (real: string, source: AgentFileSource, exists: boolean, at: string | null = null): Promise<FoundFile> => {
       const key = this.#key(real);
       let entry = found.get(key);
       if (!entry) {
@@ -286,27 +288,30 @@ export class AgentFileService {
             exists = false;
           }
         }
-        entry = { real, sources: new Set(), mentionedAs: new Set(), line: null, exists, modified };
+        entry = { real, sources: new Set(), mentionedAs: new Set(), line: null, exists, modified, at: null };
         found.set(key, entry);
       }
       entry.sources.add(source);
+      if (at !== null && (entry.at === null || at > entry.at)) entry.at = at;
       return entry;
     };
 
     for (const [names, source] of TOOL_SOURCES) {
-      let written: string[] = [];
+      let written: ReadonlyArray<string | { readonly path: string; readonly at: string | null }> = [];
       try {
         written = await this.#deps.toolPaths(session.id, names);
       } catch {
         written = [];
       }
-      for (const item of written) {
+      for (const raw of written) {
+        const item = typeof raw === 'string' ? raw : raw.path;
+        const at = typeof raw === 'string' ? null : raw.at;
         const real = await this.#resolve(item, session, roots, 'file');
-        if (real) await note(real, source, true);
+        if (real) await note(real, source, true, at);
         else {
           // A file the agent named in a tool call and that is gone: still listed, marked missing.
           const first = this.#candidates(item, session, roots)[0];
-          if (first) await note(first, source, false);
+          if (first) await note(first, source, false, at);
         }
       }
     }
@@ -321,17 +326,19 @@ export class AgentFileService {
       return hits.length === 1 && hits[0] ? hits[0].real : null;
     };
 
-    let texts: string[] = [];
+    let texts: ReadonlyArray<string | { readonly text: string; readonly at: string | null }> = [];
     try {
       texts = await this.#deps.replyTexts(session.id, REPLY_TEXTS);
     } catch {
       texts = [];
     }
-    for (const text of texts) {
+    for (const raw of texts) {
+      const text = typeof raw === 'string' ? raw : raw.text;
+      const at = typeof raw === 'string' ? null : raw.at;
       for (const ref of mentionedPathRefs(text)) {
         const real = (await this.#resolve(ref.path, session, roots, 'file')) ?? byTail(ref.path);
         if (!real) continue;
-        const entry = await note(real, 'mentioned', true);
+        const entry = await note(real, 'mentioned', true, at);
         entry.mentionedAs.add(ref.path);
         if (entry.line === null && ref.line !== null) entry.line = ref.line;
       }
@@ -351,6 +358,7 @@ export class AgentFileService {
       mentionedAs: [...entry.mentionedAs],
       line: entry.line,
       exists: entry.exists,
+      at: entry.at,
     }));
     return { files, truncated: found.length > AGENT_FILES_MAX };
   }
