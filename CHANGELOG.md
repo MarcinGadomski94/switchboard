@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.2 (2026-11-20)
+
+### Terminals
+- **Terminals in the sidebar:** a Terminals item between Tasks and Settings takes you back to a terminal you left; its badge shows how many are open on this computer. On a phone, Terminals stays under More. See `docs/terminals.md`.
 ## 2.5.1 (2026-11-20)
 
 ### Agents
