@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.8 (2026-11-20)
+
+### Connectors
+- **Sign-in prompts muted on every computer:** Settings › Advanced › Connections lists the claude.ai connectors (and muted MCP servers) of all your paired computers, each with its status on each computer, and turning off **Ask me to sign in** (or **Don't ask again** on the prompt) mutes it on all of them. A muted server's prompt from a paired computer that hasn't updated yet is hidden too. Every computer needs 2.5.8 to sync; one that doesn't is named. See `docs/mcp.md` (D184).
+
+### Look
+- **Tidier alignment:** the Settings switches keep their size, sidebar names line up, the row with the agent's status and Message | Terminal | Both has one height, and the header's computer tag sits centred.
 ## 2.5.7 (2026-11-20)
 
 ### Sidebar
