@@ -144,10 +144,11 @@ export function AgentHeader({ data, tab, onTab, view, onView, sideShown, onToggl
         { id: 'chat', label: AGENT_TAB_LABELS.chat, icon: 'chat' },
         // D171: the agent's CLI (its conversation as the interactive claude); the dot while in CLI mode.
         { id: 'cli', label: AGENT_TAB_LABELS.cli, icon: 'cmd', tour: 'v2-agent-cli-tab', ...(session?.cliMode ? { count: '●' } : {}) },
-        { id: 'changes', label: AGENT_TAB_LABELS.changes, icon: 'copy', ...(counts.changes ? { count: counts.changes } : {}) },
+        // D182: Changes and Helpers are the side panel's tabs (D180) wherever it exists; a phone (no panel) keeps them here.
+        ...(phone ? [{ id: 'changes' as const, label: AGENT_TAB_LABELS.changes, icon: 'copy', ...(counts.changes ? { count: counts.changes } : {}) }] : []),
         { id: 'results', label: AGENT_TAB_LABELS.results, icon: 'results', ...(counts.results ? { count: counts.results } : {}) },
         { id: 'timeline', label: AGENT_TAB_LABELS.timeline, icon: 'clock' },
-        { id: 'helpers', label: AGENT_TAB_LABELS.helpers, icon: 'crew', ...(counts.helpers ? { count: counts.helpers } : {}) },
+        ...(phone ? [{ id: 'helpers' as const, label: AGENT_TAB_LABELS.helpers, icon: 'crew', ...(counts.helpers ? { count: counts.helpers } : {}) }] : []),
       ];
   const status = session ? agentStatusOf(session) : null;
   // D143: an agent whose turn is over with a dev server left running reads "Idle · 1 background app".

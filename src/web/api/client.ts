@@ -406,6 +406,8 @@ export const api = {
   enterCliMode: (id: string, body: { readonly stopTurn?: boolean; readonly cols?: number; readonly rows?: number } = {}) => request<Session>('POST', `/api/sessions/${enc(id)}/cli-mode`, body),
   /** D171: Back to chat mode (the CLI ends; D72's continue resumes it headless). */
   leaveCliMode: (id: string) => request<Session>('DELETE', `/api/sessions/${enc(id)}/cli-mode`),
+  /** D182: a terminal at the bottom of the agent's conversation, in its folder (closed with `machineApi(null).closeTerminal`). */
+  openAgentTerminal: (id: string, body: { readonly cols?: number; readonly rows?: number } = {}) => request<TerminalInfo>('POST', `/api/sessions/${enc(id)}/terminal`, body),
   /** D72: Resend of a message marked not sent (its terminal ended before taking it up). */
   resendMessage: (id: string, eventId: number) => request<void>('POST', `/api/sessions/${enc(id)}/events/${eventId}/resend`, {}),
   /** D103: Edit / Remove of a message held for an account with allowance: it never goes out; answers its text and attachments. */

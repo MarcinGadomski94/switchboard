@@ -695,6 +695,20 @@ export const TERMINAL_WORDS = {
   keys: { esc: 'Esc', tab: 'Tab', ctrl: 'Ctrl', up: '↑', down: '↓', left: '←', right: '→', ctrlC: '^C' },
 } as const;
 
+/** D182: the bottom of an agent's conversation (the message box, the agent's terminal, or both). */
+export const DOCK_WORDS = {
+  label: 'Message or terminal',
+  message: 'Message',
+  terminal: 'Terminal',
+  both: 'Both',
+  terminalTitle: 'A terminal in the agent’s folder, on its computer (Ctrl+`). It closes when you leave this conversation.',
+  bothTitle: 'The terminal above the message box',
+  starting: 'Starting the terminal…',
+  failed: (why: string): string => `The terminal couldn’t start: ${why}`,
+  tryAgain: 'Try again',
+  resize: 'Resize the terminal',
+} as const;
+
 /** D165 · Profiles' words (the rail switcher, Settings → Profiles, Move to profile…). */
 export const PROFILE_WORDS = {
   choose: 'Choose a profile',

@@ -910,6 +910,71 @@
   }
 }
 
+/* ── D182: the bottom (Message | Terminal | Both) ── */
+.sb2 .v2-ag-bottom {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  border-top: 1px solid var(--v2-border);
+  background: var(--v2-surface-2);
+}
+
+.sb2 .v2-ag-bottom-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 12px 0;
+}
+
+.sb2 .v2-ag-bottom-term {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 6px 12px 0;
+}
+
+.sb2 .v2-ag-bottom-term[hidden] {
+  display: none;
+}
+
+/* Terminal alone: about half the view; Both: the remembered height (inline). */
+.sb2 .v2-ag-bottom[data-mode='terminal'] .v2-ag-bottom-term {
+  height: min(52vh, 460px);
+  padding-bottom: 10px;
+}
+
+.sb2 .v2-ag-bottom-term .v2-terminal {
+  min-height: 0;
+}
+
+.sb2 .v2-ag-bottom-note {
+  padding: 12px;
+  font-size: var(--v2-fs-sm);
+  color: var(--v2-text-2);
+}
+
+.sb2 .v2-ag-bottom-handle {
+  height: 7px;
+  margin: 2px 0 0;
+  cursor: row-resize;
+  background: linear-gradient(var(--v2-border), var(--v2-border)) center / 44px 3px no-repeat;
+  border-radius: 3px;
+  touch-action: none;
+}
+
+.sb2 .v2-ag-bottom-handle:hover {
+  background: linear-gradient(var(--v2-accent), var(--v2-accent)) center / 64px 3px no-repeat;
+}
+
+.sb2 .v2-ag-bottom-message[hidden] {
+  display: none;
+}
+
+/* The message box inside the bottom: its own top line is the bottom's. */
+.sb2 .v2-ag-bottom .v2-ag-dock {
+  border-top: 0;
+}
+
 /* ── The dock (fix after 2.0: one status row, a capped box) ── */
 .sb2 .v2-ag-dock {
   border-top: 1px solid var(--v2-border);

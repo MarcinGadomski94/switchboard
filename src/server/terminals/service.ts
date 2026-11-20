@@ -79,6 +79,11 @@ interface Terminal {
   readonly disposers: Array<{ dispose(): void }>;
   /** D171: told once when the program ends. */
   onEnd?: ((why: 'exited' | 'closed' | 'idle' | 'stopping') => void) | undefined;
+  /** D182: the agent whose conversation opened it (not listed; closed `closeUnattendedMs` after its last client). */
+  readonly sessionId?: string;
+  readonly closeUnattendedMs?: number;
+  /** D182: the pending close after the last client left. */
+  closeTimer?: ReturnType<typeof setTimeout> | undefined;
 }
 
 /** Options of {@link TerminalService}. */
@@ -229,12 +234,13 @@ export class TerminalService {
       lastActiveAt: new Date(terminal.lastActiveAt).toISOString(),
       clients: terminal.clients.size,
       exited: terminal.exited,
+      ...(terminal.sessionId !== undefined ? { sessionId: terminal.sessionId } : {}),
     };
   }
 
-  /** The terminals scope `scope` sees, newest first. */
+  /** The terminals scope `scope` sees, newest first. D182: an agent's terminal (it lives with its conversation) is not listed. */
   list(scope: string | null): TerminalInfo[] {
-    return [...this.#terminals.values()].filter((terminal) => this.#sees(scope, terminal)).sort((a, b) => b.createdAt - a.createdAt).map((terminal) => this.#info(terminal));
+    return [...this.#terminals.values()].filter((terminal) => terminal.sessionId === undefined && this.#sees(scope, terminal)).sort((a, b) => b.createdAt - a.createdAt).map((terminal) => this.#info(terminal));
   }
 
   /** A terminal scope `scope` sees, else 404. */
@@ -261,6 +267,8 @@ export class TerminalService {
     readonly env?: Readonly<Record<string, string>>;
     /** D171: called once when the program ends (it exited, or the terminal was closed / swept / stopped). */
     readonly onEnd?: (why: 'exited' | 'closed' | 'idle' | 'stopping') => void;
+    /** D182: an agent's terminal: not listed, and closed this long after its last client (also if none ever attaches). */
+    readonly agent?: { readonly sessionId: string; readonly closeUnattendedMs: number };
   }): Promise<TerminalInfo> {
     if (this.#closed) throw new TerminalError(503, 'stopping', 'Switchboard is stopping');
     if (this.#terminals.size >= this.max) throw new TerminalError(409, 'too-many', `At most ${this.max} terminals can be open on this computer. Close one first.`);
@@ -277,7 +285,24 @@ export class TerminalService {
       throw new TerminalError(503, 'unavailable', `${input.program.title} could not start: ${error instanceof Error ? error.message : String(error)}`);
     }
     const now = this.#now();
-    const terminal: Terminal = { id: randomUUID(), owner: input.owner, program: input.program, cwd: input.cwd, createdAt: now, cols: input.cols, rows: input.rows, lastActiveAt: now, unattendedSince: now, pty, scrollback: '', clients: new Set(), exited: null, disposers: [], ...(input.onEnd ? { onEnd: input.onEnd } : {}) };
+    const terminal: Terminal = {
+      id: randomUUID(),
+      owner: input.owner,
+      program: input.program,
+      cwd: input.cwd,
+      createdAt: now,
+      cols: input.cols,
+      rows: input.rows,
+      lastActiveAt: now,
+      unattendedSince: now,
+      pty,
+      scrollback: '',
+      clients: new Set(),
+      exited: null,
+      disposers: [],
+      ...(input.onEnd ? { onEnd: input.onEnd } : {}),
+      ...(input.agent ? { sessionId: input.agent.sessionId, closeUnattendedMs: input.agent.closeUnattendedMs } : {}),
+    };
     const limit = this.#o.scrollbackChars ?? TERMINAL_SCROLLBACK_CHARS;
     terminal.disposers.push(
       pty.onData((data) => {
@@ -292,7 +317,20 @@ export class TerminalService {
       }),
     );
     this.#terminals.set(terminal.id, terminal);
+    // D182: an agent's terminal nobody attaches to (the tab went before its socket opened) does not linger.
+    this.#closeLater(terminal);
     return this.#info(terminal);
+  }
+
+  /** D182: an agent's terminal with no client: closed after its grace (cancelled when a client attaches). */
+  #closeLater(terminal: Terminal): void {
+    if (terminal.closeUnattendedMs === undefined || terminal.clients.size > 0) return;
+    clearTimeout(terminal.closeTimer);
+    terminal.closeTimer = setTimeout(() => {
+      terminal.closeTimer = undefined;
+      if (terminal.clients.size === 0) this.#end(terminal, 'closed');
+    }, terminal.closeUnattendedMs);
+    terminal.closeTimer.unref?.();
   }
 
   #broadcast(terminal: Terminal, frame: TerminalServerFrame): void {
@@ -310,11 +348,16 @@ export class TerminalService {
     const terminal = this.#own(scope, id);
     terminal.clients.add(client);
     terminal.unattendedSince = null;
+    clearTimeout(terminal.closeTimer);
+    terminal.closeTimer = undefined;
     client.send({ t: 'hello', info: this.#info(terminal), scrollback: terminal.scrollback });
     if (terminal.exited) client.send({ t: 'exit', code: terminal.exited.code, signal: terminal.exited.signal });
     return () => {
       terminal.clients.delete(client);
-      if (terminal.clients.size === 0) terminal.unattendedSince = this.#now();
+      if (terminal.clients.size === 0) {
+        terminal.unattendedSince = this.#now();
+        this.#closeLater(terminal);
+      }
     };
   }
 
@@ -346,6 +389,8 @@ export class TerminalService {
 
   #end(terminal: Terminal, reason: 'closed' | 'idle' | 'stopping'): void {
     if (!this.#terminals.delete(terminal.id)) return;
+    clearTimeout(terminal.closeTimer);
+    terminal.closeTimer = undefined;
     this.#broadcast(terminal, { t: 'closed', reason });
     for (const client of terminal.clients) {
       try {

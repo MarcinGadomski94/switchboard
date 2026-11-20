@@ -324,8 +324,9 @@ test('a helper thread expands inline and opens its own chat', async ({ page }) =
   await expect(chat.getByTestId('v2-agent-helper-brief')).toBeVisible();
   await page.getByTestId('v2-agent-helper-back').click();
   await expect(page).toHaveURL(`${world.baseUrl}/agents/${id}`);
-  // The Helpers tab lists it too: D180, in the side panel, under "1 finished" (folded).
-  await page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ }).click();
+  // The Helpers tab lists it too: D180, in the side panel, under "1 finished" (folded). D182: the header has no Helpers tab any more.
+  await expect(page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ })).toHaveCount(0);
+  await page.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: /Helpers/ }).click();
   const helpers = page.getByTestId('v2-side-helpers');
   await expect(helpers.getByTestId('v2-side-helpers-finished-toggle')).toHaveText(/1 finished/);
   await expect(helpers.getByTestId('v2-side-helper-row')).toHaveCount(0);

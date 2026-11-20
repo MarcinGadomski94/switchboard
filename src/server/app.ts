@@ -865,7 +865,18 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
   terminalsRef = terminals;
   peers.useTerminals((scope, terminalId, socket) => serveTerminalSocket(terminals, scope, terminalId, socket));
-  await registerTerminalRoutes(app, { terminals, folders, peers });
+  await registerTerminalRoutes(app, {
+    terminals,
+    folders,
+    peers,
+    // D182: the agent's terminal starts in the agent's folder.
+    session: async (id) => {
+      const record = await options.store.sessions.get(id);
+      return record ? { cwd: record.cwd, root: record.root, closedAt: record.closedAt, userProfileId: record.userProfileId ?? null } : null;
+    },
+    // Tests only: a shorter grace for an agent's terminal.
+    ...(Number(terminals.env['SWITCHBOARD_TEST_AGENT_TERMINAL_GRACE_MS']) > 0 ? { agentTerminalGraceMs: Number(terminals.env['SWITCHBOARD_TEST_AGENT_TERMINAL_GRACE_MS']) } : {}),
+  });
   // D171 (docs/terminals.md → CLI mode): an agent's CLI tab, its conversation as the interactive claude in one of these terminals.
   const cliMode = new CliModeService({
     store: options.store,

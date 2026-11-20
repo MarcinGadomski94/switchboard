@@ -119,7 +119,8 @@ for (const layout of [
     await expect(page.getByTestId('v2-agent-you').first()).toContainText('Reply with just OK.', { timeout: 5_000 });
     expect(Date.now() - opened).toBeLessThan(5_000);
     if (layout.name === 'desktop') {
-      const count = page.getByTestId('v2-agent-tabs').locator('[data-tab="changes"] .v2-tab-n');
+      // D182: the count is on the side panel's Changes tab (the header has none on a desktop).
+      const count = page.getByTestId('v2-agent-side-tabs').locator('[data-tab="changes"] .v2-tab-n');
       await expect(count).toHaveText('…');
       await page.screenshot({ path: path.join('test-results', 'v2-large-root-counting.png') });
       await expect(count).toHaveText('5', { timeout: 15_000 });

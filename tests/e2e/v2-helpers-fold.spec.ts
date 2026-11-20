@@ -83,9 +83,9 @@ test('desktop: the side panel’s Helpers: the working one under Working, the fi
   await expect(panel.getByTestId('v2-side-helpers-finished').getByTestId('v2-side-helper-row')).toHaveCount(56);
   await toggle.click();
   await expect(panel.getByTestId('v2-side-helpers-finished').getByTestId('v2-side-helper-row')).toHaveCount(0);
-  // The panel's tab and the header's tab count the active helpers only; 11 minutes later the same.
+  // The panel's tab counts the active helpers only (D182: the header has no Helpers tab); 11 minutes later the same.
   await expect(page.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: /Helpers/ })).toHaveText(/Helpers\s*1/);
-  await expect(page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ })).toHaveText(/Helpers\s*1/);
+  await expect(page.getByTestId('v2-agent-tabs').getByRole('tab', { name: /Helpers/ })).toHaveCount(0);
   await page.clock.fastForward(MINUTES_11);
   await expect(working.getByTestId('v2-side-helper-row')).toHaveCount(1);
   await expect(toggle).toHaveText(/56 finished/);

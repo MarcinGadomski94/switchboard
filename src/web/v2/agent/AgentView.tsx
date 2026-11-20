@@ -17,6 +17,8 @@ import { isWide, toggledWidth } from './panel-layout.ts';
 import { useHeadDiff } from './useHeadDiff.ts';
 import { helperFailed } from './helpers-view.ts';
 import type { ChangesView } from './changes-view.ts';
+import { BottomDock } from './BottomDock.tsx';
+import { agentTerminalRefusal } from './bottom-dock.ts';
 import { ChatPane } from './ChatPane.tsx';
 import { CliTab } from './CliTab.tsx';
 import { splitDock } from './composer-model.ts';
@@ -420,16 +422,19 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
                       helperHref={helperHref}
                     />
                   </TurnChangesContext.Provider>
-                  <Dock
-                    data={data}
-                    queued={split.queued}
-                    paused={split.paused}
-                    lastEventId={lastEventId}
-                    onSent={() => {
-                      stick.current = true;
-                    }}
-                    variant={phone ? 'phone' : 'full'}
-                  />
+                  {/* D182: the message box, the agent's terminal, or both; a new agent is a new bottom (the last one's terminal closes). */}
+                  <BottomDock key={sessionId} sessionId={sessionId} phone={phone} refusal={agentTerminalRefusal({ remote: !local, closed: data.closed, missing: data.session === null })}>
+                    <Dock
+                      data={data}
+                      queued={split.queued}
+                      paused={split.paused}
+                      lastEventId={lastEventId}
+                      onSent={() => {
+                        stick.current = true;
+                      }}
+                      variant={phone ? 'phone' : 'full'}
+                    />
+                  </BottomDock>
                 </FileLinksContext.Provider>
               ) : tab === 'cli' ? (
                 // D171: the agent's conversation as the interactive claude (the native CLI) in a terminal.

@@ -52,7 +52,15 @@ export interface TerminalInfo {
   readonly clients: number;
   /** `null` while it runs; its end when the program exited (the terminal stays listed until closed). */
   readonly exited: { readonly code: number | null; readonly signal: number | null } | null;
+  /**
+   * D182: the agent whose conversation opened it (its terminal at the bottom of the chat): not on the
+   * Terminals page, and closed soon after no tab shows it any more.
+   */
+  readonly sessionId?: string;
 }
+
+/** D182: how long an agent's terminal outlives its last tab (a reload or a dropped socket reconnects in time; leaving closes it at once). */
+export const AGENT_TERMINAL_GRACE_MS = 20_000;
 
 /** `GET /api/terminals`: this computer's terminals of the request's profile, and what a new one may use. */
 export interface TerminalsView {
