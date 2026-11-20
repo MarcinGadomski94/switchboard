@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.5 (2026-11-20)
+
+### Agents
+- **The conversation's terminal for an agent on another computer:** Terminal (and Both) under the conversation now works for an agent running on a paired computer; the terminal starts on that computer, in the agent's folder, with that computer's checks, and closes when you leave. Both computers need 2.5.5; an older one asks to be updated. See `docs/terminals.md` (D182).
 ## 2.5.4 (2026-11-20)
 
 ### Sidebar
