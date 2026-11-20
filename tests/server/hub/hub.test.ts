@@ -359,6 +359,12 @@ describe('/hub · events (contract, field by field)', () => {
       'sessionUpdated with status done',
     );
 
+    // D166: the review is recorded right after the turn ends, and its own sessionUpdated can come a moment after
+    // "done" (the 2.5.5 CI flake): wait for the update that carries it before comparing with the REST answer.
+    await stream.waitFor(
+      () => stream.payloads<Session>('sessionUpdated').some((s) => s.id === session.id && s.status === 'done' && s.review !== undefined),
+      'sessionUpdated with the review',
+    );
     // sessionUpdated: exactly the Session fields; the last one equals GET /api/sessions.
     const updates = stream.payloads<Session>('sessionUpdated').filter((s) => s.id === session.id);
     expect(updates.map((s) => s.status)).toContain('run');
