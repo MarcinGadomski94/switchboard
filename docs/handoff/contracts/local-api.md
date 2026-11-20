@@ -774,6 +774,8 @@ The `/mcp` page (`docs/mcp.md`). Every route takes `?folder=` (a saved folder's 
 | DELETE | /api/mcp/auth/{id} | | McpAuthState (cancelled; the helper is stopped) |
 | POST | /api/sessions/{id}/mcp-sign-in/{server} | | D163: McpAuthState (D61's sign-in of `server` in the agent's folder); 404 `not-found` / `not-needed`, 409 `claude-ai` / `no-folder` |
 | POST | /api/sessions/{id}/mcp-sign-in/{server}/reconnect | | D163: `{ server, reconnected: sessionId[], failed: sessionId[] }` (`mcp_reconnect` to every running agent that needs `server`); 404 `not-found` |
+| GET | /api/mcp/sign-in | | D183: `McpSignInSettings` `{ muted: string[], connectors: { name, status, at }[] }` (the servers whose sign-in is not asked for; the claude.ai connectors this computer's agents reported). Local-only |
+| PUT | /api/mcp/sign-in/muted/{server} | `{ muted: boolean }` | D183: Don't ask again (`true`) or ask again; answers `McpSignInSettings`; 422 when `muted` is not a boolean. Local-only |
 
 **D163 (additive):** `Session.mcpSignIn?: { name, claudeAi }[]`, the MCP servers its running CLI reported as `needs-auth` at its latest turn start (absent when none). System item kind `mcp-sign-in` (label `Sign in`, status `need`, title "Sign in to <server>", actions `open-session` "Open agent" (a link) and `dismiss`, `payload { dedupe, server, claudeAi }`), closed `resolved` when no running agent needs the server. `docs/mcp.md` → *Sign-in where it happens (D163)*.
 

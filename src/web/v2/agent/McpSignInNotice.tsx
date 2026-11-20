@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Session } from '../../../core/api.ts';
 import { CLAUDE_AI_CONNECTORS_URL } from '../../../core/mcp-sign-in.ts';
 import { api } from '../../api/client.ts';
-import { Button, Icon } from '../components/index.ts';
+import { Button, Icon, useToast } from '../components/index.ts';
+import { MCP_SIGN_IN_WORDS } from '../glossary.ts';
 import { type SignInNoticeRow, type SignInPhase, reconnectText, signInNoticeRows } from './mcp-sign-in-model.ts';
 
 function errorText(error: unknown): string {
@@ -18,6 +19,7 @@ function errorText(error: unknown): string {
  * **Reconnect**. A paired computer's agent: signed in on that computer.
  */
 export function McpSignInNotice({ sessionId, session }: { readonly sessionId: string; readonly session: Pick<Session, 'mcpSignIn' | 'machine' | 'closedAt'> | null }) {
+  const toast = useToast();
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [phases, setPhases] = useState<Readonly<Record<string, SignInPhase>>>({});
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
@@ -80,6 +82,15 @@ export function McpSignInNotice({ sessionId, session }: { readonly sessionId: st
     );
   };
 
+  // D183: Don't ask again: hidden at once (the server stops listing it for every agent here).
+  const mute = (name: string): void => {
+    setDismissed((current) => new Set([...current, name]));
+    api.setMcpSignInMuted(name, true).then(
+      () => toast({ text: MCP_SIGN_IN_WORDS.muted(name) }),
+      (error: unknown) => toast({ text: errorText(error), tone: 'error' }),
+    );
+  };
+
   const reconnect = (row: SignInNoticeRow): void => {
     set(row.name, { kind: 'reconnecting' });
     api.mcpSignInReconnect(sessionId, row.name).then(
@@ -124,6 +135,12 @@ export function McpSignInNotice({ sessionId, session }: { readonly sessionId: st
             ) : (
               <Button size="sm" variant="primary" icon="shield" disabled={busy} onClick={() => signIn(row)} data-testid="v2-agent-mcp-signin-go">
                 {phase.kind === 'failed' ? 'Try again' : 'Sign in'}
+              </Button>
+            )}
+            {/* D183: muted on the agent's computer; a paired computer's agent is muted there. */}
+            {row.elsewhere ? null : (
+              <Button size="sm" variant="ghost" title={MCP_SIGN_IN_WORDS.dontAskTitle} onClick={() => mute(row.name)} data-testid="v2-agent-mcp-signin-mute" data-tour="v2-mcp-signin-mute">
+                {MCP_SIGN_IN_WORDS.dontAsk}
               </Button>
             )}
             <Button size="sm" variant="ghost" onClick={() => setDismissed((current) => new Set([...current, row.name]))} data-testid="v2-agent-mcp-signin-dismiss">

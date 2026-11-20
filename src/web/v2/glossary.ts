@@ -2435,3 +2435,19 @@ export const BRING_IN_WORDS = {
   openIt: 'Open it',
   brought: (name: string): string => `Brought in “${name}”.`,
 } as const;
+
+/** D183 (`docs/mcp.md` → *Don't ask again*): an MCP server's sign-in, muted or asked for; the claude.ai connectors in Settings. */
+export const MCP_SIGN_IN_WORDS = {
+  dontAsk: 'Don’t ask again',
+  dontAskTitle: 'Switchboard stops asking you to sign in to this server on this computer (Settings › Advanced › Connections turns it back on).',
+  muted: (name: string): string => `Switchboard won’t ask about ${name} again on this computer.`,
+  connectorsTitle: 'claude.ai connectors and sign-in requests',
+  connectorsSub: 'Connectors from your claude.ai account are loaded by every agent and managed on claude.ai, not here. Turn off “Ask me to sign in” for one you don’t use.',
+  noConnectors: 'No claude.ai connectors reported yet: they show here once an agent on this computer starts.',
+  managedOn: 'managed on claude.ai',
+  needsSignIn: 'needs a sign-in',
+  connected: 'connected',
+  askMe: (name: string): string => `Ask me to sign in to ${name}`,
+  mutedOther: 'Other servers you said not to ask about',
+  openConnectors: 'Open claude.ai connectors',
+} as const;

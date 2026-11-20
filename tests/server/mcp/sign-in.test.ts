@@ -113,6 +113,41 @@ describe('D163 · MCP sign-in where it happens', () => {
     expect((await session(started.id)).mcpSignIn).toEqual([{ name: 'claude.ai Google Drive', claudeAi: true }]);
   }, 60_000);
 
+  it('D183: Don’t ask again mutes a server (no item, no notice data), lists the claude.ai connector in Settings, and asking again brings it back', async () => {
+    const w = await setup();
+    const started = await w.supervisor.start(newSession({ task: 'Say hi.' }), w.place);
+    await waitForStatus(w.store, started.id, ['done', 'idle']);
+    await until(async () => (await signInItems()).length === 2, 'two sign-in items', 10_000);
+    const drive = 'claude.ai Google Drive';
+
+    // Settings: the connector the agent reported, with its status; nothing muted yet.
+    const before = (await call('GET', '/api/mcp/sign-in')).json() as { muted: string[]; connectors: Array<{ name: string; status: string; at: string }> };
+    expect(before.muted).toEqual([]);
+    expect(before.connectors.map((c) => [c.name, c.status])).toEqual([[drive, 'needs-auth']]);
+
+    // Don't ask again: its item closes, the agent's notice data drops it; docs is untouched.
+    const muted = await call('PUT', `/api/mcp/sign-in/muted/${encodeURIComponent(drive)}`, { muted: true });
+    expect(muted.statusCode).toBe(200);
+    expect((muted.json() as { muted: string[] }).muted).toEqual([drive]);
+    expect((await session(started.id)).mcpSignIn).toEqual([{ name: 'docs', claudeAi: false }]);
+    await until(async () => (await signInItems()).map((item) => item.title).join() === 'Sign in to docs', 'the Google Drive item closed', 10_000);
+    // Stored per install (the setting), and the next turn's init does not bring it back.
+    expect(await w.store.settings.get('mcp.signInMuted')).toEqual([drive]);
+    await w.supervisor.sendMessage(started.id, 'Again.');
+    await waitForStatus(w.store, started.id, ['done', 'idle']);
+    expect((await session(started.id)).mcpSignIn?.map((need) => need.name)).toEqual(['docs']);
+    expect((await signInItems()).map((item) => item.title)).toEqual(['Sign in to docs']);
+
+    // Ask again: back in the agent's list and as an item.
+    expect((await call('PUT', `/api/mcp/sign-in/muted/${encodeURIComponent(drive)}`, { muted: false })).statusCode).toBe(200);
+    expect((await session(started.id)).mcpSignIn).toEqual([
+      { name: drive, claudeAi: true },
+      { name: 'docs', claudeAi: false },
+    ]);
+    await until(async () => (await signInItems()).length === 2, 'the Google Drive item back', 10_000);
+    expect((await call('PUT', `/api/mcp/sign-in/muted/${encodeURIComponent(drive)}`, { muted: 'yes' })).statusCode).toBe(422);
+  }, 60_000);
+
   it('Sign in from the agent runs the D61 sign-in in its folder; when it finishes the agent reconnects by itself', async () => {
     const w = await setup();
     // The fake's `docs`: an HTTP server that needs a sign-in until signed in (user scope, the world's config dir).

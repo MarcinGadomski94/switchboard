@@ -202,6 +202,8 @@ const V2_5_1 = '2.5.1';
 const V2_5_2 = '2.5.2';
 /** The version D181 (the icon rail) and D182 (the agent terminal) ship in (adjust if it ships later). */
 const V2_5_4 = '2.5.4';
+/** The version D183 (Don't ask again for MCP sign-ins) ships in (adjust if it ships later). */
+const V2_5_6 = '2.5.6';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2167,8 +2169,26 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
-];
-/** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
+  // D183: Don't ask again for an MCP sign-in; the claude.ai connectors in Settings (docs/mcp.md → Don't ask again).
+  {
+    id: 'mcp-mute',
+    decision: 'D183',
+    version: V2_5_6,
+    title: 'Stop a sign-in request you don’t need',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'mute',
+        title: 'Don’t ask again',
+        what: 'An agent asks you to sign in to an MCP server, such as a claude.ai connector like Google Drive? Don’t ask again stops the request on this computer: no notice, no Needs-you item, no phone message. Settings › Advanced › Connections lists the claude.ai connectors (managed on claude.ai, not here) with “Ask me to sign in” to turn it back on.',
+        todo: ['Open Settings › Advanced › Connections.'],
+        anchors: ['v2-mcp-connectors', 'v2-mcp-signin-mute'],
+        v2Route: '/settings/advanced/connections',
+        missing: 'Open Settings › Advanced › Connections to see the claude.ai connectors.',
+      },
+    ],
+  },
+];/** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
 export function isTourId(id: string, registry: readonly WhatsNewFeature[] = WHATS_NEW): boolean {
   return id === MAIN_TOUR_ID || registry.some((feature) => feature.id === id);
 }

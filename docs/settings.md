@@ -12,6 +12,8 @@ The contract's `Settings` is a key → JSON value object. `GET /api/settings` re
 | `usage.warnAtPct` | editable | whole number 1–100 | `90` | M9.2: the usage warning threshold |
 | `ui.sidebarHidden` | editable | boolean | `false` | D41: the sidebar is slid out (`docs/panes.md`); read before the app's first paint, written by its hide button, reveal handle and ⌘B |
 | `ui.rightPanelHidden` | editable | boolean | `false` | D41: the session view's right panel is slid out, in every session; written by its hide button, reveal handle and ⌥⌘B |
+| `mcp.signInMuted` | internal | server names | `[]` | D183: the MCP servers whose sign-in Switchboard does not ask for on this computer (Don't ask again; Settings › Advanced › Connections). Per install, not synced. Written by `PUT /api/mcp/sign-in/muted/{server}` (`docs/mcp.md` → *Don't ask again*) |
+| `mcp.claudeAiConnectors` | internal | `{ name, status, at }[]` | `[]` | D183: the claude.ai connectors this computer's agents reported, with their last status (Settings › Advanced › Connections) |
 | `ui.toolsCollapsed` | editable | boolean | `false` | D101: the sidebar's TOOLS section is collapsed to its header (`docs/sidebar.md` → *TOOLS*); read before the first paint with the pane state, written by the header's toggle |
 | `ui.sessionsCollapsed` | editable | boolean | `false` | D106: the sidebar's SESSIONS section is folded to its header (`docs/sidebar.md` → *SESSIONS and CHATS (D106)*); read before the first paint with the pane state, written by the header's ▾ / ▸ |
 | `ui.chatsCollapsed` | editable | boolean | `false` | D106: the sidebar's CHATS section is folded to its header (same); ⌘K → Chats unfolds it |

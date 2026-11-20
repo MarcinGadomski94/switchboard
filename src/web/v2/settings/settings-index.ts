@@ -118,6 +118,8 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   entry('tools.list', adv('tools'), 'Embedded tools', 'Code graph, browser preview', 'tool tools iframe frame url embed graph preview browser', BODY),
   entry('tools.frame-helper', adv('tools'), 'Frame helper', 'A Chrome extension that lets signed-in sites such as Jira open in a tool frame', 'chrome extension frame iframe jira', row('frame-helper')),
   entry('connections.list', adv('connections'), 'Connections', 'Tools agents can use (Figma, Jira, App Store Connect…)', 'mcp server servers figma jira tools integrations', BODY),
+  // D183: the claude.ai connectors and "Ask me to sign in".
+  entry('connections.claude-ai', adv('connections'), 'claude.ai connectors', 'Connectors from your claude.ai account (Google Drive…) and which sign-ins Switchboard asks for', 'claude.ai connector connectors google drive sign in sign-in login ask mute dont ask again', tid('v2-mcp-connectors')),
   // ── Advanced › Projects & code ──
   entry('workspace.folders', adv('workspace'), 'Folders', 'The folders agents start in', 'workspace root folder folders add path directory', BODY),
   entry('code-projects.list', adv('code-projects'), 'Code projects', 'Folders, conflicts and freshness', 'solutions repos repositories repo conflicts freshness git', BODY),

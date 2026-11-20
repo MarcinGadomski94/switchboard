@@ -71,6 +71,15 @@ The Connections page is where a server is signed in on purpose; D163 brings the 
 - **Not covered:** a hooked terminal session (no process Switchboard owns: /mcp in its terminal) and Codex / OpenCode sessions (their CLIs report no such list).
 - Refusals: 404 `not-found` (no session), 404 `not-needed` (the agent does not need that server now), 409 `claude-ai`, 409 `no-folder`; D61's own errors otherwise.
 
+### Don't ask again (D183)
+
+Every Claude Code session loads the account's **claude.ai connectors** (e.g. "claude.ai Google Drive"): they are not in this computer's MCP config, so the Connections list never showed them, yet an unauthorised one asked for a sign-in in every agent, again at every turn (the notice's Dismiss lasted only for the page).
+
+- **Don't ask again** on an agent's sign-in notice (any server, not only connectors) mutes that server's sign-in **on this computer**: no notice in any agent, no Needs-you item (an open one closes, outcome `resolved`), no phone message. The CLI's reports are still read: muting only leaves the server out of what `McpSignInNeeds` answers (`of`, `byServer`, `sessionsNeeding`), so asking again brings it back at once. Stored as the setting `mcp.signInMuted` (server names, per install, not synced to paired computers); a paired computer's agent shows no Don't ask again (it is muted on its own computer).
+- **A claude.ai connector's notice** says it is managed on claude.ai (Settings → Connectors), not in Switchboard's MCP list; Open claude.ai connectors and Reconnect stay as in D163.
+- **Settings › Advanced › Connections** starts with **claude.ai connectors and sign-in requests**: every connector this computer's agents reported (remembered in the setting `mcp.claudeAiConnectors` with its last status and time), each "managed on claude.ai", and a switch **Ask me to sign in** (off = muted); the other servers you muted are listed under it with the same switch.
+- Routes (local-only, refused to phones; not on the peer API): `GET /api/mcp/sign-in` → `{ muted: string[], connectors: { name, status, at }[] }`; `PUT /api/mcp/sign-in/muted/{server}` `{ muted: boolean }` → the same.
+- Code: `src/core/mcp-sign-in.ts` (`readMutedServers`, `withMuted`, `readConnectorsSeen`), `McpSignInNeeds.setMuted` / `connectors`, `McpSignInService.settings` / `setMuted`, `src/web/v2/settings/ConnectorsCard.tsx` + `connectors-model.ts`, the notice's button in `McpSignInNotice.tsx`. Tests: `tests/core/mcp-sign-in.test.ts`, `tests/server/mcp/sign-in.test.ts` (D183 case), `tests/web/v2-mcp-sign-in.test.ts`.
 ## Add, edit, remove
 
 | Action | Command (cwd = the folder) |

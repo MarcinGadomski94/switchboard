@@ -22,6 +22,7 @@ import { ARCHIVE_WORDS, AUTO_CLEAN_WORDS, SETTINGS_WORDS as W } from '../glossar
 import { V2Link } from '../nav.tsx';
 import { V2ToursSection } from '../tour/ToursSection.tsx';
 import { ClassicFrame, useClassicModals } from './ClassicFrame.tsx';
+import { ConnectorsCard } from './ConnectorsCard.tsx';
 import { type AdvancedKind, type AdvancedPage, advancedGroups, resolveAdvanced } from './settings-map.ts';
 import { useKnownSettings } from './sections.tsx';
 
@@ -121,7 +122,13 @@ function AdvancedBody({ kind }: { readonly kind: AdvancedKind }) {
     case 'code-projects':
       return <SolutionsView />;
     case 'connections':
-      return <McpView />;
+      // D183: the claude.ai connectors and the muted sign-ins, above the MCP list.
+      return (
+        <>
+          <ConnectorsCard />
+          <McpView />
+        </>
+      );
     case 'clis':
       return (
         <WithSettings>

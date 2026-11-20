@@ -1,4 +1,14 @@
-import { CLAUDE_AI_CONNECTORS_URL, signInItemDetail, signInItemTitle } from '../../core/mcp-sign-in.ts';
+import {
+  CLAUDE_AI_CONNECTORS_URL,
+  MCP_CONNECTORS_SEEN_SETTING,
+  MCP_SIGN_IN_MUTED_SETTING,
+  type McpSignInSettings,
+  readConnectorsSeen,
+  readMutedServers,
+  signInItemDetail,
+  signInItemTitle,
+  withMuted,
+} from '../../core/mcp-sign-in.ts';
 import type { McpAuthState } from '../../core/mcp.ts';
 import type { Store } from '../db/store.ts';
 import type { McpFolder, McpService } from './service.ts';
@@ -70,11 +80,41 @@ export class McpSignInService {
     this.#onError = options.onError ?? ((error) => console.error('switchboard mcp sign-in:', error));
   }
 
-  /** Starts following the agents' needs and the finished sign-ins. */
-  start(): void {
+  /** Starts following the agents' needs and the finished sign-ins. D183: loads the muted servers and the connectors seen first. */
+  async start(): Promise<void> {
     if (this.#off.length > 0) return;
     this.#off.push(this.#o.needs.onChange(() => this.#schedule()));
     this.#off.push(this.#o.mcp.onSignedIn((name) => void this.reconnect(name).catch(this.#onError)));
+    // D183: the connectors seen are saved as they change (one write at a time, in the queue).
+    this.#off.push(this.#o.needs.onConnectorsChange((connectors) => {
+      this.#queue = this.#queue.then(() => this.#o.store.settings.set(MCP_CONNECTORS_SEEN_SETTING, connectors)).catch(this.#onError);
+    }));
+    try {
+      this.#o.needs.seedConnectors(readConnectorsSeen(await this.#o.store.settings.get(MCP_CONNECTORS_SEEN_SETTING)));
+      this.#o.needs.setMuted(readMutedServers(await this.#o.store.settings.get(MCP_SIGN_IN_MUTED_SETTING)));
+    } catch (error) {
+      this.#onError(error);
+    }
+  }
+
+  /** D183 · `GET /api/mcp/sign-in`: the muted servers and the claude.ai connectors seen. */
+  settings(): McpSignInSettings {
+    return { muted: [...this.#o.needs.muted()].sort((a, b) => a.localeCompare(b)), connectors: this.#o.needs.connectors() };
+  }
+
+  /**
+   * D183 · "Don't ask again" (`muted: true`) or ask again (`false`) for server `name`: saved
+   * (per install), applied at once (its Needs-you item closes, the agents' notices go), and
+   * the agents whose notice changed are announced.
+   */
+  async setMuted(name: string, muted: boolean): Promise<McpSignInSettings> {
+    const clean = name.trim();
+    if (clean === '' || clean.length > 200) throw new McpSignInError('not-found', 'No such server');
+    const next = withMuted([...this.#o.needs.muted()], clean, muted);
+    await this.#o.store.settings.set(MCP_SIGN_IN_MUTED_SETTING, next);
+    for (const sessionId of this.#o.needs.setMuted(next)) await this.#o.announce(sessionId).catch(this.#onError);
+    await this.idle();
+    return this.settings();
   }
 
   /** Stops following; waits for the work in flight. */

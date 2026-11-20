@@ -153,6 +153,17 @@ export async function registerMcpRoutes(app: FastifyInstance, context: ApiContex
       if (!(await store.sessions.get(request.params.id))) return reply.code(404).send({ error: 'not-found', message: `No session ${request.params.id}` });
       return signIn.reconnect(request.params.name);
     });
+    // D183: "Don't ask again" (docs/mcp.md → Don't ask again): the muted servers and the claude.ai connectors seen (this computer only).
+    app.get('/api/mcp/sign-in', async () => signIn.settings());
+    app.put<{ Params: { name: string } }>('/api/mcp/sign-in/muted/:name', async (request, reply) => {
+      const muted = (request.body as { muted?: unknown } | null)?.muted;
+      if (typeof muted !== 'boolean') return reply.code(422).send({ error: 'invalid', errors: [{ field: 'muted', message: 'muted must be true or false' }] });
+      try {
+        return await signIn.setMuted(request.params.name, muted);
+      } catch (error) {
+        return sendSignInError(reply, error);
+      }
+    });
   }
 
   // D62 P7: Codex CLI's and OpenCode's MCP servers, through their own CLIs (docs/providers.md → MCP).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isClaudeAiConnector, parseInitMcpServers, sameNeeds, signInItemDetail, signInNeeds, signInNoticeText } from '../../src/core/mcp-sign-in.ts';
+import { isClaudeAiConnector, parseInitMcpServers, readConnectorsSeen, readMutedServers, sameNeeds, signInItemDetail, signInNeeds, signInNoticeText, withMuted } from '../../src/core/mcp-sign-in.ts';
 import { parseStreamLine } from '../../src/core/stream-json.ts';
 import { McpSignInNeeds } from '../../src/server/mcp/sign-in-needs.ts';
 import { type McpSignInItems, McpSignInService } from '../../src/server/mcp/sign-in.ts';
@@ -34,7 +34,7 @@ describe('the init\'s MCP servers', () => {
     expect(sameNeeds([{ name: 'a', claudeAi: false }], [{ name: 'a', claudeAi: false }])).toBe(true);
     expect(sameNeeds([{ name: 'a', claudeAi: false }], [])).toBe(false);
     expect(signInNoticeText({ name: 'docs', claudeAi: false })).toBe('docs needs you to sign in again');
-    expect(signInNoticeText({ name: 'claude.ai Gmail', claudeAi: true })).toBe('claude.ai Gmail needs you to sign in again on claude.ai');
+    expect(signInNoticeText({ name: 'claude.ai Gmail', claudeAi: true })).toBe('claude.ai Gmail needs you to sign in again. It\'s a claude.ai connector, managed on claude.ai (Settings → Connectors), not in Switchboard\'s MCP list');
     expect(signInItemDetail('docs', ['Fix login', 'Docs'], false)).toContain('2 agents (“Fix login”, “Docs”) can’t use docs');
   });
 
@@ -93,8 +93,9 @@ function service(options: { readonly reconnectOk?: boolean } = {}) {
     ['a', { id: 'a', name: 'a', title: 'Fix login', cwd: '/work', root: '/work', folderId: null }],
     ['b', { id: 'b', name: 'b', title: null, cwd: null, root: null, folderId: null }],
   ]);
+  const settings = new Map<string, unknown>();
   const signIn = new McpSignInService({
-    store: { sessions: { get: async (id: string) => sessions.get(id) ?? null } } as never,
+    store: { sessions: { get: async (id: string) => sessions.get(id) ?? null }, settings: { get: async (key: string) => settings.get(key), set: async (key: string, value: unknown) => void settings.set(key, value) } } as never,
     needs,
     mcp: {
       startAuth: async (folder, name) => ({ id: `auth-${name}`, server: name, state: 'waiting', authUrl: `http://127.0.0.1/authorize?${folder.root}`, callbackExpected: true, error: null, instructions: null }),
@@ -111,9 +112,59 @@ function service(options: { readonly reconnectOk?: boolean } = {}) {
     items: api,
     now: () => clock++,
   });
-  signIn.start();
-  return { needs, items, signIn, listeners, reconnects, announced };
+  void signIn.start();
+  return { needs, items, signIn, listeners, reconnects, announced, settings };
 }
+
+describe('D183 · Don’t ask again', () => {
+  it('stored values: the muted list is clean, unique and sorted; a connector needs a name, a status and a time', () => {
+    expect(readMutedServers(['b', ' a ', 'b', '', 3, null])).toEqual(['a', 'b']);
+    expect(readMutedServers('x')).toEqual([]);
+    expect(withMuted(['a'], 'b', true)).toEqual(['a', 'b']);
+    expect(withMuted(['a', 'b'], 'a', false)).toEqual(['b']);
+    expect(readConnectorsSeen([{ name: 'claude.ai Gmail', status: 'connected', at: 't' }, { name: 'x' }, 'y'])).toEqual([{ name: 'claude.ai Gmail', status: 'connected', at: 't' }]);
+  });
+
+  it('the registry leaves a muted server out of everything it answers, keeps the report, and remembers the claude.ai connectors with their status', () => {
+    const needs = new McpSignInNeeds({ now: () => Date.parse('2026-11-20T12:00:00Z') });
+    const seen: string[][] = [];
+    needs.onConnectorsChange((connectors) => seen.push(connectors.map((c) => `${c.name}:${c.status}`)));
+    needs.report('a', RECORDED);
+    // Muting answers the sessions whose list changed, and filters of / byServer / sessionsNeeding.
+    expect(needs.setMuted(['claude.ai Google Drive'])).toEqual(['a']);
+    expect(needs.of('a')).toEqual([]);
+    expect(needs.byServer().size).toBe(0);
+    expect(needs.sessionsNeeding('claude.ai Google Drive')).toEqual([]);
+    expect(needs.setMuted(['claude.ai Google Drive'])).toEqual([]);
+    // Unmuted: the report was kept.
+    expect(needs.setMuted([])).toEqual(['a']);
+    expect(needs.of('a')).toEqual([{ name: 'claude.ai Google Drive', claudeAi: true }]);
+    // Connectors: the first report, then only a status change is heard.
+    needs.report('b', RECORDED);
+    needs.report('b', [{ name: 'claude.ai Google Drive', status: 'connected', source: 'claudeai' }]);
+    expect(seen).toEqual([['claude.ai Google Drive:needs-auth'], ['claude.ai Google Drive:connected']]);
+    expect(needs.connectors()).toEqual([{ name: 'claude.ai Google Drive', status: 'connected', at: '2026-11-20T12:00:00.000Z' }]);
+  });
+
+  it('the service: a muted server raises no item, its open item closes, the agents are announced, and the list is stored', async () => {
+    const s = service();
+    await s.signIn.idle();
+    s.needs.report('a', [{ name: 'docs', status: 'needs-auth', source: 'user' }]);
+    await s.signIn.idle();
+    expect([...s.items.values()]).toMatchObject([{ server: 'docs', open: true }]);
+    const after = await s.signIn.setMuted('docs', true);
+    expect(after.muted).toEqual(['docs']);
+    expect(s.settings.get('mcp.signInMuted')).toEqual(['docs']);
+    expect(s.announced).toContain('a');
+    expect([...s.items.values()]).toMatchObject([{ server: 'docs', open: false, outcome: 'resolved' }]);
+    // A later report of the same server raises nothing while it is muted.
+    s.needs.report('b', [{ name: 'docs', status: 'needs-auth', source: 'user' }]);
+    await s.signIn.idle();
+    expect([...s.items.values()].filter((item) => item.open)).toEqual([]);
+    expect((await s.signIn.setMuted('docs', false)).muted).toEqual([]);
+    expect([...s.items.values()].filter((item) => item.open)).toMatchObject([{ server: 'docs' }]);
+  });
+});
 
 describe('the Needs-you item and the sign-in (McpSignInService)', () => {
   it('one item per server and episode, up to date as agents join; a dismissed one is not raised again in the episode; a new episode raises a new one', async () => {

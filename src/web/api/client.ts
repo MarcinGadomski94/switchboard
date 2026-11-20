@@ -103,6 +103,7 @@ import type {
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
+import type { McpSignInSettings } from '../../core/mcp-sign-in.ts';
 import type { CleanupRun, CleanupRunRequest, CleanupScan, CleanupSettings } from '../../core/cleanup.ts';
 import type { TourOutcome, TutorialState } from '../../core/tutorial.ts';
 import type { DraftPutInput, SessionDraft } from '../../core/drafts.ts';
@@ -265,6 +266,10 @@ export const api = {
   mcpSignIn: (id: string, server: string) => request<McpAuthState>('POST', `/api/sessions/${enc(id)}/mcp-sign-in/${enc(server)}`),
   /** D163: tell the running agents that need `server` to reconnect it (after signing in, e.g. a claude.ai connector on claude.ai). */
   mcpSignInReconnect: (id: string, server: string) => request<{ readonly server: string; readonly reconnected: readonly string[]; readonly failed: readonly string[] }>('POST', `/api/sessions/${enc(id)}/mcp-sign-in/${enc(server)}/reconnect`),
+  /** D183: the servers whose sign-in is not asked for, and the claude.ai connectors this computer's agents reported. */
+  mcpSignInSettings: () => request<McpSignInSettings>('GET', '/api/mcp/sign-in'),
+  /** D183: "Don't ask again" (`muted: true`) for `server`'s sign-in, or ask again (`false`). */
+  setMcpSignInMuted: (server: string, muted: boolean) => request<McpSignInSettings>('PUT', `/api/mcp/sign-in/muted/${enc(server)}`, { muted }),
   /** D61 / D163: a sign-in's state. */
   mcpAuthState: (authId: string) => request<McpAuthState>('GET', `/api/mcp/auth/${enc(authId)}`),
   /** D83: continue the session in a fresh one (202 once the handover turn started; a peer's session id is forwarded). */

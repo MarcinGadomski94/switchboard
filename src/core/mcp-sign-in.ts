@@ -62,9 +62,65 @@ export function sameNeeds(a: readonly McpSignInNeed[], b: readonly McpSignInNeed
   return a.length === b.length && a.every((need, i) => need.name === b[i]?.name && need.claudeAi === b[i]?.claudeAi);
 }
 
-/** The agent view's notice line for one server. */
+/** The agent view's notice line for one server. D183: a claude.ai connector says where it is managed (not in this computer's MCP settings). */
 export function signInNoticeText(need: McpSignInNeed): string {
-  return need.claudeAi ? `${need.name} needs you to sign in again on claude.ai` : `${need.name} needs you to sign in again`;
+  return need.claudeAi ? `${need.name} needs you to sign in again. It's a claude.ai connector, managed on claude.ai (Settings → Connectors), not in Switchboard's MCP list` : `${need.name} needs you to sign in again`;
+}
+
+// ── D183 · "Don't ask again" and the claude.ai connectors seen (docs/mcp.md → Don't ask again (D183)) ──
+
+/** The setting holding the servers whose sign-in Switchboard does not ask for (per install, not synced). */
+export const MCP_SIGN_IN_MUTED_SETTING = 'mcp.signInMuted';
+
+/** The setting holding the claude.ai connectors this computer's agents reported (for Settings › MCP). */
+export const MCP_CONNECTORS_SEEN_SETTING = 'mcp.claudeAiConnectors';
+
+/** Most servers kept in either list. */
+export const MCP_SIGN_IN_LIST_MAX = 200;
+
+/** A claude.ai connector an agent on this computer reported, with its last status. */
+export interface ClaudeAiConnectorSeen {
+  readonly name: string;
+  /** The CLI's last status (`connected`, `needs-auth`, …). */
+  readonly status: string;
+  /** When it was last reported (ISO). */
+  readonly at: string;
+}
+
+/** `GET /api/mcp/sign-in` (D183): the muted servers and the claude.ai connectors seen. */
+export interface McpSignInSettings {
+  /** Servers Switchboard does not ask to sign in to (sorted). */
+  readonly muted: readonly string[];
+  /** The claude.ai connectors agents on this computer reported (by name). */
+  readonly connectors: readonly ClaudeAiConnectorSeen[];
+}
+
+/** Reads the muted list as stored (anything malformed is dropped; unique, sorted, capped). */
+export function readMutedServers(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const names = value.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '' && entry.length <= 200).map((entry) => entry.trim());
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b)).slice(0, MCP_SIGN_IN_LIST_MAX);
+}
+
+/** Reads the stored connectors seen (anything malformed is dropped), by name. */
+export function readConnectorsSeen(value: unknown): ClaudeAiConnectorSeen[] {
+  if (!Array.isArray(value)) return [];
+  const out = new Map<string, ClaudeAiConnectorSeen>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const row = entry as Record<string, unknown>;
+    if (typeof row['name'] !== 'string' || row['name'].trim() === '' || typeof row['status'] !== 'string' || typeof row['at'] !== 'string') continue;
+    out.set(row['name'], { name: row['name'], status: row['status'], at: row['at'] });
+  }
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name)).slice(0, MCP_SIGN_IN_LIST_MAX);
+}
+
+/** The muted list with `name` muted or not (`muted`), as stored. */
+export function withMuted(current: readonly string[], name: string, muted: boolean): string[] {
+  const set = new Set(current);
+  if (muted) set.add(name);
+  else set.delete(name);
+  return readMutedServers([...set]);
 }
 
 /** The Needs-you item's title. */

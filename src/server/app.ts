@@ -582,7 +582,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     items: systemItems,
   });
   app.addHook('onReady', async () => {
-    mcpSignIn.start();
+    await mcpSignIn.start();
   });
   app.addHook('preClose', async () => {
     await mcpSignIn.stop();
