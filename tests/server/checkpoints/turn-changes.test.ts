@@ -210,6 +210,17 @@ describe('what each turn changed (the save points before each turn)', () => {
     expect(await changes.diff(sessionId, 2, 2)).toEqual([]);
   });
 
+  it('D180: a turn that edited more files than one git command line holds counts them all, and still only its own', async () => {
+    const first = await turn('Many files', async () => {
+      for (let i = 0; i < 101; i++) await agentWrite(`gen/f${i}.txt`, `${i}\n`);
+      await write('gen/mine.txt', 'by hand\n');
+    });
+    expect((await changes.list(sessionId)).turns).toEqual([{ turn: 1, eventId: first.id, through: 1, files: 101, added: 101, removed: 0 }]);
+    const files = await changes.diff(sessionId, 1, null);
+    expect(files).toHaveLength(101);
+    expect(files.some((file) => file.path === 'gen/mine.txt')).toBe(false);
+  });
+
   it('D180: a path with glob characters is read as itself (`[draft].txt` would also match `d.txt` as a glob)', async () => {
     await turn('Odd names', async () => {
       await agentWrite('notes/[draft].txt', 'odd\n');

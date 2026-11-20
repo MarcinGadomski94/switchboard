@@ -604,12 +604,14 @@ export function FilesPanel({ sessionId, files, head, wide, backToList, open, onO
     setPopover(false);
   }, [sessionId]);
   useEffect(() => setPopover(false), [wide]);
+  // The tab clicked again while shown: back to the list. Only a click made while this panel is shown (not the count it mounts with).
+  const seenBack = useRef(backToList);
   useEffect(() => {
-    if (backToList === 0) return;
+    if (backToList === seenBack.current) return;
+    seenBack.current = backToList;
     setPopover(false);
     onClose();
-    // Each click once.
-  }, [backToList]);
+  }, [backToList, onClose]);
   const fetched = useApi(async () => ({ sessionId, roots: (await api.agentFileRoots(sessionId)).roots }), [sessionId]);
   // `useApi` keeps its last answer while another agent's loads: only this agent's folders.
   const fresh = fetched.data !== null && fetched.data.sessionId === sessionId ? fetched.data.roots : null;

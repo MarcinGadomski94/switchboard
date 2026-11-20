@@ -326,8 +326,10 @@ export function ChangesPanel({ sessionId, review, onOpenFile, view, onView, turn
     setPopover(false);
   }, [sessionId]);
   // The Changes tab clicked while shown: back to the list.
+  const seenBack = useRef(backToList);
   useEffect(() => {
-    if (backToList === 0) return;
+    if (backToList === seenBack.current) return;
+    seenBack.current = backToList;
     setOpened(false);
     setPopover(false);
   }, [backToList]);

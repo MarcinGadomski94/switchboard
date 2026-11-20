@@ -41,9 +41,17 @@ export function treeLabels(tops: readonly string[]): Map<string, string> {
   return labels;
 }
 
-/** D180: git's arguments that limit a diff to `paths` (literal, never globs); none for `null` (the whole tree). */
+/** D180: above this many paths the diff is of the whole tree, cut to the paths afterwards (a long pathspec could pass the OS's command-line limit). */
+export const PATHSPEC_MAX = 100;
+
+/** D180: git's arguments that limit a diff to `paths` (literal, never globs); none for `null` (the whole tree) or above {@link PATHSPEC_MAX}. */
 export function pathspec(paths: readonly string[] | null): string[] {
-  return paths === null ? [] : ['--', ...paths.map((file) => `:(literal)${file}`)];
+  return paths === null || paths.length > PATHSPEC_MAX ? [] : ['--', ...paths.map((file) => `:(literal)${file}`)];
+}
+
+/** D180: whether `file` is one of `paths` (`null`: every file). */
+function kept(paths: readonly string[] | null, file: string): boolean {
+  return paths === null || paths.includes(file);
 }
 
 /** A refusal the route turns into `{ error, message }`. */
@@ -182,6 +190,7 @@ export class TurnChangesService {
     for (const record of result.raw.split('\0')) {
       const [plus, minus, ...name] = record.split('\t');
       if (plus === undefined || minus === undefined || name.length === 0) continue;
+      if (!kept(own, name.join('\t'))) continue;
       files += 1;
       // A binary file has `-` for both.
       added += Number(plus) || 0;
@@ -298,6 +307,8 @@ export class TurnChangesService {
     if (toTree === fromRow.tree) return [];
     const patch = await this.#git.try(top, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--src-prefix=a/', '--dst-prefix=b/', fromRow.tree, toTree, ...pathspec(own)]);
     if (!patch.ok) throw new TurnChangesError('unreadable', (await this.#gone(top)) ? gone : `git could not compare ${path.basename(top)}: ${patch.error}`);
-    return parsePatch(patch.raw).map((file) => toFileDiff(solution, branch, file, live));
+    return parsePatch(patch.raw)
+      .map((file) => toFileDiff(solution, branch, file, live))
+      .filter((file) => kept(own, file.path));
   }
 }

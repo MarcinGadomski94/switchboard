@@ -321,6 +321,7 @@ export function AgentView({ route }: { readonly route: AgentRoute }) {
   const head = useHeadDiff(sessionId, tabbed && sideShown && (sideTab === 'files' || sideTab === 'changes'));
   // D180: "View changes" from Files: Changes on that file, Since last save point.
   const [changesFocus, setChangesFocus] = useState<ChangesFocus | null>(null);
+  useEffect(() => setChangesFocus(null), [sessionId]);
   const viewChanges = useCallback(
     (path: string): void => {
       setChangesView({ kind: 'scope' });
