@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.7 (2026-11-20)
+
+### Sidebar
+- **The computer under the agent's name:** in Pinned and Recent, an agent's computer is on a second, smaller line, so the name gets the whole width.
+- **Resize the sidebar:** drag its right edge (200–400 px; double-click resets; ← / → with the edge focused). Remembered in this browser; desktop only. See `docs/v2.md` (D181).
+
+### Agents
+- **One row for the status and the switch:** Message | Terminal | Both sit on the same row as the agent's status and Stop background tasks, so the bottom of the conversation has one row less.
 ## 2.5.6 (2026-11-20)
 
 ### Sidebar
