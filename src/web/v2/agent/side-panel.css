@@ -116,6 +116,15 @@ body.v2-ag-resizing iframe {
   min-height: 0;
 }
 
+/* D174 follow-up: a For review list kept after its review cleared. */
+.sb2 .v2-ag-chg-reviewed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--v2-green);
+}
 .sb2 .v2-ag-chg-head {
   display: flex;
   align-items: center;

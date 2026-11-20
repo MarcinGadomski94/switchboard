@@ -2225,6 +2225,10 @@ export const AGENT_WORDS = {
   allUnsaved: 'All unsaved',
   // D174: the To review view and the diff's layout.
   forReview: 'For review',
+  /** D174 follow-up: the picker's For review once the review cleared while shown. */
+  forReviewReviewed: 'For review · reviewed',
+  /** D174 follow-up: the note over a For review list kept after the review cleared (a reply, Mark reviewed). */
+  reviewedNote: 'Reviewed — this is what was waiting for review',
   forReviewNote: 'Everything the turns waiting for your review changed, saved (committed) or not.',
   noReviewChanges: 'Nothing left to review here',
   noReviewChangesText: 'The files are back to how they were before these turns.',

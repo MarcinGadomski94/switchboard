@@ -145,8 +145,42 @@ test('For review from the To review strip: Changes in the panel on For review; c
   await expect(changes.getByTestId('v2-side-diff')).toBeVisible();
   await side.getByTestId('v2-agent-side-tabs').getByRole('tab', { name: /Changes/ }).click();
   await expect(changes.getByTestId('v2-side-changes-split')).toHaveAttribute('data-mode', 'list');
-  // Mark reviewed: the review goes, For review is no longer offered.
+  // Mark reviewed: the review goes on the server, but the list stays (2026-11-20: it never disappears while shown), said so.
   await changes.getByTestId('v2-side-changes-reviewed').click();
   await expect(changes.getByTestId('v2-side-changes-reviewed')).toHaveCount(0, { timeout: 10_000 });
-  await expect(changes).not.toHaveAttribute('data-scope', 'review', { timeout: 10_000 });
+  await expect(changes.getByTestId('v2-side-changes-reviewed-note')).toBeVisible({ timeout: 10_000 });
+  await expect(changes).toHaveAttribute('data-scope', 'review');
+  await expect(changes.getByTestId('v2-side-change-file')).toHaveCount(1);
+  await expect(changes.getByTestId('v2-side-change-file')).toContainText('plan-2.md');
+  // Another view picked: the held list goes.
+  await changes.getByTestId('v2-side-changes-scope').click();
+  await page.getByTestId('v2-side-changes-scope-menu').getByRole('menuitem', { name: 'Since last save point' }).click();
+  await expect(changes).toHaveAttribute('data-scope', 'head');
+  await expect(changes.getByTestId('v2-side-changes-reviewed-note')).toHaveCount(0);
+});
+
+test('2026-11-20: a reply to the agent clears its review, and the For review list stays until another view is picked', async ({ page }) => {
+  test.setTimeout(120_000);
+  const id = await writer(page, 'review-reply', '-3');
+  await expect.poll(async () => (await detail(page, id)).review ?? null, { timeout: 20_000 }).not.toBeNull();
+  await openWithHub(page, `${world.baseUrl}/agents/${id}`);
+  const side = page.getByTestId('v2-agent-side');
+  await page.getByTestId('v2-agent-review-changes').click();
+  const changes = side.getByTestId('v2-side-changes');
+  await expect(changes).toHaveAttribute('data-scope', 'review');
+  await expect(changes.getByTestId('v2-side-change-file')).toContainText('plan-3.md', { timeout: 15_000 });
+  // A reply (D166: it reviews the turns too): the agent works and finishes, the review is gone on the server.
+  await post(page, id, 'Thanks, looks good.');
+  await expect.poll(async () => (await detail(page, id)).review ?? null, { timeout: 20_000 }).toBeNull();
+  await settled(page, id);
+  await expect(changes.getByTestId('v2-side-changes-reviewed-note')).toBeVisible({ timeout: 10_000 });
+  await expect(changes).toHaveAttribute('data-scope', 'review');
+  await expect(changes.getByTestId('v2-side-change-file')).toHaveCount(1);
+  await expect(changes.getByTestId('v2-side-change-file')).toContainText('plan-3.md');
+  // The picker still names it, marked reviewed.
+  await expect(changes.getByTestId('v2-side-changes-scope')).toContainText('For review · reviewed');
+  await changes.getByTestId('v2-side-changes-scope').click();
+  await page.getByTestId('v2-side-changes-scope-menu').getByRole('menuitem', { name: 'Since last save point' }).click();
+  await expect(changes).toHaveAttribute('data-scope', 'head');
+  await expect(changes.getByTestId('v2-side-changes-reviewed-note')).toHaveCount(0);
 });

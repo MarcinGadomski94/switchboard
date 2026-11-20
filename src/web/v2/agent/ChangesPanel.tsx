@@ -14,6 +14,9 @@
  *   picked: the first change); narrow, the tree first and a picked diff filling the panel.
  *
  * Since last save point reads the agent's one shared `head` diff (`useHeadDiff`).
+ *
+ * D174 follow-up (2026-11-20): For review never disappears while shown: the list is held
+ * (`held-review.ts`) through refreshes and after the review clears (a reply, Mark reviewed).
  */
 import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
@@ -33,6 +36,7 @@ import { AGENT_WORDS } from '../glossary.ts';
 import { type TreeFile, changedTree, fileState, firstFileKey } from './changes-tree.ts';
 import { type ChangesView, shownChoice, viewChoices, viewKey } from './changes-view.ts';
 import { type HastNode, HIGHLIGHT_MAX_LINES, highlightDiff } from './diff-highlight.ts';
+import { type HeldReview, heldScopeOptions, nextHeldReview, shownReview } from './held-review.ts';
 import { commentPlace, commentsAt, reviewMessage, useDiffComments } from './diff-comments.ts';
 import { escTarget } from './panel-layout.ts';
 import { ListButton, PanelSplit, usePanelEsc } from './PanelSplit.tsx';
@@ -244,14 +248,27 @@ export function ChangesPanel({ sessionId, review, onOpenFile, view, onView, turn
   const picked = shownScope(remembered, known);
   /** D174: Since last save point came back empty with nothing picked on a copy with commits: the whole copy (not remembered). */
   const [auto, setAuto] = useState<{ readonly sessionId: string; readonly scope: DiffScope } | null>(null);
-  const scope = auto !== null && auto.sessionId === sessionId && remembered === null && picked === 'head' ? auto.scope : picked;
+  const usual = auto !== null && auto.sessionId === sessionId && remembered === null && picked === 'head' ? auto.scope : picked;
+  /**
+   * D174 follow-up (2026-11-20): the For review list never disappears while it is shown. A reply or
+   * Mark reviewed clears the review on the server; the list then stays, marked reviewed, until another
+   * view is picked, another agent is shown, or the panel goes (`held-review.ts`).
+   */
+  const reviewOffered = known !== null && known.review != null;
+  const [held, setHeld] = useState<HeldReview | null>(null);
+  const holding = shownReview(held, { sessionId, scope: usual, reviewOffered, viewKind: view.kind });
+  const scope = holding.scope;
+  /** The review cleared while shown: nothing is asked of the server for it (it would answer another view). */
+  const heldReviewed = holding.held !== null && holding.held.reviewed && !reviewOffered;
+  const heldReviewedRef = useRef(heldReviewed);
+  heldReviewedRef.current = heldReviewed;
   const shared = view.kind === 'scope' && scope === 'head';
   // What is fetched, this agent's: an answer for another key (another view, another agent) is never shown.
   const key = `${sessionId}\u0000${viewKey(view, scope)}`;
   /** The key whose newest read failed: an error is shown for its own view only, never while another view loads. */
   const failed = useRef<{ asked: number; key: string | null }>({ asked: 0, key: null });
   const diff = useApi(async () => {
-    if (shared) return { key, files: null as readonly FileDiff[] | null };
+    if (shared || (heldReviewedRef.current && view.kind === 'scope')) return { key, files: null as readonly FileDiff[] | null };
     const mine = (failed.current.asked += 1);
     const settle = (failedKey: string | null): void => {
       if (failed.current.asked === mine) failed.current.key = failedKey;
@@ -334,8 +351,27 @@ export function ChangesPanel({ sessionId, review, onOpenFile, view, onView, turn
     setPopover(false);
   }, [backToList]);
   useEffect(() => setPopover(false), [wide]);
-  const files = shared ? (head.files ?? null) : diff.data !== null && diff.data.key === key ? diff.data.files : null;
-  const diffError = shared ? head.error : diff.error !== null && failed.current.key === key ? diff.error : null;
+  const fetched = shared ? (head.files ?? null) : diff.data !== null && diff.data.key === key ? diff.data.files : null;
+  // D174 follow-up: For review's answers update the held list in place; a cleared review keeps it.
+  const reviewAnswer = view.kind === 'scope' && scope === 'review' && reviewOffered && !heldReviewed ? fetched : null;
+  useEffect(() => {
+    if (reviewAnswer !== null) setHeld((current) => nextHeldReview(current, { type: 'answer', sessionId, files: reviewAnswer }));
+  }, [reviewAnswer, sessionId]);
+  useEffect(() => {
+    if (known !== null && !reviewOffered) setHeld((current) => nextHeldReview(current, { type: 'cleared', sessionId }));
+  }, [known, reviewOffered, sessionId]);
+  // Another agent, or a turn's view: what was held goes.
+  useEffect(() => setHeld(null), [sessionId]);
+  useEffect(() => {
+    if (view.kind === 'turn') setHeld(null);
+  }, [view.kind]);
+  // A new review began while a reviewed list is shown: read it now (the refresh that brought it may have been skipped).
+  const heldWasReviewed = held !== null && held.reviewed;
+  useEffect(() => {
+    if (reviewOffered && heldWasReviewed) reloadDiff();
+  }, [reviewOffered, heldWasReviewed, reloadDiff]);
+  const files = holding.held !== null ? holding.held.files : fetched;
+  const diffError = holding.held !== null ? null : shared ? head.error : diff.error !== null && failed.current.key === key ? diff.error : null;
   const fallback = view.kind === 'scope' ? emptyHeadFallback(scope, remembered, files, known) : null;
   useEffect(() => {
     if (fallback !== null) setAuto({ sessionId, scope: fallback });
@@ -369,13 +405,15 @@ export function ChangesPanel({ sessionId, review, onOpenFile, view, onView, turn
     setWriting(null);
     setDraft('');
   }, [key, model.pane.key]);
-  const options = scopeOptions(known);
-  const choices = viewChoices(view, options, SCOPE_WORDS, turns.last);
+  const options = heldScopeOptions(scopeOptions(known), holding.held);
+  const choices = viewChoices(view, options, heldReviewed ? { ...SCOPE_WORDS, review: AGENT_WORDS.forReviewReviewed } : SCOPE_WORDS, turns.last);
   const choice = shownChoice(view, scope, turns.last);
   const choose = (value: string): void => {
+    // Another view picked: the held For review list goes (For review itself keeps it).
+    if (value !== 'review') setHeld((current) => nextHeldReview(current, { type: 'leave' }));
     if (value === 'last' && turns.last) onView({ kind: 'turn', change: turns.last });
     else if (isScope(value) && options.includes(value)) {
-      pick(value);
+      if (!(value === 'review' && heldReviewed)) pick(value);
       onView({ kind: 'scope' });
     }
   };
@@ -676,6 +714,12 @@ export function ChangesPanel({ sessionId, review, onOpenFile, view, onView, turn
           </Button>
         ) : null}
       </div>
+      {/* D174 follow-up: the review cleared while shown (a reply, Mark reviewed): the list stays, said so. */}
+      {heldReviewed ? (
+        <p className="v2-muted v2-ag-small v2-ag-chg-reviewed" data-testid="v2-side-changes-reviewed-note">
+          <Icon name="check" size="s" /> {AGENT_WORDS.reviewedNote}
+        </p>
+      ) : null}
       {files === null ? (
         diffError ? (
           <EmptyState icon="alert" tone="grey" title="Could not read the changes" text={apiErrorText(diffError)} testId="v2-side-changes-error" />
