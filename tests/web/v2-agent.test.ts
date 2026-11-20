@@ -151,10 +151,11 @@ describe('view settings', () => {
     expect(loadView(s)).toEqual(DEFAULT_VIEW);
     expect(loadView(null)).toEqual(DEFAULT_VIEW);
   });
-  it('caps the line length unless Full width with the details hidden', () => {
+  it('caps the line length unless Full width, with or without the side panel (2026-11-20)', () => {
     expect(columnWidth({ fullWidth: false, sideHidden: true }, false)).toBe('84ch');
+    expect(columnWidth({ fullWidth: false, sideHidden: false }, true)).toBe('84ch');
     expect(columnWidth({ fullWidth: true, sideHidden: true }, false)).toBe('none');
-    expect(columnWidth({ fullWidth: true, sideHidden: false }, true)).toBe('84ch');
+    expect(columnWidth({ fullWidth: true, sideHidden: false }, true)).toBe('none');
     expect(textMetrics('comfortable')).toEqual({ size: 15.5, lineHeight: 1.55, gap: 22 });
     expect(textMetrics('compact').size).toBe(14.5);
   });

@@ -2073,7 +2073,7 @@ export const AGENT_WORDS = {
   // View menu.
   comfortable: 'Comfortable text',
   compact: 'Compact text',
-  fullWidth: 'Full width (when details are hidden)',
+  fullWidth: 'Full width',
   showDetails: 'Show details',
   hideDetailsLong: 'Hide details',
   densityRemembered: (which: string): string => `${which}. Remembered.`,

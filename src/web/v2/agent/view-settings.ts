@@ -56,9 +56,12 @@ export function saveView(storage: ViewStorage | null, view: ChatViewSettings): v
   }
 }
 
-/** The chat column's max width: the cap, or none with Full width while the details are hidden. */
-export function columnWidth(view: Pick<ChatViewSettings, 'fullWidth' | 'sideHidden'>, sideShown: boolean): string {
-  return view.fullWidth && !sideShown ? 'none' : LINE_CAP;
+/**
+ * The chat column's max width: the cap, or none with Full width. 2026-11-20: Full width holds with the
+ * side panel shown too (the developer's choice is kept; before, the panel brought the cap back).
+ */
+export function columnWidth(view: Pick<ChatViewSettings, 'fullWidth' | 'sideHidden'>, _sideShown: boolean): string {
+  return view.fullWidth ? 'none' : LINE_CAP;
 }
 
 /** The reply text's size and line height per density (the prototype: 15.5 / 1.55, compact 14.5 / 1.45). */
