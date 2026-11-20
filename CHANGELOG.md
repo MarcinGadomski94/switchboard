@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.3 (2026-11-20)
+
+### Agents
+- **For review shows files outside a repository:** a file an agent writes in its folder but in no git repository (for example a note or report directly in a workspace folder) raised the To review card, but Changes showed nothing for it. For review now lists such files as new files with their current content, under the folder's name. See `docs/worktrees.md`.
 ## 2.5.2 (2026-11-20)
 
 ### Terminals
