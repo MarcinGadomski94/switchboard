@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.6 (2026-11-20)
+
+### Sidebar
+- **The pages as two rows of icons:** the eight pages sit at the top of the sidebar as icons in two rows of four, with their names and counts on hover; the sidebar is full width again with **Pinned** and **Recent** listed under them as before 2.5.4. Artifacts, the computer on agent rows and the Recent count in Settings stay. Tablets keep their narrow sidebar. See `docs/v2.md` (D181).
+
+### Agents
+- **For review never disappears while you review it:** the side panel's For review list updates in place, and after you reply to the agent or press Mark reviewed it stays, marked "Reviewed", until you pick another view, switch tab, close the panel or open another agent.
+- **Don't ask again for an MCP sign-in:** an agent's sign-in notice (for example a claude.ai connector such as Google Drive) has **Don't ask again**, remembered on this computer: no notice, no Needs-you item, no push. A claude.ai connector's notice says it is managed on claude.ai. Settings › Advanced › Connections lists the claude.ai connectors your agents reported, each with **Ask me to sign in**. See `docs/mcp.md` (D183).
 ## 2.5.5 (2026-11-20)
 
 ### Agents
