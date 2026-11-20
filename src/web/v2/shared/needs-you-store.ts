@@ -40,6 +40,11 @@ import { usageWarningAlerts } from './usage-warning-model.ts';
 /** How long an answer can be taken back before it is sent (ms). */
 export const UNDO_WINDOW_MS = 5_000;
 
+/** An answer sent at once, without the undo window (2026-11-20: Mark reviewed on a To review card). */
+export function isImmediateAnswer(action: AnswerAction): boolean {
+  return action.type === 'server' && action.actionId === 'mark-reviewed';
+}
+
 /** How long an answered item's transient compact line shows (ms; at least until its Undo window ends). */
 export const ANSWERED_LINE_MS = 4_000;
 
@@ -352,7 +357,8 @@ export function createNeedsYouStore(deps: NeedsYouDeps): NeedsYouStore {
         emit();
         return;
       }
-      const timer = setTimeout(() => void commit(item.key), deps.undoMs);
+      // 2026-11-20: Mark reviewed is sent at once (no undo window): the developer expects the review to be done when clicked.
+      const timer = setTimeout(() => void commit(item.key), isImmediateAnswer(action) ? 0 : deps.undoMs);
       pending.set(item.key, { item, action, timer });
       emit();
     },

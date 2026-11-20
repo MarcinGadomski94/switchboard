@@ -7,7 +7,7 @@ import { commandOf, fromInbox, fromNote, inboxKindOf, memoryScopeOf, mergeNeedsY
 import { NEEDS_KIND_LOOK } from '../../src/web/v2/glossary.ts';
 import { toV2Path } from '../../src/web/v2/routes.ts';
 import { peerInboxItem } from '../../src/core/peer-wire.ts';
-import { ANSWERED_FADE_MS, ANSWERED_LINE_MS, DISMISSED_ALERTS_KEY, type NeedsYouDeps, createNeedsYouStore, usageAlerts } from '../../src/web/v2/shared/needs-you-store.ts';
+import { ANSWERED_FADE_MS, ANSWERED_LINE_MS, DISMISSED_ALERTS_KEY, type NeedsYouDeps, createNeedsYouStore, isImmediateAnswer, usageAlerts } from '../../src/web/v2/shared/needs-you-store.ts';
 
 const AT = '2026-10-25T12:00:00.000Z';
 const LATER = '2026-10-25T12:05:00.000Z';
@@ -270,6 +270,18 @@ describe('D131 · the store: answering anywhere answers it everywhere, with Undo
     await vi.runAllTimersAsync();
     expect(store.getSnapshot().items.map((item) => item.key)).toEqual(['inbox:p1']);
     expect(seen.length).toBeGreaterThan(2);
+  });
+
+  it('2026-11-20: Mark reviewed is sent at once, with no Undo window', async () => {
+    const { store, sent } = setup();
+    await store.reload();
+    const target = store.getSnapshot().items[0] as NeedsItem;
+    expect(isImmediateAnswer({ type: 'server', actionId: 'mark-reviewed' })).toBe(true);
+    expect(isImmediateAnswer({ type: 'server', actionId: 'dismiss' })).toBe(false);
+    store.answer(target, { type: 'server', actionId: 'mark-reviewed' }, 'home');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toEqual([{ key: target.key, type: 'server' }]);
+    expect(store.undo(target.key)).toBe(false);
   });
 
   it('Undo within the window takes the answer back (nothing is sent); after it, Undo is too late', async () => {

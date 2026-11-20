@@ -11,6 +11,7 @@ import { toV2Path } from '../routes.ts';
 import { openNew } from '../new/index.tsx';
 import { type AnswerAction, type AnsweredInfo, type BatchDraft, type CardButton, type OpenTarget, type QuestionDraft, batchAnswers, cardButtons, followUpOf, questionAnswer, questionReady, summaryOf, togglePick } from './answer-model.ts';
 import { defaultWhere, needsYouStore, useNeedsYou } from './needs-you.ts';
+import { isImmediateAnswer } from './needs-you-store.ts';
 import type { NeedsItem } from './needs-you-model.ts';
 import { CardMarkdown } from './CardMarkdown.tsx';
 import { NoteChange } from './NoteChange.tsx';
@@ -240,10 +241,14 @@ export function AnswerCard({ item, variant = 'queue', where = 'needs', onAnswere
     const follow = followUpOf(item, action);
     if (follow?.type === 'new-agent') openNew({ kind: 'agent', prefill: follow.prefill, machine: follow.machine });
     else if (follow?.type === 'path') navigate(toV2Path(follow.path));
-    toast({ text: `${summaryOf(item, action)}${source ? ` · sent to ${source}` : ''}`, undo: () => {
-        needsYouStore.undo(item.key);
-      },
-    });
+    const text = `${summaryOf(item, action)}${source ? ` · sent to ${source}` : ''}`;
+    // An answer sent at once (Mark reviewed) has nothing left to undo.
+    if (isImmediateAnswer(action)) toast({ text });
+    else
+      toast({ text, undo: () => {
+          needsYouStore.undo(item.key);
+        },
+      });
   };
   const open = (target: OpenTarget): void => {
     if (target.type === 'url') window.open(target.url, '_blank', 'noopener');
