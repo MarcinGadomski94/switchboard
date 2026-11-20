@@ -239,7 +239,9 @@ export async function readFakeLog(file: string): Promise<FakeLogLine[]> {
   } catch {
     return [];
   }
-  return text
+  // A line the fake is still writing has no newline yet: leave it for the next read (the 2.5.7 CI flake: "Unterminated string in JSON").
+  const complete = text.endsWith('\n') ? text : text.slice(0, text.lastIndexOf('\n') + 1);
+  return complete
     .split('\n')
     .filter((line) => line.trim() !== '')
     .map((line) => JSON.parse(line) as FakeLogLine);
