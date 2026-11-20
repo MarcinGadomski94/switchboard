@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.9 (2026-11-20)
+
+### Agents
+- **Full width stays when the side panel is open:** with **Full width** on (the conversation's view menu), the chat's lines use the whole width even while the right side panel is shown; before, the panel brought the line cap back.
 ## 2.5.8 (2026-11-20)
 
 ### Connectors
