@@ -326,6 +326,8 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     // D166: a "To review" item says its kind too (the UI's green card, the push).
     ...(record.kind === 'turn-waiting' || record.kind === 'account-needs-you' || record.kind === 'account-hint' || record.kind === 'review' ? { systemKind: record.kind } : {}),
     ...(command !== null ? { command } : {}),
+    // D184: the server an MCP sign-in item is about.
+    ...(record.kind === 'mcp-sign-in' && isRecord(record.payload) && typeof record.payload['server'] === 'string' ? { mcpServer: record.payload['server'] } : {}),
     detail: record.detail,
     createdAt: record.createdAt,
     branches: record.branches.map((branch) => ({ solution: branch.solution, branch: branch.branch })),

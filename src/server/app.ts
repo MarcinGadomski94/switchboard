@@ -581,6 +581,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     announce: (sessionId) => supervisor.announce(sessionId),
     items: systemItems,
   });
+  // D184: its mutes and the claude.ai connectors go to every paired computer (and come from them).
+  peers.useMcpSignIn(mcpSignIn);
   app.addHook('onReady', async () => {
     await mcpSignIn.start();
   });

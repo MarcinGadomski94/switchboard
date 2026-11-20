@@ -54,6 +54,8 @@ export interface PeerHandlers {
   sidebar(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /** D165 · `POST /peer/v1/user-profiles`: the caller's profile records (merged; a full exchange answers every record). */
   userProfiles(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /** D184 · `POST /peer/v1/mcp-sign-in`: the caller's MCP sign-in mute records and claude.ai connectors (merged); answers this computer's. */
+  mcpSignIn(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /**
    * D170 · `GET /peer/v1/terminals/{id}/socket` (WebSocket): the caller's browser attaches to a terminal
    * of this computer, in the profile the caller's request works in (`null`: none named, everything).
@@ -139,6 +141,11 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
   // D165: the profiles exchange (pairing auth like every route here).
   app.post('/peer/v1/user-profiles', async (request, reply) => {
     const answer = await handlers.userProfiles(request.peerMachine as MachineRecord, request.body);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
+  // D184: the MCP sign-in mutes and claude.ai connectors (pairing auth like every route here).
+  app.post('/peer/v1/mcp-sign-in', async (request, reply) => {
+    const answer = await handlers.mcpSignIn(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
   // D170: a terminal's socket for the caller's browser (the same guard ran on the upgrade: Host, no Origin, the bearer).

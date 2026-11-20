@@ -32,7 +32,7 @@ describe('v2 · MCP sign-in notices', () => {
 /** D183: Settings › Advanced › Connections' claude.ai connectors card. */
 describe('v2 · claude.ai connectors and muted sign-ins (Settings)', () => {
   it('lists every connector seen with its status and whether Switchboard asks; other muted servers below; nothing before it loads', () => {
-    expect(connectorRows(null)).toEqual({ connectors: [], otherMuted: [] });
+    expect(connectorRows(null)).toEqual({ connectors: [], otherMuted: [], unsynced: [] });
     const rows = connectorRows({
       muted: ['claude.ai Google Drive', 'docs'],
       connectors: [
@@ -47,5 +47,25 @@ describe('v2 · claude.ai connectors and muted sign-ins (Settings)', () => {
       ['claude.ai Slack', 'other', 'failed', true],
     ]);
     expect(rows.otherMuted).toEqual(['docs']);
+  });
+
+  it('D184: the paired computers’ connectors too, each once with where and how it was reported; a computer that does not sync is named', () => {
+    const rows = connectorRows({
+      muted: ['claude.ai Google Drive'],
+      connectors: [{ name: 'claude.ai Claude Docs', status: 'connected', at: 't' }],
+      self: 'MacBook',
+      computers: [
+        { id: 'pcpcpcpcpcpc', name: 'PC', synced: true, connectors: [{ name: 'claude.ai Google Drive', status: 'needs-auth', at: 't' }, { name: 'claude.ai Claude Docs', status: 'connected', at: 't' }] },
+        { id: 'oldoldoldold', name: 'Old box', synced: false, connectors: [] },
+      ],
+    });
+    // Would fail without the paired computers' sources in `connectorRows` (only this computer's Claude Docs).
+    expect(rows.connectors.map((row) => [row.name, row.status, row.statusText, row.ask])).toEqual([
+      ['claude.ai Claude Docs', 'connected', 'connected on MacBook · connected on PC', true],
+      ['claude.ai Google Drive', 'needs-auth', 'needs a sign-in on PC', false],
+    ]);
+    // Would fail without the `unsynced` list (a computer older than 2.5.8).
+    expect(rows.unsynced).toEqual(['Old box']);
+    expect(rows.otherMuted).toEqual([]);
   });
 });

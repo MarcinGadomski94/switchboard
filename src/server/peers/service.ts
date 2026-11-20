@@ -55,6 +55,8 @@ import { labelInboxItems } from '../team/hooks.ts';
 // Project memory (D107) hook (follow-up 2026-10-16): a paired machine's memoryChanged retries a pending member-memory copy (docs/memory-removal.md).
 import { memoryPeerChanged } from '../memory/hooks.ts';
 import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
+import { type McpSyncComputer, mcpSignInServerOf, readMcpSignInWire } from '../../core/mcp-sign-in.ts';
+import type { McpSignInService } from '../mcp/sign-in.ts';
 import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
 import { runOutsideProfileScope } from '../user-profiles/context.ts';
 import { INTERNAL_SCOPE_HEADER, INTERNAL_SECRET, USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
@@ -82,6 +84,9 @@ export const PEER_REQUEST_HEADER = 'x-switchboard-peer';
 
 /** D165: the profiles exchange (`docs/profiles.md` → *Paired computers*). */
 export const USER_PROFILES_SYNC_PATH = '/peer/v1/user-profiles';
+
+/** D184: the MCP sign-in exchange (`docs/mcp.md` → *Synced with paired computers (D184)*): the mutes and the claude.ai connectors. */
+export const MCP_SIGN_IN_SYNC_PATH = '/peer/v1/mcp-sign-in';
 
 /** Settings key of this install's identity. */
 export const SELF_SETTING = 'peers.self';
@@ -596,6 +601,7 @@ export class PeerService implements PeerHandlers {
     await this.#flushSaves().catch((error: unknown) => this.#onError(error));
     clearTimeout(this.#outage);
     clearTimeout(this.#listenerRetry);
+    this.#mcpOff?.();
     this.testHoldLists(false);
     this.testHoldTakeover(null);
     await this.#listenerChange.catch(() => undefined);
@@ -1040,6 +1046,7 @@ export class PeerService implements PeerHandlers {
     this.#peerStats.delete(id);
     // D176: what it reported of its own pairings goes; the others learn it is no longer paired here.
     this.#peerComputers.delete(id);
+    this.#peerMcp.delete(id);
     this.#announceComputers(null);
     this.#inboxAwaited.delete(id);
     clearTimeout(this.#saveTimers.get(id));
@@ -1150,6 +1157,8 @@ export class PeerService implements PeerHandlers {
       this.#sidebar.connected(id);
       // D165: the profiles, both ways, every time the connection comes (back).
       void this.#exchangeProfiles(id, true);
+      // D184: the MCP sign-in mutes and connectors too.
+      void this.#exchangeMcp(id);
     }
     else if (state === 'offline' || state === 'auth-failed') this.#sidebar.disconnected(id);
   }
@@ -1335,8 +1344,14 @@ export class PeerService implements PeerHandlers {
       const ref = this.#ref(id);
       if (ref) for (const item of connection.inbox) out.push(peerInboxItem(ref, item));
     }
+    // D184: a sign-in item for a muted server is left out, even from a paired computer that does not sync the mutes (older than 2.5.8).
+    const muted = this.#mcpSignIn?.mutedNames();
+    const shown = muted && muted.size > 0 ? out.filter((item) => {
+      const server = mcpSignInServerOf(item);
+      return server === null || !muted.has(server);
+    }) : out;
     // Team (D100) hook: a paired machine's member sessions' items carry the role name too (docs/team-removal.md).
-    return labelInboxItems(this.#store, out);
+    return labelInboxItems(this.#store, shown);
   }
 
   /**
@@ -1751,6 +1766,84 @@ export class PeerService implements PeerHandlers {
     // D172: the caller's ids are translated per profile (its Default stays its own, never this computer's).
     this.#relayProfiles(machine.id, await service.merge(input.profiles, machine.id));
     return { status: 200, body: { v: 1, profiles: input.full === true ? await service.wire(machine.id) : [], computers: this.#pairedComputers(machine.id) } };
+  }
+
+  // ── D184 · the MCP sign-in mutes and claude.ai connectors, synced with every paired computer (docs/mcp.md) ──
+
+  #mcpSignIn: McpSignInService | null = null;
+  #mcpOff: (() => void) | null = null;
+  /** D184: what each paired computer last told of itself: whether it syncs (`false`: older, no exchange) and its connectors. */
+  readonly #peerMcp = new Map<string, { readonly synced: boolean; readonly connectors: McpSyncComputer['connectors'] }>();
+
+  /** D184, tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): act as a computer older than 2.5.8 (no exchange either way). */
+  #testMcpOld = false;
+
+  testMcpOld(on: boolean): void {
+    this.#testMcpOld = on;
+  }
+
+  /** D184: the MCP sign-in service (set by the app): its changes go to every paired computer at once. */
+  useMcpSignIn(service: McpSignInService | null): void {
+    this.#mcpOff?.();
+    this.#mcpOff = null;
+    this.#mcpSignIn = service;
+    if (!service) return;
+    this.#mcpOff = service.onShare(() => {
+      for (const id of this.#records.keys()) void this.#exchangeMcp(id);
+    });
+    service.usePeers(() => this.mcpComputers());
+  }
+
+  /** D184: this computer's name and every paired computer as Settings › Connections lists them. */
+  mcpComputers(): { readonly self: string; readonly computers: McpSyncComputer[] } {
+    const computers: McpSyncComputer[] = [];
+    for (const record of this.#records.values()) {
+      const known = this.#peerMcp.get(record.id);
+      computers.push({ id: record.id, name: record.name, synced: known?.synced ?? true, connectors: known?.connectors ?? [] });
+    }
+    return { self: this.#self?.name ?? defaultMachineName(), computers: computers.sort((a, b) => a.name.localeCompare(b.name)) };
+  }
+
+  /** D184: records a paired computer's exchange wrote here go on to the other paired computers (as D176's profiles). */
+  #relayMcp(fromMachine: string, written: number): void {
+    if (written === 0) return;
+    for (const id of this.#records.keys()) if (id !== fromMachine) void this.#exchangeMcp(id);
+  }
+
+  #exchangeMcp(machineId: string): Promise<void> {
+    return runOutsideProfileScope(() => this.#exchangeMcpNow(machineId));
+  }
+
+  async #exchangeMcpNow(machineId: string): Promise<void> {
+    const service = this.#mcpSignIn;
+    const connection = this.#connections.get(machineId);
+    if (!service || !connection || connection.state !== 'online' || this.#testMcpOld) return;
+    try {
+      const answer = await connection.request('POST', MCP_SIGN_IN_SYNC_PATH, service.wire(), { timeoutMs: 30_000 });
+      // An older computer has no such route: it keeps its own mutes (Settings says so).
+      if (answer.status === 404 || answer.status === 403 || answer.status === 405) {
+        this.#peerMcp.set(machineId, { synced: false, connectors: [] });
+        return;
+      }
+      const wire = answer.status === 200 ? readMcpSignInWire(answer.body) : null;
+      if (!wire) return;
+      this.#peerMcp.set(machineId, { synced: true, connectors: wire.connectors });
+      this.#relayMcp(machineId, (await service.merge(wire.mutes)).length);
+    } catch (error) {
+      this.#log('warn', `MCP sign-in sync with ${machineId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** D184 · `POST /peer/v1/mcp-sign-in`: a paired computer's mute records and connectors; answers this computer's. */
+  async mcpSignIn(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    if (this.#closed) return { status: 503, body: { error: 'closing' } };
+    const service = this.#mcpSignIn;
+    if (!service || this.#testMcpOld) return { status: 404, body: { error: 'not-found' } };
+    const wire = readMcpSignInWire(body);
+    if (!wire) return { status: 422, body: { error: 'invalid' } };
+    this.#peerMcp.set(machine.id, { synced: true, connectors: wire.connectors });
+    this.#relayMcp(machine.id, (await service.merge(wire.mutes)).length);
+    return { status: 200, body: service.wire() };
   }
 
   /** D71 · `POST /peer/v1/sidebar`: a paired machine's sidebar records (merged only while this machine's switch for it is on). */

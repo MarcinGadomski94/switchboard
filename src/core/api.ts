@@ -1654,6 +1654,8 @@ export interface InboxItem {
   readonly teamRole?: string;
   /** Additive (D124): `turn-waiting` on a session's "Waiting for you" system item (D139: `account-needs-you` on an account's; D166: `review` on an agent's "To review"); absent on every other item. */
   readonly systemKind?: string;
+  /** Additive (D184): the server an MCP sign-in item asks about (a paired computer leaves the item out when that server is muted). */
+  readonly mcpServer?: string;
   /** Additive (D139): the terminal command an account's "needs you" item shows, copyable (`CLAUDE_CONFIG_DIR="<dir>" claude`). */
   readonly command?: string;
   /**

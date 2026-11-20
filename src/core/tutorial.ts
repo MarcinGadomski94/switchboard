@@ -206,6 +206,8 @@ const V2_5_4 = '2.5.4';
 const V2_5_6 = '2.5.6';
 /** The version the sidebar's resize handle (D181, 2026-11-20) ships in (adjust if it ships later). */
 const V2_5_7 = '2.5.7';
+/** The version D184 (the MCP sign-in mutes synced with the paired computers) ships in (adjust if it ships later). */
+const V2_5_8 = '2.5.8';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2209,7 +2211,27 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
-];/** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
+  // D184: the MCP sign-in mutes and the claude.ai connectors, shared with the paired computers (docs/mcp.md → Synced with paired computers).
+  {
+    id: 'mcp-mute-sync',
+    decision: 'D184',
+    version: V2_5_8,
+    title: 'Sign-in requests: one list for all your computers',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'everywhere',
+        title: 'Every computer’s connectors, one switch',
+        what: 'Settings › Advanced › Connections now lists the claude.ai connectors of all your paired computers, with how each one is doing on each computer (“needs a sign-in on PC · connected on MacBook”). Turning off “Ask me to sign in”, or Don’t ask again in an agent, stops the request on every computer at once. A computer that hasn’t been updated yet is named, so you know to update it.',
+        todo: ['Open Settings › Advanced › Connections.'],
+        anchors: ['v2-mcp-connectors'],
+        v2Route: '/settings/advanced/connections',
+        missing: 'Open Settings › Advanced › Connections to see the claude.ai connectors.',
+      },
+    ],
+  },
+];
+/** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
 export function isTourId(id: string, registry: readonly WhatsNewFeature[] = WHATS_NEW): boolean {
   return id === MAIN_TOUR_ID || registry.some((feature) => feature.id === id);
 }

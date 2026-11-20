@@ -112,6 +112,11 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
       peers.testHoldTakeover(null);
       return reply.code(204).send();
     });
+    // D184: this computer acts as one older than 2.5.8 (no MCP sign-in exchange: the route answers 404, nothing is sent).
+    app.post('/api/test/peers/mcp-old', async (_request, reply) => {
+      peers.testMcpOld(true);
+      return reply.code(204).send();
+    });
   }
 
   app.delete<{ Params: { id: string } }>('/api/machines/:id', async (request, reply) => {

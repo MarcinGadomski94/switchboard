@@ -2442,11 +2442,13 @@ export const BRING_IN_WORDS = {
 /** D183 (`docs/mcp.md` → *Don't ask again*): an MCP server's sign-in, muted or asked for; the claude.ai connectors in Settings. */
 export const MCP_SIGN_IN_WORDS = {
   dontAsk: 'Don’t ask again',
-  dontAskTitle: 'Switchboard stops asking you to sign in to this server on this computer (Settings › Advanced › Connections turns it back on).',
-  muted: (name: string): string => `Switchboard won’t ask about ${name} again on this computer.`,
+  dontAskTitle: 'Switchboard stops asking you to sign in to this server, on this computer and your paired ones (Settings › Advanced › Connections turns it back on).',
+  muted: (name: string): string => `Switchboard won’t ask about ${name} again, on any of your computers.`,
   connectorsTitle: 'claude.ai connectors and sign-in requests',
-  connectorsSub: 'Connectors from your claude.ai account are loaded by every agent and managed on claude.ai, not here. Turn off “Ask me to sign in” for one you don’t use.',
-  noConnectors: 'No claude.ai connectors reported yet: they show here once an agent on this computer starts.',
+  connectorsSub: 'Connectors from your claude.ai account are loaded by every agent and managed on claude.ai, not here. This list covers your paired computers too: turn off “Ask me to sign in” for one you don’t use and none of them asks again.',
+  noConnectors: 'No claude.ai connectors reported yet: they show here once an agent on one of your computers starts.',
+  /** D184: the paired computers older than 2.5.8 (they keep their own mutes). */
+  notSynced: (names: readonly string[]): string => `Not synced with ${names.join(', ')}: update Switchboard there to share these settings.`,
   managedOn: 'managed on claude.ai',
   needsSignIn: 'needs a sign-in',
   connected: 'connected',

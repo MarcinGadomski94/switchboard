@@ -137,12 +137,10 @@ export function McpSignInNotice({ sessionId, session }: { readonly sessionId: st
                 {phase.kind === 'failed' ? 'Try again' : 'Sign in'}
               </Button>
             )}
-            {/* D183: muted on the agent's computer; a paired computer's agent is muted there. */}
-            {row.elsewhere ? null : (
-              <Button size="sm" variant="ghost" title={MCP_SIGN_IN_WORDS.dontAskTitle} onClick={() => mute(row.name)} data-testid="v2-agent-mcp-signin-mute" data-tour="v2-mcp-signin-mute">
-                {MCP_SIGN_IN_WORDS.dontAsk}
-              </Button>
-            )}
+            {/* D184: muted here and shared with the paired computers, so a paired computer's agent gets it too. */}
+            <Button size="sm" variant="ghost" title={MCP_SIGN_IN_WORDS.dontAskTitle} onClick={() => mute(row.name)} data-testid="v2-agent-mcp-signin-mute" data-tour="v2-mcp-signin-mute">
+              {MCP_SIGN_IN_WORDS.dontAsk}
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setDismissed((current) => new Set([...current, row.name]))} data-testid="v2-agent-mcp-signin-dismiss">
               Dismiss
             </Button>
