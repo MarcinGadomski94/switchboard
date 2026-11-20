@@ -519,6 +519,17 @@
   min-height: 36px;
 }
 
+/* 2026-11-20: a v2 Switch inside a classic frame (Connections' claude.ai connectors card) keeps its own
+   44 × 26 track: the frame's 36 px button rule (and the classic button padding) stretched it, the knob
+   sitting at its top. */
+.sb2 .v2-classic-frame .v2-switch {
+  min-height: 0;
+  height: 26px;
+  padding: 0;
+  line-height: normal;
+  align-self: center;
+}
+
 .sb2 .v2-classic-modal-layer {
   position: fixed;
   inset: 0;

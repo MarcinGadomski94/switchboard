@@ -61,10 +61,25 @@
 
 .sb2 .v2-ag-titlebox {
   display: flex;
-  align-items: baseline;
+  /* 2026-11-20 (alignment pass): centred, not on the text baseline (the computer tag sat low beside the name). */
+  align-items: center;
   min-width: 6ch;
   flex: 0 1 auto;
   overflow: hidden;
+}
+
+/* 2026-11-20 (alignment pass): the agent's computer beside its name: 22 px, as the header's small chips. */
+.sb2 .v2-ag-home {
+  display: inline-flex;
+  flex: none;
+}
+
+.sb2 .v2-ag-home .v2-ctag {
+  line-height: 20px;
+  font-size: 12px;
+  padding: 0 7px;
+  gap: 4px;
+  border-radius: 6px;
 }
 
 .sb2 .v2-ag-tag {
@@ -942,6 +957,25 @@
 
 .sb2 .v2-ag-bottom-tabs .v2-seg {
   white-space: nowrap;
+}
+
+/*
+ * 2026-11-20 (alignment pass): one control height on the header row: the switch (2 px inset + 28 px
+ * tabs) and Stop background tasks / Stop / Resume are all 32 px, centred on the status text.
+ */
+.sb2 .v2-ag-bottom-bar .v2-seg {
+  padding: 2px;
+  border-radius: 9px;
+}
+
+.sb2 .v2-ag-bottom-bar .v2-seg button {
+  min-height: 28px;
+  border-radius: 7px;
+}
+
+.sb2 .v2-ag-bottom-bar .v2-ag-status .v2-btn[data-size='sm'] {
+  min-height: 32px;
+  height: 32px;
 }
 
 /* The status line sits in the header row: the dock below starts with its strips / message box. */

@@ -328,6 +328,34 @@ body.v2-rail-resizing iframe {
   padding-bottom: 5px;
 }
 
+/*
+ * 2026-11-20 (alignment pass): the status mark sits in a 16 px slot (an icon and a dot line the names
+ * up at the same x in Pinned and Recent) and, on a two-line row, beside the name line rather than
+ * centred on both lines; the name line is 20 px tall so the mark, the name and the count share a centre.
+ */
+.sb2 .v2-pin-item > .v2-mini-st {
+  flex: none;
+  width: 16px;
+  justify-content: center;
+}
+
+.sb2 .v2-pin-line {
+  min-height: 20px;
+}
+
+.sb2 .v2-pin-item:has(.v2-pin-sub) {
+  align-items: flex-start;
+}
+
+.sb2 .v2-pin-item:has(.v2-pin-sub) > .v2-mini-st {
+  height: 20px;
+}
+
+.sb2 .v2-pin-line > .v2-nav-badge {
+  flex: none;
+  line-height: 16px;
+}
+
 /* D175: a pinned conversation's chat mark after its name. */
 .sb2 .v2-pin-kind {
   flex: none;
