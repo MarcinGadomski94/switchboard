@@ -119,7 +119,9 @@ describe('ServiceLogRotation', () => {
       await rotation.start();
       writeSync(fd, lines(0, 100)); // 2000 bytes > 1000
       const deadline = Date.now() + 5000;
-      while ((await stat(file)).size > 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+      // Both the emptied log and its rotated copy: on a slow runner the copy can land a moment after (the 2.5.4 macOS flake).
+      const rotatedReady = async (): Promise<boolean> => (await readFile(rotatedLogFile(file), 'utf8').catch(() => '')) === lines(50, 50);
+      while (((await stat(file)).size > 0 || !(await rotatedReady())) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
       expect((await stat(file)).size).toBe(0);
       expect(await readFile(rotatedLogFile(file), 'utf8')).toBe(lines(50, 50));
     } finally {
