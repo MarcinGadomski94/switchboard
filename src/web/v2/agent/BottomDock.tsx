@@ -112,7 +112,7 @@ export function BottomDock({ sessionId, phone, refusal, children }: { readonly s
         </div>
       ) : null}
       {terminal.kind !== 'none' ? (
-        <div className="v2-ag-bottom-term" hidden={!terminalShown} style={height !== undefined ? { height } : undefined} data-testid="v2-agent-terminal">
+        <div className="v2-ag-bottom-term" hidden={!terminalShown} style={height !== undefined ? { height } : undefined} data-testid="v2-agent-terminal" data-terminal-id={terminal.kind === 'open' ? terminal.id : undefined}>
           {terminal.kind === 'open' ? <TerminalView machine={null} id={terminal.id} phone={phone} /> : null}
           {terminal.kind === 'starting' ? <div className="v2-ag-bottom-note" role="status">{W.starting}</div> : null}
           {terminal.kind === 'failed' ? (

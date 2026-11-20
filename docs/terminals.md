@@ -15,6 +15,15 @@ Phase 1 is the terminals themselves. Phase 2 (D171) is an agent's **CLI tab**: t
 ## Getting back to a terminal
 
 A terminal keeps running when you leave its page. Before 2.5.2 the Terminals page had no entry in the desktop and tablet sidebar (only the palette and a phone's More), so a terminal you left was hard to find again. The sidebar now has a **Terminals** item between Tasks and Settings: it lights on the list and on a terminal's own page, and its badge counts the terminals open **on this computer** (read on each page change and every 15 s, `useOpenTerminalCount`; there is no hub event for terminals). Paired computers' terminals are not counted in the badge (it would poll every computer from every page); the Terminals page lists them. On a phone it stays under **More**.
+## The agent's terminal (D182)
+
+Under an agent's conversation, **Message | Terminal | Both** switches between the message box, a terminal, or both at once (the terminal above the message box; drag the line between them; Ctrl+` shows or hides the terminal; the choice and the height are remembered in this browser; a phone has the two tabs only).
+
+- **Where:** the default shell in the agent's folder (its working folder: the workspace root for a workspace agent), on this computer, in the agent's profile. `POST /api/sessions/{id}/terminal` → the terminal (its socket, input and close are the ones above).
+- **When:** it starts the first time Terminal or Both is shown. Back to Message only hides it. **Leaving the conversation closes it** (another agent or page, or the agent's CLI / Results / Timeline tab); a closed browser tab or a lost connection closes it 20 s after its last tab (`AGENT_TERMINAL_GRACE_MS`), so a reload reconnects.
+- **Not on the Terminals page** (it lives with its conversation); it counts toward the 16.
+- **Not for** a paired computer's agent (open a terminal on that computer from the Terminals page), an archived agent, or an agent whose folder is gone.
+
 ## Limits and settings
 
 | | |

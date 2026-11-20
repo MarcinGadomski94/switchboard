@@ -200,6 +200,8 @@ const V2_4_50 = '2.4.50';
 const V2_5_1 = '2.5.1';
 /** The version the Terminals rail item (D170 follow-up) ships in (the next release after 2.5.1; adjust if it ships later). */
 const V2_5_2 = '2.5.2';
+/** The version D182 (the agent's terminal at the bottom of its conversation) ships in (adjust if it ships later). */
+const V2_5_4 = '2.5.4';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2115,6 +2117,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-nav-terminals', 'v2-tab-more'],
         v2Route: '/terminals',
         missing: 'Terminals is in the sidebar on a computer, and under More on a phone.',
+      },
+    ],
+  },
+  // D182: a terminal at the bottom of an agent's conversation (docs/terminals.md → The agent's terminal).
+  {
+    id: 'agent-terminal',
+    decision: 'D182',
+    version: V2_5_4,
+    title: 'A terminal inside the conversation',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'dock',
+        title: 'Message, Terminal, or Both',
+        what: 'Under an agent’s conversation, switch between the message box and a terminal in the agent’s folder, or show Both at once (drag the line between them). Ctrl+` switches too. The terminal closes when you leave the conversation. Changes and Helpers are in the side panel now, not in the tabs above the chat.',
+        todo: ['Open an agent and pick Terminal under its conversation.'],
+        anchors: ['v2-agent-dock-terminal'],
+        v2Route: '/agents',
+        missing: 'Open one of your agents: the switch is under its conversation.',
       },
     ],
   },
