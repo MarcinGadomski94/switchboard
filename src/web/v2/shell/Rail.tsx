@@ -175,15 +175,19 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
               data-tour={conversation ? 'v2-pin-conversation' : undefined}
             >
               <StatusBadge status={status} compact />
-              <span className="v2-pin-name">{name}</span>
-              {conversation ? <Icon name="chat" size="s" className="v2-pin-kind" label={TERMS.conversation.one} /> : null}
-              {/* D181: the computer it runs on (once a computer is paired). */}
-              <RowComputerTag machine={session.machine} anyPaired={anyPaired} />
-              {needs > 0 ? (
-                <span className="v2-nav-badge" title={WORDS.needsYou} data-testid="v2-pin-agent-needs">
-                  {needs}
+              <span className="v2-pin-text">
+                <span className="v2-pin-line">
+                  <span className="v2-pin-name">{name}</span>
+                  {conversation ? <Icon name="chat" size="s" className="v2-pin-kind" label={TERMS.conversation.one} /> : null}
+                  {needs > 0 ? (
+                    <span className="v2-nav-badge" title={WORDS.needsYou} data-testid="v2-pin-agent-needs">
+                      {needs}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
+                {/* D181: the computer it runs on (once a computer is paired), on the second line. */}
+                <RowComputerTag machine={session.machine} anyPaired={anyPaired} />
+              </span>
             </V2Link>
           );
         })}

@@ -107,4 +107,80 @@ test('Pinned and Recent are lists under the icons; Recent follows Settings', asy
   await page.reload();
   await expect(page.getByTestId('v2-recent-count')).toHaveValue('0');
   await expect(page.getByTestId('v2-recent')).toHaveCount(0);
+  await page.getByTestId('v2-recent-count').selectOption('5');
+});
+
+test('D181 (2026-11-20): a pinned agent names its computer on a second line, under its name', async ({ page }) => {
+  // A paired computer (in this browser's view only): this computer's agents then name it.
+  await page.route('**/api/machines', async (route) => {
+    const response = await route.fetch();
+    const view = (await response.json()) as { machines: unknown[] };
+    view.machines = [{ id: 'acmepairedaa', name: 'Acme-MacBook', address: '100.64.0.9:13002', state: 'online', pairedAt: '2026-11-20T08:00:00.000Z', lastSeenAt: null }, ...view.machines];
+    await route.fulfill({ response, json: view });
+  });
+  await page.goto(`${world.baseUrl}/`);
+  const row = page.getByTestId('v2-rail-pins').getByTestId('v2-pin-agent').first();
+  await expect(row).toBeVisible();
+  const sub = row.getByTestId('v2-pin-sub');
+  await expect(sub).toBeVisible();
+  const nameBox = await row.locator('.v2-pin-name').boundingBox();
+  const subBox = await sub.boundingBox();
+  // Under the name (a second line), starting where the name starts (not under the status dot).
+  expect((subBox?.y ?? 0) >= (nameBox?.y ?? 0) + (nameBox?.height ?? 0) - 2).toBe(true);
+  expect(Math.abs((subBox?.x ?? 0) - (nameBox?.x ?? 0))).toBeLessThanOrEqual(2);
+  await page.mouse.move(900, 600);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'sidebar-resize-shots', 'rows-1440.png') });
+});
+
+test('D181 (2026-11-20): the sidebar resizes by its edge (drag, keys, double-click) and remembers it', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  await page.evaluate(() => window.localStorage.removeItem('switchboard.v2.railWidth'));
+  await page.reload();
+  const rail = page.getByTestId('v2-rail');
+  const handle = page.getByTestId('v2-rail-handle');
+  await expect(handle).toHaveAttribute('aria-valuenow', '232');
+  await expect(handle).toHaveAccessibleName('Resize the sidebar');
+  const width = async (): Promise<number> => Math.round((await rail.boundingBox())?.width ?? 0);
+  expect(await width()).toBe(232);
+
+  // Drag the edge to 320 px: the rail follows, the four icons per row spread with it.
+  const box = await handle.boundingBox();
+  const y = (box?.y ?? 0) + 300;
+  await page.mouse.move((box?.x ?? 0) + 4, y);
+  await page.mouse.down();
+  await page.mouse.move(250, y, { steps: 4 });
+  await page.mouse.move(320, y, { steps: 4 });
+  await page.mouse.up();
+  await expect(handle).toHaveAttribute('aria-valuenow', '320');
+  expect(await width()).toBe(320);
+  const xs = await page.getByTestId('v2-rail-grid').locator('a.v2-nav-item').evaluateAll((links) => [...new Set(links.map((link) => Math.round(link.getBoundingClientRect().x)))]);
+  expect(xs).toHaveLength(4);
+  await page.mouse.move(900, 600);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'sidebar-resize-shots', 'home-1440-wide.png') });
+
+  // Remembered across a reload.
+  await page.reload();
+  await expect(page.getByTestId('v2-rail-handle')).toHaveAttribute('aria-valuenow', '320');
+  expect(await width()).toBe(320);
+
+  // Keys: → by 16, End to 400, Home to 200.
+  await page.getByTestId('v2-rail-handle').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('v2-rail-handle')).toHaveAttribute('aria-valuenow', '336');
+  await page.keyboard.press('End');
+  await expect(page.getByTestId('v2-rail-handle')).toHaveAttribute('aria-valuenow', '400');
+  await page.keyboard.press('Home');
+  await expect(page.getByTestId('v2-rail-handle')).toHaveAttribute('aria-valuenow', '200');
+  expect(await width()).toBe(200);
+
+  // Double-click: back to 232.
+  await page.getByTestId('v2-rail-handle').dblclick();
+  await expect(page.getByTestId('v2-rail-handle')).toHaveAttribute('aria-valuenow', '232');
+  await page.mouse.move(900, 600);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'sidebar-resize-shots', 'home-1440-default.png') });
+
+  // Tablet: no handle (the narrow rail keeps its width).
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByTestId('v2-rail-handle')).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
 });

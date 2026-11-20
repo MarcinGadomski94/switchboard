@@ -91,6 +91,9 @@ export const WORDS = {
   pinned: 'Pinned',
   /** The rail's empty Pinned list (2.4.4: crews pin too). */
   pinnedHint: 'Pin agents or crews from their ⋯ menu.',
+  /** D181 (2026-11-20): the sidebar's resize handle. */
+  resizeSidebar: 'Resize the sidebar',
+  resizeSidebarTip: 'Drag to resize · double-click to reset',
   recent: 'Recent',
   recentActions: 'Recent: more',
   clearRecent: 'Clear recent',

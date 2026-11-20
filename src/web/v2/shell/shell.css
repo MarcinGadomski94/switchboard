@@ -16,6 +16,53 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/*
+ * D181 (2026-11-20): the desktop sidebar's resize handle, on the rail's right edge (out of the
+ * grid's flow, so it does not scroll with the rail); a line shows on hover, focus and while dragging.
+ */
+.sb2 .v2-app {
+  position: relative;
+}
+
+.sb2 .v2-rail-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--v2-rail) - 4px);
+  width: 8px;
+  z-index: 20;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.sb2 .v2-rail-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.sb2 .v2-rail-handle:hover::after,
+.sb2 .v2-rail-handle:focus-visible::after,
+body.v2-rail-resizing .sb2 .v2-rail-handle::after {
+  background: var(--v2-accent);
+}
+
+body.v2-rail-resizing,
+body.v2-rail-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.v2-rail-resizing iframe {
+  pointer-events: none;
+}
+
 /* ── Rail ── */
 .sb2 .v2-rail {
   background: var(--v2-surface-2);
@@ -218,6 +265,67 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * D181 (2026-11-20): a pinned or recent agent row: its name (with its marks and need-you count)
+ * on the first line, the computer it runs on under it, smaller and muted (only when shown), so
+ * the name keeps the row's width.
+ */
+.sb2 .v2-pin-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sb2 .v2-pin-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb2 .v2-pin-sub {
+  display: flex;
+  min-width: 0;
+  margin-top: -1px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--v2-muted);
+}
+
+.sb2 .v2-pin-sub .v2-ctag {
+  min-width: 0;
+  max-width: 100%;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
+.sb2 .v2-pin-sub .v2-ctag[data-state='offline'] {
+  color: var(--v2-grey);
+}
+
+.sb2 .v2-pin-sub .v2-ctag[data-state='reconnecting'] {
+  color: var(--v2-amber);
+}
+
+.sb2 .v2-pin-sub .v2-ctag-name {
+  max-width: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-pin-item:has(.v2-pin-sub) {
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 /* D175: a pinned conversation's chat mark after its name. */

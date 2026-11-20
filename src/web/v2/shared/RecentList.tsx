@@ -79,17 +79,21 @@ export function RecentList({ pinned, currentId, variant = 'rail' }: { readonly p
             return (
               <V2Link key={session.id} to={{ area: 'agent', id: session.id, tab: 'chat' }} className="v2-pin-item v2-recent-item" title={`${name}${mate ? ` · ${mate.crewName}` : ''} · ${STATUS[status].label}`} aria-current={currentId === session.id ? 'page' : undefined} data-testid="v2-recent-item" data-session={session.id}>
                 <StatusBadge status={status} compact />
-                <span className="v2-pin-name">
-                  {name}
-                  {mate ? <CrewTag crew={mate.crewName} /> : null}
-                </span>
-                {/* D181: the computer it runs on (once a computer is paired). */}
-                <RowComputerTag machine={session.machine} anyPaired={anyPaired} />
-                {needs > 0 ? (
-                  <span className="v2-nav-badge" title={WORDS.needsYou} data-testid="v2-recent-needs">
-                    {needs}
+                <span className="v2-pin-text">
+                  <span className="v2-pin-line">
+                    <span className="v2-pin-name">
+                      {name}
+                      {mate ? <CrewTag crew={mate.crewName} /> : null}
+                    </span>
+                    {needs > 0 ? (
+                      <span className="v2-nav-badge" title={WORDS.needsYou} data-testid="v2-recent-needs">
+                        {needs}
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
+                  {/* D181: the computer it runs on (once a computer is paired), on the second line. */}
+                  <RowComputerTag machine={session.machine} anyPaired={anyPaired} />
+                </span>
               </V2Link>
             );
           })

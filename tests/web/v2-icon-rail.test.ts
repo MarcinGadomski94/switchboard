@@ -3,7 +3,39 @@ import { RAIL_LABELS, PHONE_TABS, RESULTS_WORDS } from '../../src/web/v2/glossar
 import { parseV2Route } from '../../src/web/v2/routes.ts';
 import { RECENT_COUNT_MAX, RECENT_SHOWN, readRecentCount, recentAgents } from '../../src/web/v2/shared/recent-model.ts';
 import { RAIL_AREAS } from '../../src/web/v2/routes.ts';
-import { rowComputerName } from '../../src/web/v2/shell/rail-model.ts';
+import { RAIL_WIDTH_DEFAULT, RAIL_WIDTH_MAX, RAIL_WIDTH_MIN, RAIL_WIDTH_STEP, clampRailWidth, railWidthByKey, readRailWidth, rowComputerName } from '../../src/web/v2/shell/rail-model.ts';
+
+describe('D181 (2026-11-20) · the sidebar width (the resize handle)', () => {
+  it('200–400 px, 232 by default, whole pixels; nonsense is the default', () => {
+    expect([RAIL_WIDTH_MIN, RAIL_WIDTH_DEFAULT, RAIL_WIDTH_MAX, RAIL_WIDTH_STEP]).toEqual([200, 232, 400, 16]);
+    // Catches the min clamp (Math.max(RAIL_WIDTH_MIN, …)).
+    expect(clampRailWidth(120)).toBe(200);
+    // Catches the max clamp (Math.min(RAIL_WIDTH_MAX, …)).
+    expect(clampRailWidth(900)).toBe(400);
+    // Catches the rounding.
+    expect(clampRailWidth(300.6)).toBe(301);
+    // Catches the Number.isFinite guard.
+    expect(clampRailWidth(Number.NaN)).toBe(232);
+  });
+
+  it('the remembered width: nothing, empty or unreadable → 232; a number → kept in range', () => {
+    expect(readRailWidth(null)).toBe(232);
+    expect(readRailWidth('')).toBe(232);
+    expect(readRailWidth('wide')).toBe(232);
+    expect(readRailWidth('320')).toBe(320);
+    expect(readRailWidth('9999')).toBe(400);
+  });
+
+  it('keys: ← / → by 16 px within the range, Home / End to the ends, other keys do nothing', () => {
+    expect(railWidthByKey(232, 'ArrowRight')).toBe(248);
+    expect(railWidthByKey(232, 'ArrowLeft')).toBe(216);
+    expect(railWidthByKey(392, 'ArrowRight')).toBe(400);
+    expect(railWidthByKey(208, 'ArrowLeft')).toBe(200);
+    expect(railWidthByKey(300, 'Home')).toBe(200);
+    expect(railWidthByKey(300, 'End')).toBe(400);
+    expect(railWidthByKey(300, 'Enter')).toBeNull();
+  });
+});
 
 /** D181 · the rail's rules: the computer on a pinned / recent row, Recent's number, Artifacts, the eight grid icons. */
 

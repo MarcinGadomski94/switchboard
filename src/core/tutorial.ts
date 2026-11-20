@@ -204,6 +204,8 @@ const V2_5_2 = '2.5.2';
 const V2_5_4 = '2.5.4';
 /** The version D183 (Don't ask again for MCP sign-ins) ships in (adjust if it ships later). */
 const V2_5_6 = '2.5.6';
+/** The version the sidebar's resize handle (D181, 2026-11-20) ships in (adjust if it ships later). */
+const V2_5_7 = '2.5.7';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2185,6 +2187,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-mcp-connectors', 'v2-mcp-signin-mute'],
         v2Route: '/settings/advanced/connections',
         missing: 'Open Settings › Advanced › Connections to see the claude.ai connectors.',
+      },
+    ],
+  },
+  // D181 (2026-11-20): the desktop sidebar is resizable; an agent's computer under its name (docs/v2.md → Shell).
+  {
+    id: 'sidebar-resize',
+    decision: 'D181',
+    version: V2_5_7,
+    title: 'Make the sidebar wider',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'handle',
+        title: 'Drag the sidebar’s edge',
+        what: 'Drag the sidebar’s right edge to make it wider or narrower (200–400 px); this browser remembers it. With the edge focused, ← and → resize it too; double-click puts it back. Pinned and recent agents now show the computer they run on under their name, so the name keeps the room.',
+        todo: ['Drag the line on the sidebar’s right edge.'],
+        anchors: ['v2-rail-handle', 'v2-rail-pins'],
+        v2Route: '/',
+        missing: 'The sidebar can be resized on a computer screen (1280 px wide or more).',
       },
     ],
   },

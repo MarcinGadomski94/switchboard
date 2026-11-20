@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { type CSSProperties, useEffect, useRef } from 'react';
 import { TouchTooltip } from '../../shell/TouchTooltip.tsx';
 import { useLayout, useVisualViewportHeight } from '../../shell/useLayout.ts';
 import { Portal } from '../components/index.ts';
@@ -11,6 +11,7 @@ import { useNeedsYouCount } from '../shared/needs-you.ts';
 import { Outlet } from './Outlet.tsx';
 import { PhoneTabs } from './PhoneTabs.tsx';
 import { Rail } from './Rail.tsx';
+import { RailResize, useRailWidth } from './RailResize.tsx';
 import { ShortcutsDialog, openShortcuts } from './ShortcutsDialog.tsx';
 import { TopBar } from './TopBar.tsx';
 import { V2TourHost } from '../tour/TourHost.tsx';
@@ -35,6 +36,8 @@ export function Shell() {
   const { route, pathname, search, navigate } = useV2Router();
   const layout = useLayout();
   const phone = layout === 'phone';
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const rail = useRailWidth(layout === 'desktop');
   useVisualViewportHeight(layout !== 'desktop');
   const { pill } = useStatusPill();
   const counts = useRailCounts();
@@ -87,9 +90,12 @@ export function Shell() {
     );
   }
 
+  const style = rail.width !== null ? ({ '--v2-rail': `${rail.width}px` } as CSSProperties) : undefined;
   return (
-    <div className="v2-app" data-layout={layout} data-testid="v2-shell">
+    <div className="v2-app" data-layout={layout} data-testid="v2-shell" ref={shellRef} style={style}>
       {phone ? null : <Rail route={route} counts={counts} pill={pill} />}
+      {/* D181 (2026-11-20): the desktop sidebar's resize handle on its right edge. */}
+      {rail.width !== null ? <RailResize width={rail.width} onChange={rail.set} shell={shellRef} /> : null}
       <div className="v2-main">
         <TopBar pill={pill} needs={needs} phone={phone} />
         <main className="v2-content" id="v2-content" data-area={route.area}>

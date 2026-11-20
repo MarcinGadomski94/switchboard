@@ -74,15 +74,25 @@ export function useAnyPaired(): boolean {
 }
 
 /**
- * D181 · the computer a pinned or recent agent runs on, short and muted at the row's end: a
- * paired computer's (live state), else this computer's once a computer is paired
- * ({@link rowComputerName}); nothing with no computer paired.
+ * D181 · the computer a pinned or recent agent runs on, short and muted: a paired computer's
+ * (live state), else this computer's once a computer is paired ({@link rowComputerName});
+ * nothing with no computer paired. 2026-11-20: on the row's second line, under the name
+ * (`.v2-pin-sub`), so the name keeps the row's width.
  */
 export function RowComputerTag({ machine, anyPaired }: { readonly machine: SessionMachine | null | undefined; readonly anyPaired: boolean }) {
   const self = useSelfMachineName();
-  if (machine) return <AgentComputerTag machine={machine} short />;
+  if (machine)
+    return (
+      <span className="v2-pin-sub" data-testid="v2-pin-sub">
+        <AgentComputerTag machine={machine} short />
+      </span>
+    );
   const name = rowComputerName(null, self, anyPaired);
-  return name ? <ComputerTag name={name} kind="laptop" short testId="v2-row-computer-self" /> : null;
+  return name ? (
+    <span className="v2-pin-sub" data-testid="v2-pin-sub">
+      <ComputerTag name={name} kind="laptop" short testId="v2-row-computer-self" />
+    </span>
+  ) : null;
 }
 
 /**
