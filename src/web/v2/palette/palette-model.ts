@@ -137,7 +137,7 @@ export function pageRows(): PaletteRow[] {
     page('tasks', RAIL_LABELS.tasks, 'task', '/tasks', 'todos board'),
     page('routines', 'Routines', 'routine', '/routines', 'schedules loops'),
     page('notes', 'Notes', 'book', '/notes', 'memory'),
-    page('terminals', 'Terminals', 'cmd', '/terminals', 'shell powershell console command line'),
+    page('terminals', RAIL_LABELS.terminals, 'cmd', '/terminals', 'shell powershell console command line'),
     page('closed', PALETTE_WORDS.actions.closed, 'clock', '/agents?show=closed', 'history closed'),
     page('settings', RAIL_LABELS.settings, 'settings', '/settings', 'preferences'),
     ...V2_SETTINGS_SECTIONS.map((section) => page(`settings-${section}`, `${PALETTE_WORDS.settingsPrefix} ${SETTINGS_LABELS[section]}`, 'settings', `/settings/${section}`, 'settings')),

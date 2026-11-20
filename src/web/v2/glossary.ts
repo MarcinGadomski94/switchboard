@@ -550,11 +550,16 @@ export const RAIL_LABELS = {
   crews: 'Crews',
   results: 'Results',
   tasks: TERMS.task.many,
+  // 2.5.2 (D170): back to a terminal you left.
+  terminals: 'Terminals',
   settings: 'Settings',
 } as const;
 
 /** The rail's Tasks item read aloud with its count of tasks not done yet. */
 export const railTasksLabel = (count: number): string => `${RAIL_LABELS.tasks}, ${count} not done`;
+
+/** 2.5.2 (D170): the rail's Terminals item read aloud with its count of open terminals. */
+export const railTerminalsLabel = (count: number): string => (count > 0 ? `${RAIL_LABELS.terminals}, ${count} open` : RAIL_LABELS.terminals);
 
 /** The phone's bottom tabs, in order. */
 export const PHONE_TABS = {

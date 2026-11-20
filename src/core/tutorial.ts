@@ -198,6 +198,8 @@ const V2_4_48 = '2.4.48';
 const V2_4_50 = '2.4.50';
 /** The version D180 (the agent view's side panel) ships in. */
 const V2_5_1 = '2.5.1';
+/** The version the Terminals rail item (D170 follow-up) ships in (the next release after 2.5.1; adjust if it ships later). */
+const V2_5_2 = '2.5.2';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2097,8 +2099,26 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // D170 follow-up (2.5.2): the rail's Terminals item, back to a terminal you left (docs/terminals.md → Getting back to a terminal).
+  {
+    id: 'terminals-rail',
+    decision: 'D170',
+    version: V2_5_2,
+    title: 'Terminals in the sidebar',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'rail',
+        title: 'Back to your terminals',
+        what: 'Terminals has its own item in the sidebar, between Tasks and Settings, with the number of terminals open on this computer. A terminal keeps running when you leave it; open Terminals to get back to it, or close it there. On a phone it is under More.',
+        todo: ['Click Terminals in the sidebar.'],
+        anchors: ['v2-nav-terminals', 'v2-tab-more'],
+        v2Route: '/terminals',
+        missing: 'Terminals is in the sidebar on a computer, and under More on a phone.',
+      },
+    ],
+  },
 ];
-
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
 export function isTourId(id: string, registry: readonly WhatsNewFeature[] = WHATS_NEW): boolean {
   return id === MAIN_TOUR_ID || registry.some((feature) => feature.id === id);

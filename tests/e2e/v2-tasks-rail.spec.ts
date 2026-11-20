@@ -48,7 +48,7 @@ test('the rail shows Tasks with the count of unfinished tasks across agents, liv
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWithHub(page, `${world.baseUrl}/`);
   const rail = page.getByTestId('v2-rail');
-  await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Settings']);
+  await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Terminals', 'Settings']);
   // No tasks yet: no badge.
   await expect(page.getByTestId('v2-nav-tasks')).toHaveAttribute('aria-label', 'Tasks');
   await expect(page.getByTestId('v2-nav-badge-tasks')).toHaveCount(0);
@@ -95,7 +95,7 @@ test('the seven rail items fit the tablet and short desktop rails; the phone kee
     await page.setViewportSize(size);
     await openWithHub(page, `${world.baseUrl}/`);
     const items = page.getByTestId('v2-rail').locator('.v2-nav-item');
-    await expect(items).toHaveCount(7);
+    await expect(items).toHaveCount(8);
     // Settings, the last item, sits inside the window without scrolling the rail.
     const box = await page.getByTestId('v2-nav-settings').boundingBox();
     expect(box, `${size.width}×${size.height}`).not.toBeNull();

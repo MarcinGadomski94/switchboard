@@ -20,6 +20,7 @@ import {
   computerProblem,
   computerStateToV2,
   planItemStateToV2,
+  railTerminalsLabel,
   sessionStatusToV2,
   teammateStatusToV2,
 } from '../../src/web/v2/glossary.ts';
@@ -51,7 +52,10 @@ describe('D131 · the glossary: one place for the v2 words', () => {
     expect(TERMS.backgroundApp.many).toBe('Background apps');
     expect(TERMS.aiEngine.one).toBe('AI engine');
     expect(TERMS.connections.many).toBe('Connections');
-    expect(Object.values(RAIL_LABELS)).toEqual(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Settings']);
+    expect(Object.values(RAIL_LABELS)).toEqual(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Terminals', 'Settings']);
+    // 2.5.2 (D170): the Terminals item read aloud with its open terminals (none: just its name).
+    expect(railTerminalsLabel(0)).toBe('Terminals');
+    expect(railTerminalsLabel(2)).toBe('Terminals, 2 open');
     expect(actionLabel('plan-merge', 'Merge')).toBe('Combine');
     expect(actionLabel('open-session', 'Open session')).toBe('Open chat');
     expect(actionLabel('something-new', 'Something new')).toBe('Something new');

@@ -6,12 +6,15 @@ Phase 1 is the terminals themselves. Phase 2 (D171) is an agent's **CLI tab**: t
 
 ## Using it
 
-- **Open:** the Terminals page (`/terminals`; the palette's *Terminals*, *More → Terminals* on a phone) → **New terminal**, or *+ New → New terminal* in the palette. Pick the computer (this one, or a paired one that is online), the shell, and the start folder (your home folder or one of the profile's saved folders). The terminal's page opens.
+- **Open:** the Terminals page (`/terminals`; the sidebar's **Terminals** item since 2.5.2, the palette's *Terminals*, *More → Terminals* on a phone) → **New terminal**, or *+ New → New terminal* in the palette. Pick the computer (this one, or a paired one that is online), the shell, and the start folder (your home folder or one of the profile's saved folders). The terminal's page opens.
 - **The page** (`/terminals/<machine>/<id>`, `local` = this computer): xterm.js fitted to the window, the Switchboard mono font, clickable links (opened in a new tab), **copy / paste** with Ctrl+Shift+C / Ctrl+Shift+V (⌘C / ⌘V on a Mac; plain Ctrl+C goes to the program as an interrupt). A dropped connection reconnects by itself (the scrollback is replayed); a paired computer that went away shows *unreachable* and keeps trying.
 - **It keeps running** when you leave the page or close the browser: open it again from the list. Several tabs (or the phone and the PC) can show the same terminal at once; the last one to resize sets its size.
 - **Close** (on the page or in the list) ends the shell and what runs under it, and every tab showing it.
 - **On a phone** a key bar under the terminal: Esc, Tab, a sticky **Ctrl** (the next letter typed becomes its control character: Ctrl, then `c` = ^C), the four arrows, and ^C.
 
+## Getting back to a terminal
+
+A terminal keeps running when you leave its page. Before 2.5.2 the Terminals page had no entry in the desktop and tablet sidebar (only the palette and a phone's More), so a terminal you left was hard to find again. The sidebar now has a **Terminals** item between Tasks and Settings: it lights on the list and on a terminal's own page, and its badge counts the terminals open **on this computer** (read on each page change and every 15 s, `useOpenTerminalCount`; there is no hub event for terminals). Paired computers' terminals are not counted in the badge (it would poll every computer from every page); the Terminals page lists them. On a phone it stays under **More**.
 ## Limits and settings
 
 | | |

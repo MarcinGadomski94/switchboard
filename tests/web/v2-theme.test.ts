@@ -135,6 +135,10 @@ describe('D131 · v2 routes and the classic ⇄ v2 address map', () => {
     expect(railAreaOf({ area: 'project', id: 'p' })).toBe('projects');
     expect(railAreaOf({ area: 'search' })).toBeNull();
     expect(railAreaOf({ area: 'insights' })).toBe('settings');
+    // 2.5.2 (D170): the Terminals item lights on the list and on one terminal; the phone keeps it under More.
+    expect(railAreaOf({ area: 'terminals' })).toBe('terminals');
+    expect(railAreaOf({ area: 'terminal', machine: null, id: 't1' })).toBe('terminals');
+    expect(phoneTabOf({ area: 'terminals' })).toBe('more');
     expect(phoneTabOf({ area: 'needs-you' })).toBe('needs');
     expect(phoneTabOf({ area: 'crews' })).toBe('more');
     expect(phoneTabOf({ area: 'agent', id: 'x', tab: 'changes' })).toBe('agents');

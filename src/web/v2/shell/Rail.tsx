@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { Icon, StatusBadge } from '../components/index.ts';
 import { isChat } from '../../../core/chats.ts';
-import { PROJECT_WORDS, RAIL_LABELS, STATUS, TERMS, WORDS, railTasksLabel, sessionStatusToV2 } from '../glossary.ts';
+import { PROJECT_WORDS, RAIL_LABELS, STATUS, TERMS, WORDS, railTasksLabel, railTerminalsLabel, sessionStatusToV2 } from '../glossary.ts';
 import { agentStatusOf } from '../shared/agent-line.ts';
 import { V2Link } from '../nav.tsx';
-import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf } from '../routes.ts';
+import { RAIL_AREAS, type RailArea, type V2Route, railAreaOf, v2Path } from '../routes.ts';
+import { useOpenTerminalCount } from '../terminals/useOpenTerminalCount.ts';
 import { type PinnedProject as PinnedProjectData, pinnedProjectLabel } from '../shared/pinned-model.ts';
 import { RecentList } from '../shared/RecentList.tsx';
 import { agentDisplayName, useTeamMembers } from '../shared/teammates.ts';
@@ -47,7 +48,7 @@ function PinnedProject({ project, route }: { readonly project: PinnedProjectData
   );
 }
 
-const ICONS: Readonly<Record<RailArea, string>> = { home: 'home', agents: 'agents', projects: 'projects', crews: 'crew', results: 'results', tasks: 'task', settings: 'settings' };
+const ICONS: Readonly<Record<RailArea, string>> = { home: 'home', agents: 'agents', projects: 'projects', crews: 'crew', results: 'results', tasks: 'task', terminals: 'cmd', settings: 'settings' };
 const TARGETS: Readonly<Record<RailArea, V2Route>> = {
   home: { area: 'home' },
   agents: { area: 'agents' },
@@ -55,13 +56,14 @@ const TARGETS: Readonly<Record<RailArea, V2Route>> = {
   crews: { area: 'crews' },
   results: { area: 'results' },
   tasks: { area: 'tasks' },
+  terminals: { area: 'terminals' },
   settings: { area: 'settings', section: null, sub: null },
 };
 
 /**
- * D131 · the left rail (the prototype's `.rail`): the brand, seven labelled items
- * (Home · Agents · Projects · Crews · Results · Tasks · Settings), each with its "needs
- * you" count (Tasks: its tasks not done yet; fix after 2.0), the Pinned list (the shared sidebar layout's pins, D71:
+ * D131 · the left rail (the prototype's `.rail`): the brand, eight labelled items
+ * (Home · Agents · Projects · Crews · Results · Tasks · Terminals · Settings), each with its "needs
+ * you" count (Tasks: its tasks not done yet; fix after 2.0; Terminals, 2.5.2: this computer's open terminals), the Pinned list (the shared sidebar layout's pins, D71:
  * agents and, 2.4.4, crews with their teammates) and the
  * computers and phones at its foot. ≤ 1279 px it narrows to icons with their
  * labels under them and the pins and foot hide (the prototype's tablet rail).
@@ -75,10 +77,13 @@ export function Rail({ route, counts, pill }: { readonly route: V2Route; readonl
   const unfinished = useUnfinishedTaskCount();
   // D161: the Projects item pulses while a project is working.
   const projectsWorking = useProjectsWorking();
-  const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : area === 'tasks' ? unfinished : 0);
+  // 2.5.2 (D170): this computer's open terminals, read again on each route change (leaving or closing one).
+  const terminals = useOpenTerminalCount(v2Path(route));
+  const badge = (area: RailArea): number => (area === 'home' || area === 'agents' || area === 'projects' || area === 'crews' ? counts[area] : area === 'tasks' ? unfinished : area === 'terminals' ? terminals : 0);
   const label = (area: RailArea, count: number): string => {
     const working = area === 'projects' && projectsWorking ? `, ${PROJECT_WORDS.someWorking}` : '';
     if (count <= 0) return `${RAIL_LABELS[area]}${working}`;
+    if (area === 'terminals') return railTerminalsLabel(count);
     return area === 'tasks' ? railTasksLabel(count) : `${RAIL_LABELS[area]}, ${count} need${count === 1 ? 's' : ''} you${working}`;
   };
   return (

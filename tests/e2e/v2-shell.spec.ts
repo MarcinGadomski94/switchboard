@@ -28,14 +28,14 @@ test.beforeEach(async ({ page }) => {
   await stubToolProbes(page);
 });
 
-test('v2 is the default: the shell renders with its seven rail items, and the rail navigates', async ({ page }) => {
+test('v2 is the default: the shell renders with its eight rail items, and the rail navigates', async ({ page }) => {
   await page.goto(`${server.baseUrl}/`);
   await expect(page.getByTestId('v2-shell')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-ui', 'v2');
   // The classic shell is not mounted at all.
   await expect(page.getByTestId('shell')).toHaveCount(0);
   const rail = page.getByTestId('v2-rail');
-  await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Settings']);
+  await expect(rail.locator('.v2-nav-item .v2-nav-label')).toHaveText(['Home', 'Agents', 'Projects', 'Crews', 'Results', 'Tasks', 'Terminals', 'Settings']);
   await expect(page.getByTestId('v2-nav-home')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('v2-page-home')).toBeVisible();
   await expect(rail.getByTestId('v2-rail-pins')).toContainText('Pinned');

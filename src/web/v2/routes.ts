@@ -61,8 +61,8 @@ export type V2Route =
   | { readonly area: 'tool'; readonly id: string }
   | { readonly area: 'settings'; readonly section: V2SettingsSection | null; readonly sub: string | null };
 
-/** The seven rail destinations, in order (Tasks: fix after 2.0, `docs/design/v2-decisions.md`). */
-export const RAIL_AREAS = ['home', 'agents', 'projects', 'crews', 'results', 'tasks', 'settings'] as const;
+/** The rail destinations, in order (Tasks: fix after 2.0, `docs/design/v2-decisions.md`; 2.5.2: Terminals, D170). */
+export const RAIL_AREAS = ['home', 'agents', 'projects', 'crews', 'results', 'tasks', 'terminals', 'settings'] as const;
 /** A rail destination. */
 export type RailArea = (typeof RAIL_AREAS)[number];
 
@@ -160,6 +160,9 @@ export function railAreaOf(route: V2Route): RailArea | null {
       return 'crews';
     case 'results':
       return 'results';
+    case 'terminals':
+    case 'terminal':
+      return 'terminals';
     case 'settings':
     case 'tool':
     case 'insights':
