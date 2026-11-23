@@ -71,9 +71,9 @@ test('the sidebar folder defaults from the open sessions of the working folder; 
   const picker = dialog.getByTestId('jira-where-sidebar');
   await dialog.getByTestId('jira-where-folder').selectOption(repoFolder);
   await expect(picker).toHaveValue(releases);
-  // The tree: the root first, a subfolder indented under its folder.
+  // The tree: the root first, a subfolder by its whole path (2026-11-23).
   await expect(picker.locator('option').first()).toHaveText('Sidebar root');
-  await expect(picker.locator(`option[value="${releases}"]`)).toHaveText(/^ +Releases$/);
+  await expect(picker.locator(`option[value="${releases}"]`)).toHaveText('Acme / Releases');
   // It follows the working folder…
   await dialog.getByTestId('jira-where-folder').selectOption(workspaceFolder);
   await expect(picker).toHaveValue(ops);

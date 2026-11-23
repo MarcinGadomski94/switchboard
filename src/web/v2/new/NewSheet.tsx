@@ -3,6 +3,7 @@ import type { Folder, NewSessionPrefill, SessionListItem } from '../../../core/a
 import { isChat } from '../../../core/chats.ts';
 import { draftField } from '../../../core/drafts.ts';
 import type { MachinesView } from '../../../core/peers.ts';
+import { folderPickerOptions } from '../../../core/plan-run-folder.ts';
 import type { SidebarLayout } from '../../../core/sidebar-layout.ts';
 import { TODO_PRIORITY_LABELS } from '../../../core/todos.ts';
 import { COORDINATION_OPTIONS, MODE_OPTIONS, PHASE_OPTIONS, WORK_TYPE_OPTIONS, chipGroups, formFromPrefill, formModelOptions, isPlainFolder, isRepoFolder, toggleSolution } from '../../modals/new-session.ts';
@@ -477,7 +478,7 @@ export function NewSheetBody({ request, onClose, onDialog }: { readonly request:
                   label={W.putItIn}
                   value={agent.sidebarFolder}
                   onChange={(event) => setAgent({ sidebarFolder: event.currentTarget.value })}
-                  options={[{ value: '', label: W.notInFolder }, ...layout.data.folders.map((f) => ({ value: f.id, label: f.name }))]}
+                  options={[{ value: '', label: W.notInFolder }, ...folderPickerOptions(layout.data).map((f) => ({ value: f.value, label: f.label }))]}
                   data-testid="v2-new-put"
                   disabled={machine !== null}
                 />

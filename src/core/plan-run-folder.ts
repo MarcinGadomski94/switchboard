@@ -23,22 +23,79 @@ export const RUN_PARENT_ROOT = 'root';
 export interface RunParentOption {
   /** A folder's id, or {@link RUN_PARENT_ROOT}. */
   readonly value: string;
-  /** The folder's name, indented by its level (non-breaking spaces, so a native select shows them). */
+  /** 2026-11-23: the folder's whole path from the top level ("Acme / Backend / Q4"), so a nested folder reads apart from a same-named one. */
   readonly label: string;
   /** 0 = the top level; 1 = a top-level folder; … */
   readonly depth: number;
 }
 
+/** 2026-11-23: what joins the folder names of a path in the folder pickers. */
+export const FOLDER_PATH_SEPARATOR = ' / ';
+
+/** 2026-11-23: a folder's whole path from the top level, {@link FOLDER_PATH_SEPARATOR} between the names (`''` for an unknown id). */
+export function folderPathLabel(layout: SidebarLayout, folderId: string): string {
+  const names = new Map(layout.folders.map((f) => [f.id, f.name]));
+  return folderPathIds(layout, folderId)
+    .map((id) => names.get(id) ?? '')
+    .join(FOLDER_PATH_SEPARATOR);
+}
+
+/** 2026-11-23: one sidebar folder as the folder pickers list it. */
+export interface FolderPickerOption {
+  readonly value: string;
+  /** Its whole path ({@link folderPathLabel}). */
+  readonly label: string;
+  /** 1 = a top-level folder; … */
+  readonly depth: number;
+  /** It is {@link SIDEBAR_FOLDER_DEPTH_MAX} levels deep: it cannot hold another folder. */
+  readonly full: boolean;
+}
+
+/**
+ * 2026-11-23 (D150 / D119 follow-up: "I can't choose a subfolder as a parent folder"): every sidebar
+ * folder of the layout, at every level, in tree order (each folder followed by its subfolders), each
+ * labelled with its whole path. The pickers that take a parent folder (the Start dialogs, the Jira
+ * imports, the New sheet's "Put it in") list these.
+ */
+export function folderPickerOptions(layout: SidebarLayout): FolderPickerOption[] {
+  return treeOrder(layout).map((folder) => {
+    const depth = folderDepth(layout, folder.id);
+    return { value: folder.id, label: folderPathLabel(layout, folder.id), depth, full: depth >= SIDEBAR_FOLDER_DEPTH_MAX };
+  });
+}
+
 /**
  * D150 (`docs/plans.md` → *The runs' sidebar subfolder*): the Start dialog's parent picker: "Top
- * level", then every sidebar folder of this machine's layout in tree order (all levels), indented
- * by its level. No new folder is made from the dialog.
+ * level", then every sidebar folder of this machine's layout in tree order (all levels), each by
+ * its whole path (2026-11-23). No new folder is made from the dialog.
  */
 export function runParentOptions(layout: SidebarLayout, topLevel = 'Top level'): RunParentOption[] {
-  return [{ value: RUN_PARENT_ROOT, label: topLevel, depth: 0 }, ...layout.folders.map((folder) => {
-    const depth = folderDepth(layout, folder.id);
-    return { value: folder.id, label: `${'   '.repeat(Math.max(0, depth - 1))}${folder.name}`, depth };
-  })];
+  return [{ value: RUN_PARENT_ROOT, label: topLevel, depth: 0 }, ...folderPickerOptions(layout).map(({ value, label, depth }) => ({ value, label, depth }))];
+}
+
+type LayoutFolder = SidebarLayout['folders'][number];
+
+/** The layout's folders in tree order (each followed by its subfolders, siblings in their order); a folder whose parent is unknown counts as top level. */
+function treeOrder(layout: SidebarLayout): LayoutFolder[] {
+  const known = new Set(layout.folders.map((f) => f.id));
+  const children = new Map<string | null, LayoutFolder[]>();
+  for (const folder of layout.folders) {
+    const parent = parentOf(folder);
+    const key = parent !== null && known.has(parent) ? parent : null;
+    children.set(key, [...(children.get(key) ?? []), folder]);
+  }
+  const out: LayoutFolder[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | null): void => {
+    for (const folder of children.get(parent) ?? []) {
+      if (seen.has(folder.id)) continue;
+      seen.add(folder.id);
+      out.push(folder);
+      walk(folder.id);
+    }
+  };
+  walk(null);
+  return out;
 }
 
 /** D150: the picker's default: the source session's folder (today's place), {@link RUN_PARENT_ROOT} when it sits at the top level. */

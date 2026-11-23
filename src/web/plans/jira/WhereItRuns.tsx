@@ -14,7 +14,7 @@ import { useSavedFolders } from '../../folders/useFolders.ts';
 import { NO_MODEL_SETTINGS, folderChoices, formModel, formModelOptions, formModelPicker, pickFormEffort, pickFormModel, resolveFormFolder } from '../../modals/new-session.ts';
 import { ModelChoicePicker } from '../../views/session/ModelPicker.tsx';
 import { defaultPlanSidebarFolder, planSidebarFolderProblem } from '../../../core/plans-jira.ts';
-import { folderDepth } from '../../../core/sidebar-layout.ts';
+import { folderPickerOptions } from '../../../core/plan-run-folder.ts';
 import { useSessionListOf } from '../../api/session-list.ts';
 import { useSidebarLayout } from '../../shell/SidebarSessions.tsx';
 import { type JiraImportPlace, sidebarChoiceKey } from './place.ts';
@@ -181,11 +181,12 @@ export function WhereItRuns({
           onChange={(event) => setPickedSidebar({ id: event.target.value === '' ? null : event.target.value })}
         >
           <option value="">Sidebar root</option>
-          {layout.folders.map((entry) => {
-            const full = planSidebarFolderProblem(layout, entry.id) !== null;
+          {/* 2026-11-23: every folder at every level, by its whole path. */}
+          {folderPickerOptions(layout).map((entry) => {
+            const full = planSidebarFolderProblem(layout, entry.value) !== null;
             return (
-              <option key={entry.id} value={entry.id} disabled={full} title={full ? 'Too deep for one more folder' : entry.name}>
-                {`${'\u00a0\u00a0\u00a0'.repeat(Math.max(0, folderDepth(layout, entry.id) - 1))}${entry.name}`}
+              <option key={entry.value} value={entry.value} disabled={full} title={full ? 'Too deep for one more folder' : entry.label}>
+                {entry.label}
               </option>
             );
           })}

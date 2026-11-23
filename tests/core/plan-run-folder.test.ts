@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RUN_PARENT_ROOT, type RunFolderOwner, folderPathText, movedRunFolders, planRunFolderDefault, runFolderMoveBlock, runFolderMovedText, runFolderRunningText, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../src/core/plan-run-folder.ts';
+import { RUN_PARENT_ROOT, type RunFolderOwner, folderPathLabel, folderPathText, folderPickerOptions, movedRunFolders, planRunFolderDefault, runFolderMoveBlock, runFolderMovedText, runFolderRunningText, runParentBody, runParentDefault, runParentOptions, runParentProblem } from '../../src/core/plan-run-folder.ts';
 import { SIDEBAR_FOLDER_NAME_MAX, type SidebarFolder, type SidebarLayout, cutSidebarFolderName, moveFolder, placeRunInFolder, runParentFolder, runSubfolder } from '../../src/core/sidebar-layout.ts';
 import { type FolderRecord, type SidebarRecords, liveFolderFor } from '../../src/core/sidebar-records.ts';
 
@@ -116,16 +116,54 @@ describe('D150 · runParentFolder (no subfolder name)', () => {
 });
 
 describe('D150 · the Start dialog\'s parent picker', () => {
-  it('lists Top level, then every folder in tree order, indented by level; defaults to the source\'s folder', () => {
+  it('lists Top level, then every folder in tree order, by its whole path (2026-11-23); defaults to the source\'s folder', () => {
     expect(runParentOptions(LAYOUT).map((o) => [o.value, o.label, o.depth])).toEqual([
       [RUN_PARENT_ROOT, 'Top level', 0],
       ['acme', 'Acme', 1],
-      ['epic', '\u00a0\u00a0\u00a0Acme epic', 2],
-      ['jira', '\u00a0\u00a0\u00a0Plan · PROJ-123 Acme checkout', 2],
+      ['epic', 'Acme / Acme epic', 2],
+      ['jira', 'Acme / Plan · PROJ-123 Acme checkout', 2],
     ]);
     expect(runParentDefault(LAYOUT, 's-owner')).toBe('jira');
     expect(runParentDefault(LAYOUT, 's-loose')).toBe(RUN_PARENT_ROOT);
     expect(runParentDefault(LAYOUT, 's-pin')).toBe(RUN_PARENT_ROOT);
+  });
+
+  it('2026-11-23: every nested folder can be picked, in tree order even when the layout lists a subfolder before its parent, each by its whole path; a 5-deep folder is marked full', () => {
+    // A layout out of tree order (a subfolder listed first) and two same-named subfolders under different parents.
+    const deep: SidebarLayout = {
+      pinned: [],
+      folders: [
+        folder('q4-b', 'Q4', [], 'backend'),
+        folder('acme', 'Acme', ['s-src']),
+        folder('backend', 'Backend', [], 'acme'),
+        folder('front', 'Front', [], 'acme'),
+        folder('q4-f', 'Q4', [], 'front'),
+        folder('l3', 'Three', [], 'q4-b'),
+        folder('l4', 'Four', [], 'l3'),
+        folder('orphan', 'Orphan', [], 'gone'),
+      ],
+      loose: [],
+    };
+    // Catches treeOrder (the layout's own order would list 'q4-b' first) and folderPathLabel (bare names would make the two "Q4" alike).
+    expect(folderPickerOptions(deep).map((o) => [o.value, o.label, o.depth, o.full])).toEqual([
+      ['acme', 'Acme', 1, false],
+      ['backend', 'Acme / Backend', 2, false],
+      ['q4-b', 'Acme / Backend / Q4', 3, false],
+      ['l3', 'Acme / Backend / Q4 / Three', 4, false],
+      ['l4', 'Acme / Backend / Q4 / Three / Four', 5, true],
+      ['front', 'Acme / Front', 2, false],
+      ['q4-f', 'Acme / Front / Q4', 3, false],
+      // A folder whose parent is unknown counts as top level (catches treeOrder's `known.has(parent)`).
+      ['orphan', 'Orphan', 1, false],
+    ]);
+    expect(folderPathLabel(deep, 'q4-f')).toBe('Acme / Front / Q4');
+    expect(folderPathLabel(deep, 'nope')).toBe('');
+    // A nested parent is accepted by the server's rule: the run's subfolder is made inside it (no refusal).
+    expect(runParentProblem(deep, { sourceSessionId: 's-src', parent: 'q4-b', name: 'Run' })).toBeNull();
+    const sub = runSubfolder(deep, { sourceId: 's-src', name: 'Run', newId: 'run', parentId: 'q4-b' });
+    expect(sub).toMatchObject({ ok: true, folderId: 'run', parentId: 'q4-b' });
+    // The 5-deep folder cannot hold one more: refused with the reason.
+    expect(runParentProblem(deep, { sourceSessionId: 's-src', parent: 'l4', name: 'Run' })).toContain('levels deep');
   });
 
   it('the body: nothing when not picked (older servers unchanged), null for the top level, else the id', () => {

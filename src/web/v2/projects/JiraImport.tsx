@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Folder } from '../../../core/api.ts';
+import { folderPickerOptions } from '../../../core/plan-run-folder.ts';
 import type { Plan } from '../../../core/plans.ts';
-import type { JiraPreview, JiraSyncMode } from '../../../core/plans-jira.ts';
+import { type JiraPreview, type JiraSyncMode, defaultPlanSidebarFolder, planSidebarFolderProblem } from '../../../core/plans-jira.ts';
 import { api } from '../../api/client.ts';
+import { useSessionListOf } from '../../api/session-list.ts';
+import { useSidebarLayout } from '../../shell/SidebarSessions.tsx';
 import { jiraApi } from '../../plans/jira/api.ts';
 import { putPlan } from '../../plans/store.ts';
 import { Button, Checkbox, Dialog, Field, Select, useToast } from '../components/index.ts';
@@ -12,8 +15,9 @@ import { useV2Router } from '../nav.tsx';
  * D131 · lane P · Import from Jira (the Projects list): an epic key or link → the preview of its
  * tickets and their order (nothing is created) → Create project. The project's own agent starts
  * in the folder picked here (D112, "Plan · <title>"); the agent picks each step's code projects
- * (D115). The classic dialog's CLI / model / account pickers and the sidebar folder (D119) are
- * left to their defaults here (`docs/design/v2-decisions.md`, lane P). It is also + New › Project ›
+ * (D115). The classic dialog's CLI / model / account pickers are left to their defaults here
+ * (`docs/design/v2-decisions.md`, lane P); the sidebar folder (D119) is picked here too since
+ * 2026-11-23 (any folder at any level, by its whole path). It is also + New › Project ›
  * Import from Jira (lane X: one v2 import dialog); there `onImported` takes over from the toast and
  * the navigation.
  */
@@ -26,6 +30,18 @@ export function JiraImportDialog({ onClose, onImported }: { readonly onClose: ()
   const [folder, setFolder] = useState('');
   const [sync, setSync] = useState<JiraSyncMode>('off');
   const [doneOnMerge, setDoneOnMerge] = useState(true);
+  // 2026-11-23 (D119 follow-up): the sidebar folder the project's own "Plan · …" folder goes into, any folder at any level
+  // (before, v2 left it to the server's default). `undefined` = not picked: the D119 suggestion.
+  const { layout } = useSidebarLayout();
+  const listed = useSessionListOf();
+  const [sidebarPick, setSidebarPick] = useState<string | null | undefined>(undefined);
+  const picked = folders.find((entry) => entry.id === folder) ?? null;
+  const suggestedSidebar = useMemo(
+    () => defaultPlanSidebarFolder({ layout, sessions: listed.data ?? [], machine: null, workingFolder: picked ? { id: picked.id, path: picked.canonicalPath } : null }),
+    [layout, listed.data, picked],
+  );
+  const sidebarFolderId = sidebarPick !== undefined && (sidebarPick === null || planSidebarFolderProblem(layout, sidebarPick) === null) ? sidebarPick : suggestedSidebar;
+  const sidebarOptions = useMemo(() => [{ value: '', label: 'Sidebar root' }, ...folderPickerOptions(layout).map((entry) => ({ value: entry.value, label: entry.label, disabled: planSidebarFolderProblem(layout, entry.value) !== null }))], [layout]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -64,7 +80,7 @@ export function JiraImportDialog({ onClose, onImported }: { readonly onClose: ()
     setBusy(true);
     setError(null);
     try {
-      const answer = await jiraApi.importIntoFolder(null, { epic: preview.epic.key, title: title.trim(), targetBranch: target.trim(), ...(folder ? { folder } : {}), sync, ...(sync === 'write' ? { doneOnMerge } : {}) });
+      const answer = await jiraApi.importIntoFolder(null, { epic: preview.epic.key, title: title.trim(), targetBranch: target.trim(), ...(folder ? { folder } : {}), sidebarFolderId, sync, ...(sync === 'write' ? { doneOnMerge } : {}) });
       putPlan(answer.plan);
       if (onImported) {
         onImported(answer.plan);
@@ -141,6 +157,14 @@ export function JiraImportDialog({ onClose, onImported }: { readonly onClose: ()
           <Field label="Project name" value={title} onChange={(event) => setTitle(event.currentTarget.value)} data-testid="v2-jira-import-title" />
           <Field label="Branch the steps combine into" value={target} onChange={(event) => setTarget(event.currentTarget.value)} className="v2-mono" data-testid="v2-jira-import-target" />
           <Select label="Folder of the project’s agent" value={folder} onChange={(event) => setFolder(event.currentTarget.value)} options={folders.map((entry) => ({ value: entry.id, label: entry.displayName }))} data-testid="v2-jira-import-folder" />
+          <Select
+            label="Sidebar folder"
+            value={sidebarFolderId ?? ''}
+            onChange={(event) => setSidebarPick(event.currentTarget.value === '' ? null : event.currentTarget.value)}
+            options={sidebarOptions}
+            hint="The project gets its own folder here, with its agent first; the agents of its steps go there too."
+            data-testid="v2-jira-import-sidebar"
+          />
           <Select
             label="Jira sync"
             value={sync}
