@@ -115,10 +115,12 @@ describe('D179 · the layout and profiles', () => {
     await app.close();
     await start();
     expect((await store.sessions.get(onOld))?.userProfileId).toBe(ann.id);
-    expect((await store.sessions.get(onGone))?.userProfileId).toBe('default');
+    // 2026-11-23: a deleted profile with no survivor and no namesake keeps its agent (never Default: that can be
+    // another person); Settings › Profiles lists it to move by hand (tests/server/user-profiles/repair-same-name.test.ts).
+    expect((await store.sessions.get(onGone))?.userProfileId).toBe(gone.id);
     const annList = (await call('GET', '/api/sessions?closed=include', undefined, await cookieOf(ann.id))).json() as Session[];
     expect(annList.map((s) => s.id)).toEqual([onOld]);
     const deeList = (await call('GET', '/api/sessions?closed=include')).json() as Session[];
-    expect(deeList.map((s) => s.id)).toEqual([onGone]);
+    expect(deeList.map((s) => s.id)).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { USER_PROFILE_COLORS, type UserProfile } from '../../../core/user-profiles.ts';
+import { type OrphanProfile, USER_PROFILE_COLORS, type UserProfile } from '../../../core/user-profiles.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { Button, Card, Dialog, Field, Select, useToast } from '../components/index.ts';
@@ -39,6 +39,7 @@ export function ProfilesSection() {
         {W.add}
       </Button>
       {view?.startId !== undefined ? <StartProfileSelect profiles={view.profiles} startId={view.startId} onChanged={reload} /> : null}
+      {view?.orphans && view.orphans.length > 0 ? <OrphanProfiles orphans={view.orphans} profiles={view.profiles} onChanged={reload} /> : null}
       {adding ? <AddProfileDialog onClose={() => setAdding(false)} onAdded={reload} /> : null}
       {dialog}
     </section>
@@ -70,6 +71,57 @@ function StartProfileSelect({ profiles, startId, onChanged }: { readonly profile
       data-testid="v2-profile-open-in"
       data-tour="v2-profile-open-in"
     />
+  );
+}
+
+/**
+ * D179 follow-up (2026-11-23): agents left on a removed profile that has no live successor (no merge,
+ * no single live profile of the same name): they stay where they are until moved here, never to
+ * Default by themselves.
+ */
+function OrphanProfiles({ orphans, profiles, onChanged }: { readonly orphans: readonly OrphanProfile[]; readonly profiles: readonly UserProfile[]; readonly onChanged: () => void }) {
+  return (
+    <Card pad data-testid="v2-profile-orphans">
+      <h3>{W.orphansTitle}</h3>
+      <p className="v2-muted">{W.orphansSub}</p>
+      {orphans.map((orphan) => (
+        <OrphanRow key={orphan.id} orphan={orphan} profiles={profiles} onChanged={onChanged} />
+      ))}
+    </Card>
+  );
+}
+
+function OrphanRow({ orphan, profiles, onChanged }: { readonly orphan: OrphanProfile; readonly profiles: readonly UserProfile[]; readonly onChanged: () => void }) {
+  const toast = useToast();
+  const [to, setTo] = useState(profiles[0]?.id ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const target = profiles.find((profile) => profile.id === to) ?? null;
+  const move = (): void => {
+    if (!target) return;
+    setBusy(true);
+    api.moveOrphanProfile(orphan.id, target.id, password || undefined).then(
+      (answer) => {
+        toast({ text: W.orphanMoved(answer.moved, target.name) });
+        onChanged();
+      },
+      (caught: unknown) => {
+        setBusy(false);
+        toast({ text: errorText(caught), tone: 'error' });
+      },
+    );
+  };
+  return (
+    <div className="v2-set-row" data-testid="v2-profile-orphan" data-profile-id={orphan.id}>
+      <span className="v2-grow">
+        <b>{orphan.name}</b> <span className="v2-muted">· {W.orphanCount(orphan.sessions)}</span>
+      </span>
+      <Select label={W.orphanMoveTo} value={to} options={profiles.map((profile) => ({ value: profile.id, label: profile.name }))} onChange={(event) => setTo(event.currentTarget.value)} data-testid="v2-profile-orphan-to" />
+      {target?.hasPassword ? <Field label={W.orphanPassword(target.name)} type="password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} data-testid="v2-profile-orphan-password" /> : null}
+      <Button variant="primary" disabled={busy || !target} onClick={move} data-testid="v2-profile-orphan-move">
+        {W.orphanMove}
+      </Button>
+    </div>
   );
 }
 

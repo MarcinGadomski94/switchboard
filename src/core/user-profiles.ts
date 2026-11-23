@@ -85,6 +85,20 @@ export interface UserProfilesView {
   readonly startId?: string;
   /** D176: computers known only through a paired computer (not paired with this one); absent from an older server. */
   readonly otherComputers?: readonly ComputerThrough[];
+  /**
+   * D179 follow-up (2026-11-23): removed profiles that still hold agents here and have no live
+   * successor (no merge survivor, no single live profile of the same name): they stay where they
+   * are until moved by hand (`POST /api/user-profiles/orphans/{id}/move`); absent from an older server.
+   */
+  readonly orphans?: readonly OrphanProfile[];
+}
+
+/** D179 follow-up: a removed profile with agents left on it and no live successor. */
+export interface OrphanProfile {
+  readonly id: string;
+  readonly name: string;
+  /** Its sessions on this computer (open and archived). */
+  readonly sessions: number;
 }
 
 /** A trimmed, valid name, else `null`. */

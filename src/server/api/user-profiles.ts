@@ -38,7 +38,16 @@ export async function registerUserProfileRoutes(app: FastifyInstance, context: A
 
   app.get('/api/user-profiles', async (request): Promise<UserProfilesView> => {
     const scope = request.userProfileScope;
-    return { profiles: await service.list(), activeId: typeof scope === 'string' && scope !== '*' ? scope : null, startId: await service.startProfileId(), otherComputers: service.otherComputers() };
+    return { profiles: await service.list(), activeId: typeof scope === 'string' && scope !== '*' ? scope : null, startId: await service.startProfileId(), otherComputers: service.otherComputers(), orphans: await service.orphans() };
+  });
+
+  // D179 follow-up (2026-11-23): a removed profile's agents with no live successor, moved by hand (the target's password when it has one).
+  app.post<{ Params: { profileId: string } }>('/api/user-profiles/orphans/:profileId/move', async (request, reply) => {
+    try {
+      return await service.moveOrphan(request.params.profileId, request.body);
+    } catch (error) {
+      return send(reply, error);
+    }
   });
 
   // 2026-11-16: the profile a browser opens in before it chose one (before `/:profileId`: a static path wins anyway).

@@ -332,10 +332,19 @@ export class SessionRepository {
    */
   async create(input: SessionCreate): Promise<SessionRecord> {
     const ts = this.#ctx.now();
-    const userProfileId = input.userProfileId ?? this.#sourceProfile(input) ?? currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID;
+    // D179 follow-up (2026-11-23): a deleted profile is never written: its live successor is (UserProfileService).
+    const userProfileId = this.#resolveProfile(input.userProfileId ?? this.#sourceProfile(input) ?? currentProfileForCreate() ?? DEFAULT_USER_PROFILE_ID);
     // Default is the column's own default: not written (a database before 0055, in the migration tests, has no column).
+    const { userProfileId: _asked, ...rest } = defined(input);
     const profile = userProfileId === DEFAULT_USER_PROFILE_ID ? {} : { userProfileId };
-    return fromStored(this.#table.insert(toStored({ ...defined(input), ...profile, id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts })));
+    return fromStored(this.#table.insert(toStored({ ...rest, ...profile, id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts })));
+  }
+
+  #resolveProfile: (id: string) => string = (id) => id;
+
+  /** D179 follow-up: how a new session's profile is resolved (the profiles service maps a deleted one to its live successor). */
+  useProfileResolver(resolve: (id: string) => string): void {
+    this.#resolveProfile = resolve;
   }
 
   /** D165: the profile of the session a new one comes from (`continuedFrom`, a todo's / plan item's source), when stored here. */

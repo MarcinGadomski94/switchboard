@@ -796,6 +796,14 @@ export const PROFILE_WORDS = {
   notHere: 'Not on this computer',
   /** The switcher's greyed-out entry: why it can't be picked here, and where an admin changes it. */
   notHereReason: 'Not allowed on this computer. An admin can change it in Settings → Profiles → Computers…',
+  // D179 follow-up (2026-11-23): agents left on a removed profile with no live successor.
+  orphansTitle: 'Agents of removed profiles',
+  orphansSub: 'These profiles were removed, but some of their agents are still here. Move them to the profile they belong to.',
+  orphanCount: (n: number): string => `${n} agent${n === 1 ? '' : 's'}`,
+  orphanMoveTo: 'Move to',
+  orphanPassword: (name: string): string => `${name}'s password`,
+  orphanMove: 'Move',
+  orphanMoved: (n: number, name: string): string => `${n} agent${n === 1 ? '' : 's'} moved to ${name}.`,
 } as const;
 
 /** The theme switch's words (both UIs show them). */

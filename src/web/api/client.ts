@@ -369,6 +369,9 @@ export const api = {
   setUserProfileAccess: (id: string, computers: 'all' | readonly string[], adminPassword: string, decidedFor?: readonly string[]) =>
     request<UserProfile>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/access`, { computers, adminPassword, ...(computers !== 'all' && decidedFor ? { decidedFor } : {}) }),
   setStartUserProfile: (id: string) => request<{ readonly startId: string }>('PUT', '/api/user-profiles/start', { id }),
+  /** D179 follow-up: a removed profile's agents (no live successor) moved to profile `to` (its password when it has one). */
+  moveOrphanProfile: (id: string, to: string, password?: string) =>
+    request<{ readonly moved: number; readonly to: string }>('POST', `/api/user-profiles/orphans/${encodeURIComponent(id)}/move`, { to, ...(password ? { password } : {}) }),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>
     request<{ readonly sessionId: string; readonly userProfileId: string }>('PUT', `/api/sessions/${encodeURIComponent(sessionId)}/user-profile`, { userProfileId, ...(password ? { password } : {}) }),

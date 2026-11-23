@@ -15,6 +15,7 @@ import {
   type ComputerThrough,
   inboxItemSession,
   mayManageAccess,
+  type OrphanProfile,
   mergedAccess,
   profileAllowedOn,
   readComputerAccess,
@@ -76,6 +77,18 @@ export const USER_PROFILE_SELF_WIRE_SETTING = 'userProfiles.defaultWireId';
 /** D172: the settings key of the paired computers' Defaults' peer-link ids (`{ <machine id>: <id> }`). */
 export const USER_PROFILE_PEER_DEFAULTS_SETTING = 'userProfiles.peerDefaults';
 
+/** D179 follow-up (2026-11-23): the start-up repair's moves, with the sessions each moved (the newest 50). */
+export const USER_PROFILE_REPAIRS_SETTING = 'userProfiles.repairs';
+
+/** One move of the start-up repair ({@link USER_PROFILE_REPAIRS_SETTING}). */
+interface RepairRecord {
+  readonly at: string;
+  readonly from: string;
+  readonly fromName: string;
+  readonly to: string;
+  readonly sessionIds: readonly string[];
+}
+
 /** D172: the peer-link id a computer's Default has before any merge. */
 export function homeDefaultId(machineId: string): string {
   return `default-${machineId}`.slice(0, 64);
@@ -135,6 +148,9 @@ export class UserProfileService {
     this.#o = options;
     this.#now = options.now ?? Date.now;
     this.#hlc = new HybridClock(randomUUID().slice(0, 8), this.#now);
+    // D179 follow-up (2026-11-23): a new session never lands on a deleted profile (a phone, a schedule,
+    // a source session or a paired computer still naming it): it takes its live successor at once.
+    options.store.sessions.useProfileResolver((id) => this.#alive(id));
   }
 
   /** D165: synchronous lookups the hub's per-profile filter needs (set by the app once Plans and Team exist). */
@@ -292,33 +308,95 @@ export class UserProfileService {
   /** D179: deleted profiles' ids (tombstones). */
   #deletedIds = new Set<string>();
 
-  /** D179: profile `id` as a live one: a merged-away one's survivor (the chain), a deleted one without a survivor → Default. */
+  /**
+   * D179: profile `id` as a live one. A merged-away one: its survivor (the chain). 2026-11-23 (the
+   * Mac Studio report: "agents on Eskil's profile disappear at every update"): a deleted one without a
+   * live survivor goes to **the one live profile of the same name** (case-insensitive; a duplicate
+   * removed on one computer while its twin lives on), else it stays itself (its agents wait under
+   * Settings › Profiles to be moved by hand: {@link orphans}). Never this computer's Default by
+   * default: that can be another person.
+   */
   #alive(id: string): string {
     if (id === DEFAULT_USER_PROFILE_ID || !this.#deletedIds.has(id)) return id;
     const survivor = this.#localOf(id);
-    return survivor !== id && !this.#deletedIds.has(survivor) ? survivor : DEFAULT_USER_PROFILE_ID;
+    if (survivor !== id && !this.#deletedIds.has(survivor)) return survivor;
+    const record = this.#profiles?.get(id);
+    if (!record) return id;
+    const name = record.name.trim().toLowerCase();
+    const namesakes = [...(this.#profiles?.values() ?? [])].filter((other) => !other.deletedAt && other.name.trim().toLowerCase() === name);
+    return namesakes.length === 1 ? (namesakes[0] as UserProfileRecord).id : id;
   }
 
   /**
    * D179 · the repair at start: data still naming a merged-away or deleted profile (a merge learned
-   * before 2.4.50 that did not move everything, a chat moved in under an old id) moves to the
-   * survivor (Default's when none). Answers the profiles repaired (`from → to`).
+   * before 2.4.50 that did not move everything, a chat moved in under an old id) moves to its live
+   * successor ({@link #alive}); one without a successor stays where it is. 2026-11-23: each move is
+   * recorded with the sessions it moved ({@link USER_PROFILE_REPAIRS_SETTING}), so a wrong one can be
+   * undone. Answers the profiles repaired (`from → to`).
    */
   async repairOrphans(): Promise<Array<{ readonly from: string; readonly to: string }>> {
     await this.ready();
     const records = await this.#records();
     // Read fresh, not cached: the index stays lazy (built at its first use, as before).
-    const used = new Set(this.#o.store.userProfiles.sessionProfiles().values());
+    const profileOfSession = this.#o.store.userProfiles.sessionProfiles();
+    const used = new Set(profileOfSession.values());
     const out: Array<{ from: string; to: string }> = [];
+    const log: RepairRecord[] = [];
     for (const record of records.values()) {
       if (!record.deletedAt || record.id === DEFAULT_USER_PROFILE_ID || !used.has(record.id)) continue;
       const to = this.#alive(record.id);
       if (to === record.id) continue;
+      const sessionIds = [...profileOfSession].filter(([, profile]) => profile === record.id).map(([sessionId]) => sessionId);
       await this.#rekeyAll(record.id, to);
       out.push({ from: record.id, to });
+      log.push({ at: new Date(this.#now()).toISOString(), from: record.id, fromName: record.name, to, sessionIds });
+    }
+    if (log.length > 0) {
+      const before = await this.#o.store.settings.get(USER_PROFILE_REPAIRS_SETTING);
+      const kept = Array.isArray(before) ? (before as RepairRecord[]) : [];
+      await this.#o.store.settings.set(USER_PROFILE_REPAIRS_SETTING, [...kept, ...log].slice(-50));
     }
     if (out.length > 0) this.#invalidate();
     return out;
+  }
+
+  /** D179 follow-up: removed profiles with agents left here and no live successor (Settings › Profiles lists them). */
+  async orphans(): Promise<OrphanProfile[]> {
+    const records = await this.#records();
+    const counts = new Map<string, number>();
+    for (const profile of this.#o.store.userProfiles.sessionProfiles().values()) counts.set(profile, (counts.get(profile) ?? 0) + 1);
+    const out: OrphanProfile[] = [];
+    for (const record of records.values()) {
+      const sessions = counts.get(record.id) ?? 0;
+      if (!record.deletedAt || record.id === DEFAULT_USER_PROFILE_ID || sessions === 0 || this.#alive(record.id) !== record.id) continue;
+      out.push({ id: record.id, name: record.name, sessions });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * D179 follow-up · `POST /api/user-profiles/orphans/{id}/move`: a removed profile's agents (and the
+   * rest of its data here) go to live profile `to`, with `to`'s password when it has one.
+   */
+  async moveOrphan(id: string, body: unknown): Promise<{ readonly moved: number; readonly to: string }> {
+    const input = isRecord(body) ? body : {};
+    const records = await this.#records();
+    const from = records.get(id);
+    if (!from || !from.deletedAt) throw new UserProfileError(404, 'not-found', `no removed profile ${id}`);
+    const toId = typeof input['to'] === 'string' ? input['to'] : '';
+    const target = await this.get(toId);
+    if (!target) throw new UserProfileError(404, 'not-found', `no profile ${toId}`);
+    await this.#check(target, input['password']);
+    const moved = [...this.#o.store.userProfiles.sessionProfiles().values()].filter((profile) => profile === id).length;
+    await this.#rekeyAll(id, target.id);
+    this.#invalidate();
+    this.#o.bus.publish('userProfilesChanged', { profiles: await this.list() });
+    return { moved, to: target.id };
+  }
+
+  /** D179 follow-up: the profile a new session takes when asked for `id` (a deleted one's live successor; see {@link #alive}). */
+  liveProfileFor(id: string): string {
+    return this.#alive(id);
   }
 
   /**
