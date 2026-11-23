@@ -64,8 +64,8 @@ describe('D175 · pinned conversations', () => {
     const again = await newApp(w);
     expect(((await call(again, 'GET', '/api/sidebar')).json() as SidebarLayout).pinned).toEqual([chat.id]);
 
-    // Unpin = unplaced; Undo pins it back at its place.
-    const unpinned = await call(again, 'POST', '/api/sidebar/place', { sessionId: chat.id, place: 'loose' });
+    // Unpin (D186: `unpinned` takes it out of Pinned only; `loose` moves it and keeps the pin); Undo pins it back at its place.
+    const unpinned = await call(again, 'POST', '/api/sidebar/place', { sessionId: chat.id, place: 'unpinned' });
     expect(unpinned.statusCode, unpinned.body).toBe(200);
     expect((unpinned.json() as SidebarLayout).pinned).toEqual([]);
     const undo = await call(again, 'POST', '/api/sidebar/place', { sessionId: chat.id, place: 'pinned', index: 0 });
