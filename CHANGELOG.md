@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.13 (2026-11-23)
+
+### Projects
+- **Change "Max agents at once" anytime:** the project page has a **Max agents at once** control (1–16) that works before Start and while the project runs, and agents can change it too with the new `plan_set_parallel` tool. Raising it starts waiting steps at once; lowering it never stops a running step. The change is noted in the project's activity. See `docs/plans.md`.
 ## 2.5.12 (2026-11-23)
 
 ### Profiles
