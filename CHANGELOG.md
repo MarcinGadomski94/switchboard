@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.11 (2026-11-23)
+
+### Projects
+- **Jira statuses come in with the import:** a ticket Done in Jira is done in the project (it never runs; steps after it count it), an In Progress one is noted. Nothing is written back to Jira. See `docs/plans.md` (D185).
+- **Shape a project before it starts:** a step's ⋯ › **Edit step…** changes its place in the list, what it runs after, and its handoff (the instructions its agent gets) until the step starts; a Jira refresh keeps a handoff you edited.
+- **See the import's progress:** after **Create**, the Jira import shows what it is doing (reading, creating N of M, statuses) and why it failed, with Try again.
+
+### Sidebar
+- **Pinned agents stay in their folders:** a pin is a shortcut now: the agent shows in Pinned and in its folder; Unpin only takes it out of Pinned. Agents pinned before this update show at the top level until you move them. Database migration. See `docs/sidebar.md` (D186).
+
+### Tasks
+- **An archived agent's tasks are archived with it:** tasks it was running leave the Tasks board and its count too, and come back when you reopen the agent (D187).
 ## 2.5.10 (2026-11-23)
 
 ### Projects
