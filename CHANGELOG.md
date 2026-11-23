@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.12 (2026-11-23)
+
+### Profiles
+- **A removed profile's agents no longer go to another person:** at start, agents left on a removed profile went to the computer's Default, which on a shared computer can be someone else (they seemed to disappear after every update). They now go to the profile it was merged into, else the one live profile with the same name; otherwise they stay and are listed in Settings › Profiles under "Agents of removed profiles" with **Move to**. A new agent never lands on a removed profile. Agents moved by the old rule stay where they are: move them back with ⋯ › Move to profile…. See `docs/profiles.md` (D179).
+
+### Projects
+- **Jira "blocks" the right way round:** an imported "A blocks B" makes B wait on A (it was reversed); **Re-read dependencies from Jira** fixes a project that hasn't started, and accepting the project agent's proposed order turns a reversed dependency round instead of refusing it as a cycle. See `docs/plans.md` (D185).
 ## 2.5.11 (2026-11-23)
 
 ### Projects
