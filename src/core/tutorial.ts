@@ -208,6 +208,8 @@ const V2_5_6 = '2.5.6';
 const V2_5_7 = '2.5.7';
 /** The version D184 (the MCP sign-in mutes synced with the paired computers) ships in (adjust if it ships later). */
 const V2_5_8 = '2.5.8';
+/** The version D185 (a project before Start: Jira statuses, order, handoffs, the import's progress) ships in (adjust if it ships later). */
+const V2_5_11 = '2.5.11';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2227,6 +2229,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-mcp-connectors'],
         v2Route: '/settings/advanced/connections',
         missing: 'Open Settings › Advanced › Connections to see the claude.ai connectors.',
+      },
+    ],
+  },
+  // D185: a project before Start (docs/plans.md → Jira import and status sync; plans-ui.md → Edit step).
+  {
+    id: 'plan-before-start',
+    decision: 'D185',
+    version: V2_5_11,
+    title: 'Shape a project before it starts',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'edit',
+        title: 'Handoffs, order and statuses',
+        what: 'Before you start a project, a step’s ⋯ › Edit step… lets you change what its agent gets (its handoff), its place in the list and the steps it runs after. A Jira import brings each ticket’s status: a ticket already Done is done here and never runs, one in progress says so. After Create, the import shows how far it is.',
+        todo: ['Open a project that hasn’t started and pick ⋯ › Edit step… on a step.'],
+        anchors: ['v2-nav-projects', 'v2-edit-step-handoff'],
+        v2Route: '/projects',
+        missing: 'Open a project that hasn’t started, then ⋯ › Edit step… on one of its steps.',
       },
     ],
   },

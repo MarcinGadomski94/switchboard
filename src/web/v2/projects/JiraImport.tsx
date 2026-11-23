@@ -10,6 +10,8 @@ import { jiraApi } from '../../plans/jira/api.ts';
 import { putPlan } from '../../plans/store.ts';
 import { Button, Checkbox, Dialog, Field, Select, useToast } from '../components/index.ts';
 import { useV2Router } from '../nav.tsx';
+import { ImportProgress } from './ImportProgress.tsx';
+import { newProgressId } from './import-progress.ts';
 
 /**
  * D131 · lane P · Import from Jira (the Projects list): an epic key or link → the preview of its
@@ -44,6 +46,7 @@ export function JiraImportDialog({ onClose, onImported }: { readonly onClose: ()
   const sidebarOptions = useMemo(() => [{ value: '', label: 'Sidebar root' }, ...folderPickerOptions(layout).map((entry) => ({ value: entry.value, label: entry.label, disabled: planSidebarFolderProblem(layout, entry.value) !== null }))], [layout]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progressId, setProgressId] = useState<string | null>(null);
   const toast = useToast();
   const { navigate } = useV2Router();
   useEffect(() => {
@@ -79,8 +82,11 @@ export function JiraImportDialog({ onClose, onImported }: { readonly onClose: ()
     if (!preview) return;
     setBusy(true);
     setError(null);
+    // D185: the server reports this import's steps on the hub for this id; the form shows them.
+    const progress = newProgressId();
+    setProgressId(progress);
     try {
-      const answer = await jiraApi.importIntoFolder(null, { epic: preview.epic.key, title: title.trim(), targetBranch: target.trim(), ...(folder ? { folder } : {}), sidebarFolderId, sync, ...(sync === 'write' ? { doneOnMerge } : {}) });
+      const answer = await jiraApi.importIntoFolder(null, { epic: preview.epic.key, title: title.trim(), targetBranch: target.trim(), ...(folder ? { folder } : {}), sidebarFolderId, sync, ...(sync === 'write' ? { doneOnMerge } : {}), progressId: progress });
       putPlan(answer.plan);
       if (onImported) {
         onImported(answer.plan);
@@ -106,11 +112,11 @@ export function JiraImportDialog({ onClose, onImported }: { readonly onClose: ()
       testId="v2-jira-import"
       footer={
         <>
-          <span className="v2-grow v2-muted v2-p-dialog-why">{why ?? ''}</span>
+          <span className="v2-grow v2-muted v2-p-dialog-why">{busy && progressId ? <ImportProgress progressId={progressId} /> : (why ?? '')}</span>
           <Button onClick={onClose}>Cancel</Button>
           {preview ? (
             <Button variant="primary" disabled={busy || why !== null} onClick={() => void create()} data-testid="v2-jira-import-create">
-              Create project with {preview.items.length} step{preview.items.length === 1 ? '' : 's'}
+              {error && progressId ? 'Try again' : `Create project with ${preview.items.length} step${preview.items.length === 1 ? '' : 's'}`}
             </Button>
           ) : (
             <Button variant="primary" disabled={busy || epic.trim() === ''} onClick={() => void read()} data-testid="v2-jira-import-preview">

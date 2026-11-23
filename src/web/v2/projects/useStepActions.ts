@@ -3,6 +3,7 @@ import type { Plan, PlanItem } from '../../../core/plans.ts';
 import { plansApi, refusalText } from '../../plans/api.ts';
 import { useToast } from '../components/index.ts';
 import { useOpenAgent } from '../shared/open-agent.ts';
+import type { StepEdit } from './dialogs.tsx';
 import { type StepActionId, stepName, stepOpens } from './project-model.ts';
 
 /**
@@ -17,7 +18,7 @@ export interface StepActions {
   readonly run: (item: PlanItem, action: StepActionId) => Promise<void>;
   readonly combine: (item: PlanItem) => Promise<void>;
   readonly sendBack: (item: PlanItem, comment: string) => Promise<boolean>;
-  readonly edit: (item: PlanItem, title: string, estimateMinutes: number | null) => Promise<string | null>;
+  readonly edit: (item: PlanItem, change: StepEdit) => Promise<string | null>;
 }
 
 /** The step actions of `plan`; `put` takes the plan an action answered. */
@@ -121,9 +122,19 @@ export function useStepActions(plan: Plan, put: (plan: Plan) => void, onEdit: (i
   const sendBack = useCallback((item: PlanItem, comment: string) => attempt(() => plansApi.sendBackItem(plan.id, item.id, comment), `${stepName(item)} sent back with your note.`), [attempt, plan.id]);
 
   const edit = useCallback(
-    async (item: PlanItem, title: string, estimateMinutes: number | null): Promise<string | null> => {
+    async (item: PlanItem, change: StepEdit): Promise<string | null> => {
       try {
-        put(await plansApi.updateItem(plan.id, item.id, estimateMinutes === null ? { title } : { title, estimateMinutes }));
+        const { title, estimate, description, position, after } = change;
+        let next = await plansApi.updateItem(plan.id, item.id, {
+          title,
+          ...(estimate === null ? {} : { estimateMinutes: estimate }),
+          ...(description === null ? {} : { description }),
+          ...(position === null ? {} : { position }),
+        });
+        // D185: what it runs after (each added and removed dependency; a cycle is refused with its words).
+        for (const from of after.filter((id) => !item.dependsOn.includes(id))) next = await plansApi.addEdge(plan.id, from, item.id);
+        for (const from of item.dependsOn.filter((id) => !after.includes(id))) next = await plansApi.removeEdge(plan.id, from, item.id);
+        put(next);
         toast({ text: `Saved ${title}.` });
         return null;
       } catch (error) {

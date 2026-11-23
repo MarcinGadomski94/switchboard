@@ -47,6 +47,8 @@ export interface JiraImportBody {
   readonly transitions?: Partial<JiraTransitionNames>;
   /** D116: move a ticket to Done once its item is merged into the target (omitted = on). */
   readonly doneOnMerge?: boolean;
+  /** D185: the form's id for the import's `planImportProgress` hub events. */
+  readonly progressId?: string;
 }
 
 /**

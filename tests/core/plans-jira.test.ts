@@ -32,7 +32,7 @@ describe('D99-Jira · parsing', () => {
   });
 
   it('builds the todo within its limits, acceptance criteria kept', () => {
-    const todo = jiraItemTodo({ key: 'PROJ-1', summary: 'S'.repeat(200), description: 'x'.repeat(10_000), acceptanceCriteria: '- AC', acceptanceSource: 'field', components: ['acme-front'], status: 'To Do', assignee: null, estimateMinutes: null, url: 'https://acme.atlassian.net/browse/PROJ-1', unlinked: true });
+    const todo = jiraItemTodo({ key: 'PROJ-1', summary: 'S'.repeat(200), description: 'x'.repeat(10_000), acceptanceCriteria: '- AC', acceptanceSource: 'field', components: ['acme-front'], status: 'To Do', statusCategory: 'new', assignee: null, estimateMinutes: null, url: 'https://acme.atlassian.net/browse/PROJ-1', unlinked: true });
     expect(todo.title.length).toBeLessThanOrEqual(120);
     expect(todo.description.length).toBeLessThanOrEqual(TODO_DESCRIPTION_MAX);
     expect(todo.description).toContain('Acceptance criteria:\n- AC');

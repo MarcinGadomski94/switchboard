@@ -237,7 +237,7 @@ describe('D118 · rendering and caps', () => {
 });
 
 describe('D118 · the todo and the brief', () => {
-  const item = { key: 'PROJ-1', summary: 'Cart', description: 'x'.repeat(10_000), acceptanceCriteria: '- AC', acceptanceSource: 'field' as const, components: ['acme-front'], status: 'To Do', assignee: null, estimateMinutes: null, url: `${BASE}/browse/PROJ-1`, unlinked: true };
+  const item = { key: 'PROJ-1', summary: 'Cart', description: 'x'.repeat(10_000), acceptanceCriteria: '- AC', acceptanceSource: 'field' as const, components: ['acme-front'], status: 'To Do', statusCategory: 'new', assignee: null, estimateMinutes: null, url: `${BASE}/browse/PROJ-1`, unlinked: true };
 
   it('the todo is a short summary that never drops the facts', () => {
     const todo = jiraItemTodo(item);

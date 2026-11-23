@@ -253,15 +253,38 @@ export function SendBackDialog({ item, onClose, onSend }: { readonly item: PlanI
   );
 }
 
-/** D129: edit the title and estimate of a step that hasn't started. */
-export function EditStepDialog({ item, onClose, onSave }: { readonly item: PlanItem; readonly onClose: () => void; readonly onSave: (title: string, estimate: number | null) => Promise<string | null> }) {
+/** D129 / D185: what the Edit step dialog saves. */
+export interface StepEdit {
+  readonly title: string;
+  readonly estimate: number | null;
+  /** D185: the handoff (what its agent gets); `null` = unchanged. */
+  readonly description: string | null;
+  /** D185: the steps it runs after (ids). */
+  readonly after: readonly string[];
+  /** D185: its place in the list (0-based); `null` = unchanged. */
+  readonly position: number | null;
+}
+
+/** D129: edit the title and estimate of a step that hasn't started; D185: its handoff, what it runs after, and its place. */
+export function EditStepDialog({ plan, item, todo, onClose, onSave }: { readonly plan?: Plan; readonly item: PlanItem; readonly todo?: SessionTodo | null; readonly onClose: () => void; readonly onSave: (edit: StepEdit) => Promise<string | null> }) {
   const [title, setTitle] = useState(item.title);
   const [estimate, setEstimate] = useState(item.estimateMinutes === null ? '' : String(item.estimateMinutes));
+  const [handoff, setHandoff] = useState(todo?.description ?? '');
+  const [after, setAfter] = useState<readonly string[]>(item.dependsOn);
+  const others = (plan?.items ?? []).filter((other) => other.id !== item.id);
+  const index = (plan?.items ?? []).findIndex((other) => other.id === item.id);
+  const [position, setPosition] = useState(index < 0 ? 0 : index);
   const [error, setError] = useState<string | null>(null);
   const problem = checkStepEdit(title, estimate);
   const save = async (): Promise<void> => {
     if (problem) return;
-    const answer = await onSave(title.trim(), estimate.trim() === '' ? null : Number(estimate));
+    const answer = await onSave({
+      title: title.trim(),
+      estimate: estimate.trim() === '' ? null : Number(estimate),
+      description: todo !== undefined && handoff !== (todo?.description ?? '') ? handoff : null,
+      after,
+      position: index >= 0 && position !== index ? position : null,
+    });
     if (answer) setError(answer);
     else onClose();
   };
@@ -283,6 +306,44 @@ export function EditStepDialog({ item, onClose, onSave }: { readonly item: PlanI
     >
       <Field label="Title" value={title} maxLength={120} onChange={(event) => setTitle(event.currentTarget.value)} error={problem?.field === 'title' ? problem.message : null} data-testid="v2-edit-step-title" />
       <Field label="Estimate (minutes)" inputMode="numeric" value={estimate} onChange={(event) => setEstimate(event.currentTarget.value)} error={problem?.field === 'estimate' ? problem.message : null} data-testid="v2-edit-step-estimate" />
+      {todo !== undefined ? (
+        <TextArea
+          label={PROJECT_WORDS.handoff}
+          value={handoff}
+          rows={8}
+          maxLength={20000}
+          onChange={(event) => setHandoff(event.currentTarget.value)}
+          hint={PROJECT_WORDS.handoffHint}
+          data-testid="v2-edit-step-handoff"
+          data-tour="v2-edit-step-handoff"
+        />
+      ) : null}
+      {plan && others.length > 0 ? (
+        <>
+          <Select
+            label={PROJECT_WORDS.stepPlace}
+            value={String(position)}
+            onChange={(event) => setPosition(Number(event.currentTarget.value))}
+            options={plan.items.map((_, at) => ({ value: String(at), label: PROJECT_WORDS.stepPlaceOption(at + 1, plan.items.length) }))}
+            data-testid="v2-edit-step-position"
+          />
+          <fieldset className="v2-p-after" data-testid="v2-edit-step-after">
+            <legend>{PROJECT_WORDS.runsAfter}</legend>
+            {others.map((other) => (
+              <Checkbox
+                key={other.id}
+                label={stepName(other)}
+                checked={after.includes(other.id)}
+                onChange={(event) => {
+                  const on = event.currentTarget.checked;
+                  setAfter((current) => (on ? [...current, other.id] : current.filter((id) => id !== other.id)));
+                }}
+                data-testid="v2-edit-step-after-option"
+              />
+            ))}
+          </fieldset>
+        </>
+      ) : null}
       {error ? (
         <p className="v2-field-error" role="alert">
           {error}

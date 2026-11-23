@@ -25,7 +25,7 @@ import type { BranchMergeInput, BranchMergePlan } from '../../../src/server/work
 import { type PlanEnvironment, PlanError, type PlanMergePort, PlanService } from '../../../src/server/plans/service.ts';
 import { TodoService } from '../../../src/server/todos/service.ts';
 import { FakeClock } from '../../helpers/clock.ts';
-import { type FakeIssue, type FakeJira, commentText, startFakeJira } from '../../helpers/fake-jira.ts';
+import { type FakeIssue, type FakeJira, acmeEpic, commentText, startFakeJira } from '../../helpers/fake-jira.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -998,5 +998,81 @@ describe('D121 · a reopened item in Jira: no correction; a real later merge wri
     await settle(r);
     expect((await item(r, planId, 'PROJ-15')).note).toBe('Reopened: reopened by you');
     expect((await jiraState(r, planId)).activity.find((entry) => entry.kind === 'reopened')?.text).toBe('PROJ-15: reopened (reopened by the developer).');
+  });
+});
+
+describe('D185 · statuses, order, handoffs and progress before Start', () => {
+  function epicWith(statuses: Record<string, string>): FakeIssue[] {
+    return acmeEpic().map((issue) => (statuses[issue.key] ? { ...issue, status: statuses[issue.key] as string } : issue));
+  }
+
+  it('a Done issue is imported done (never run, nothing told to Jira); an In Progress one is noted; To Do stays to do', async () => {
+    const r = await setup({ issues: epicWith({ 'PROJ-11': 'Done', 'PROJ-12': 'In Progress' }) });
+    const { planId } = await importEpic(r, 'write');
+    await settle(r);
+    const done = await item(r, planId, 'PROJ-11');
+    expect([done.storedState, done.note]).toEqual(['done', 'done in Jira']);
+    const todo = await r.store.todos.get(done.todoId);
+    expect(todo?.state).toBe('done');
+    const progress = await item(r, planId, 'PROJ-12');
+    expect([progress.storedState, progress.note]).toEqual(['pending', 'In progress in Jira']);
+    expect((await item(r, planId, 'PROJ-13')).storedState).toBe('pending');
+    // Nothing went to Jira for the done one (no "merged" comment, no transition).
+    expect(commentsOf(r, 'PROJ-11')).toEqual([]);
+    expect(r.fake.calls(/POST \/rest\/api\/3\/issue\/PROJ-11\/transitions/)).toEqual([]);
+    const activity = (await call(r, 'GET', `/api/plans/${planId}/jira`)).body as PlanJiraState;
+    expect(activity.activity.some((line) => line.text.includes('1 already done in Jira'))).toBe(true);
+  });
+
+  it('before Start, a refresh brings a ticket done meanwhile; an edited handoff is never rewritten', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'read-only');
+    const page = await item(r, planId, 'PROJ-12');
+    await r.plans.updateItem(planId, page.id, { description: 'My own handoff for the cart page.' });
+    (r.fake.issues.get('PROJ-11') as FakeIssue).status = 'Done';
+    (r.fake.issues.get('PROJ-12') as FakeIssue).summary = 'Cart page (renamed in Jira)';
+    expect((await call(r, 'POST', `/api/plans/${planId}/jira/refresh`)).status).toBe(200);
+    await settle(r);
+    expect((await item(r, planId, 'PROJ-11')).storedState).toBe('done');
+    const todo = await r.store.todos.get(page.todoId);
+    expect(todo?.description).toBe('My own handoff for the cart page.');
+  });
+
+  it('a step not started moves to another place in the list; a started one does not', async () => {
+    const r = await setup();
+    const { planId } = await importEpic(r, 'off');
+    const last = (await r.plans.get(planId)).items.at(-1);
+    await r.plans.updateItem(planId, last?.id as string, { position: 0 });
+    expect((await r.plans.get(planId)).items[0]?.id).toBe(last?.id);
+    await expect(r.plans.updateItem(planId, last?.id as string, { position: -1 })).rejects.toMatchObject({ status: 422 });
+    const first = await item(r, planId, 'PROJ-11');
+    await r.plans.markItemDone(planId, first.id);
+    await expect(r.plans.updateItem(planId, first.id, { position: 3 })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('the import reports its progress on the hub for the form that asked (reading, each step made, statuses, done)', async () => {
+    const r = await setup();
+    const seen: Array<{ step: string; done: number; total: number }> = [];
+    r.bus.subscribe((message) => {
+      if (message.name === 'planImportProgress') {
+        const payload = message.payload as { id: string; step: string; done: number; total: number };
+        if (payload.id === 'form-1') seen.push({ step: payload.step, done: payload.done, total: payload.total });
+      }
+    });
+    await importEpic(r, 'off', { progressId: 'form-1' });
+    const steps = seen.map((entry) => entry.step);
+    expect(steps[0]).toBe('reading');
+    expect(steps).toContain('statuses');
+    expect(steps.at(-1)).toBe('done');
+    const made = seen.filter((entry) => entry.step === 'creating').map((entry) => entry.done);
+    expect(made.at(-1)).toBe(seen.at(-1)?.total);
+    // A failed import says so too.
+    const failed: string[] = [];
+    r.bus.subscribe((message) => {
+      if (message.name === 'planImportProgress' && (message.payload as { id: string }).id === 'form-2') failed.push((message.payload as { step: string }).step);
+    });
+    const refused = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-404', targetBranch: 'feature/x', progressId: 'form-2' });
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(failed.at(-1)).toBe('failed');
   });
 });

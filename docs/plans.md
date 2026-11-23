@@ -311,6 +311,10 @@ A plan can be made from a Jira epic: its child issues become the items, their "b
 
    The plan is a **draft**; its merge mode is chosen at Start (the core requires it). A failure of the core (no target branch, a forbidden branch, too many items) creates nothing.
 
+   D185: each ticket's **status** comes along: a ticket in Jira's Done category is done here at once ("done in Jira"; its task done; it never runs, its dependents count it, and nothing is told to Jira about it), one In Progress is a to-do noted "In progress in Jira", one To Do a to-do. Before Start, a refresh brings a ticket done meanwhile the same way. While the import runs, the form shows its progress (`planImportProgress` on the hub for the form's `progressId`: reading, creating step N of M, the statuses, finishing, done or failed).
+
+   Before Start, a step's **Edit step…** (its ⋯) changes its title, estimate, **handoff** (what its agent gets), its **place in the list** and the steps it **runs after** (D185). A handoff changed here is kept by later Jira refreshes.
+
 ### Re-read dependencies from Jira (D117)
 
 Plans imported before D117 have every Jira dependency backwards. On a **draft** Jira plan, the plan page's Jira section has **Re-read dependencies from Jira** (`POST /api/plans/{id}/jira/dependencies`, a read of Jira: nothing is written there). It reads the epic's links again with the corrected rule and answers the change (`JiraRelinkDiff`); `{ apply: true, fingerprint }` makes it.

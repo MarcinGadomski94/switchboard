@@ -393,7 +393,7 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
       ) : null}
       {overlay?.kind === 'account' ? <ProjectAccountDialog plan={plan} onClose={close} onChanged={put} /> : null}
       {overlay?.kind === 'sendback' ? <SendBackDialog item={overlay.item} onClose={close} onSend={(comment) => actions.sendBack(overlay.item, comment)} /> : null}
-      {overlay?.kind === 'edit' ? <EditStepDialog item={overlay.item} onClose={close} onSave={(title, estimate) => actions.edit(overlay.item, title, estimate)} /> : null}
+      {overlay?.kind === 'edit' ? <EditStepDialog plan={plan} item={overlay.item} todo={todos.get(overlay.item.todoId) ?? null} onClose={close} onSave={(change) => actions.edit(overlay.item, change)} /> : null}
       {overlay?.kind === 'delete' ? (
         <DeleteProjectDialog
           plan={plan}

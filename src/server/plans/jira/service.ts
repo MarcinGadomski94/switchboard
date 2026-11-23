@@ -46,6 +46,7 @@ import {
   renderJiraIssueContext,
   renderRunJiraContext,
 } from '../../../core/plans-jira-context.ts';
+import type { JiraImportProgress } from '../../../core/api.ts';
 import type { Store } from '../../db/store.ts';
 import type { HubBus, HubMessage } from '../../hub/bus.ts';
 import { SYSTEM_CLOCK, type SchedulerClock } from '../../schedules/scheduler.ts';
@@ -507,12 +508,28 @@ export class PlanJiraService {
    * `sync` (default `off`), `transitions`, `doneOnMerge` (D116, default on). The merge mode is chosen at Start (the core requires it).
    */
   async importPlan(sessionId: string, body: unknown): Promise<JiraImportResult> {
-    await this.#gate();
-    await this.#source(sessionId);
-    const checked = this.#importInput(body);
-    const client = await this.#client();
-    const preview = await this.#readEpic(client, checked.epicKey);
-    return this.#createPlan(sessionId, checked, client, preview);
+    const progress = this.#progressOf(body);
+    try {
+      await this.#gate();
+      await this.#source(sessionId);
+      const checked = this.#importInput(body);
+      const client = await this.#client();
+      progress?.({ step: 'reading', done: 0, total: 0 });
+      const preview = await this.#readEpic(client, checked.epicKey);
+      const result = await this.#createPlan(sessionId, checked, client, preview, undefined, progress);
+      progress?.({ step: 'done', done: preview.items.length, total: preview.items.length });
+      return result;
+    } catch (error) {
+      progress?.({ step: 'failed', done: 0, total: 0, message: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }
+
+  /** D185: the import's progress reporter, when the form sent a `progressId` (`planImportProgress` on the hub). */
+  #progressOf(body: unknown): ((step: Omit<JiraImportProgress, 'id'>) => void) | null {
+    const id = isRecord(body) ? body['progressId'] : undefined;
+    if (typeof id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return null;
+    return (step) => this.#options.bus.publish('planImportProgress', { id, ...step });
   }
 
   /**
@@ -529,6 +546,21 @@ export class PlanJiraService {
    * answered.
    */
   async importIntoNewSession(body: unknown): Promise<JiraImportResult & { readonly sessionId: string; readonly sidebarFolder: PlanSidebarFolder | null }> {
+    const progress = this.#progressOf(body);
+    try {
+      const result = await this.#importIntoNewSession(body, progress);
+      progress?.({ step: 'done', done: result.plan.items.length, total: result.plan.items.length });
+      return result;
+    } catch (error) {
+      progress?.({ step: 'failed', done: 0, total: 0, message: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }
+
+  async #importIntoNewSession(
+    body: unknown,
+    progress: ((step: Omit<JiraImportProgress, 'id'>) => void) | null,
+  ): Promise<JiraImportResult & { readonly sessionId: string; readonly sidebarFolder: PlanSidebarFolder | null }> {
     await this.#gate();
     const sessions = this.#options.newSession;
     if (!sessions) throw new PlanJiraError(409, 'no-sessions', 'this Switchboard cannot start a session for the plan');
@@ -558,6 +590,7 @@ export class PlanJiraService {
       if (refused) throw ownerRefusal(refused);
     }
     const client = await this.#client();
+    progress?.({ step: 'reading', done: 0, total: 0 });
     const preview = await this.#readEpic(client, checked.epicKey);
     let name = planOwnerName(checked.epicKey);
     for (let n = 2; await sessions.nameTaken(name); n += 1) name = `${planOwnerName(checked.epicKey)}-${n}`;
@@ -568,9 +601,16 @@ export class PlanJiraService {
     let planId: string | null = null;
     let result: JiraImportResult;
     try {
-      result = await this.#createPlan(started.sessionId, { ...checked, input: { ...raw, repos: repos ?? undefined } }, client, preview, (id) => {
-        planId = id;
-      });
+      result = await this.#createPlan(
+        started.sessionId,
+        { ...checked, input: { ...raw, repos: repos ?? undefined } },
+        client,
+        preview,
+        (id) => {
+          planId = id;
+        },
+        progress,
+      );
     } catch (error) {
       // No leftovers: the plan (when it was made) and the session go again (D119: no sidebar folder was made yet).
       if (planId !== null) await this.#options.plans.remove(planId).catch((cause: unknown) => this.#onError(cause));
@@ -596,8 +636,11 @@ export class PlanJiraService {
     client: JiraClient,
     preview: JiraPreview,
     made?: (planId: string) => void,
+    progress?: ((step: Omit<JiraImportProgress, 'id'>) => void) | null,
   ): Promise<JiraImportResult> {
     const { input, epicKey, sync, transitions, doneOnMerge } = checked;
+    const total = preview.items.length;
+    progress?.({ step: 'creating', done: 0, total });
     const title = typeof input['title'] === 'string' && input['title'].trim() !== '' ? input['title'] : preview.suggestedTitle;
     const created = await this.#options.plans.createFromExternal({
       sourceSessionId: sessionId,
@@ -612,6 +655,7 @@ export class PlanJiraService {
         return { ref: item.key, key: item.key, title: todo.title, description: todo.description, estimateMinutes: item.estimateMinutes, solutions: [] };
       }),
       edges: preview.edges.map((edge) => ({ from: edge.from, to: edge.to })),
+      onItem: (done) => progress?.({ step: 'creating', done, total }),
     });
     made?.(created.plan.id);
     await (await this.#jdb()).createPlan({
@@ -621,9 +665,19 @@ export class PlanJiraService {
       sync,
       transitions,
       doneOnMerge,
-      items: preview.items.map((item) => ({ itemId: created.itemIds[item.key] as string, key: item.key, status: item.status, statusCategory: null, summary: item.summary })),
+      items: preview.items.map((item) => ({ itemId: created.itemIds[item.key] as string, key: item.key, status: item.status, statusCategory: item.statusCategory, summary: item.summary })),
     });
-    const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}${sync === 'write' && doneOnMerge ? ` (Done on merge: "${transitions.done}")` : ''}`].filter(Boolean);
+    // D185: the issues' statuses come along: a Done one is done here (never run), an In Progress one says so.
+    progress?.({ step: 'statuses', done: 0, total });
+    let doneInJira = 0;
+    for (const item of preview.items) {
+      const itemId = created.itemIds[item.key];
+      if (!itemId || item.statusCategory === null || item.statusCategory === 'new') continue;
+      await this.#options.plans.applyImportedStatus(created.plan.id, itemId, item.statusCategory);
+      if (item.statusCategory === 'done') doneInJira += 1;
+    }
+    progress?.({ step: 'finishing', done: total, total });
+    const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, doneInJira > 0 ? `${doneInJira} already done in Jira` : null, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}${sync === 'write' && doneOnMerge ? ` (Done on merge: "${transitions.done}")` : ''}`].filter(Boolean);
     await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'import', text: `Imported ${notes.join(' · ')}` });
     // D99-Jira-q1 (b): items without links → the source session's agent is asked to propose the missing order.
     // D115: a workspace plan without repos → the same message (or its own) asks it to pick each item's repositories.
@@ -815,10 +869,16 @@ export class PlanJiraService {
       read += 1;
       const fresh = jiraPreviewItem(issue, record.baseUrl, acceptanceField, false);
       await (await this.#jdb()).updateItem(row.itemId, { status: fresh.status, statusCategory: statusCategoryOf(issue), summary: fresh.summary, refreshedAt: this.#clock.now().toISOString() });
+      // D185: before Start, the Jira status keeps setting the item (a ticket Done meanwhile is done here too).
+      if (plan.state === 'draft' && item.storedState === 'pending' && fresh.statusCategory !== null && fresh.statusCategory !== 'new') {
+        await this.#options.plans.applyImportedStatus(plan.id, item.id, fresh.statusCategory);
+      }
       if (item.storedState === 'pending') {
         const todo = await this.#options.store.todos.get(item.todoId);
         const next = jiraItemTodo(fresh);
-        if (todo && (todo.title !== next.title || (todo.description ?? '') !== next.description)) {
+        // D185: a handoff the developer edited before Start is theirs: the refresh rewrites only the imported text.
+        const edited = todo !== null && todo !== undefined && !isImportedJiraText(todo.description ?? null, fresh.url);
+        if (todo && !edited && (todo.title !== next.title || (todo.description ?? '') !== next.description)) {
           await this.#options.todos
             .update(todo.sessionId, todo.id, { title: next.title, description: next.description }, 'developer')
             .then(() => {

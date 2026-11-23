@@ -386,6 +386,12 @@ export class PlanRepository {
     return (await this.item(input.id)) as PlanItemRecord;
   }
 
+  /** D185: the plan's items in this order (positions 0…n-1); ids not of the plan are ignored. */
+  async setOrder(planId: string, ids: readonly string[]): Promise<void> {
+    const now = new Date().toISOString();
+    ids.forEach((id, index) => this.#statement('UPDATE plan_items SET position = ?, updated_at = ? WHERE id = ? AND plan_id = ?').run(index, now, id, planId));
+  }
+
   async updateItem(id: string, patch: PlanItemPatch): Promise<PlanItemRecord | null> {
     const sets: string[] = [];
     const values: Array<string | number | null> = [];

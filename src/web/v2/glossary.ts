@@ -1876,7 +1876,15 @@ export const PROJECT_WORDS = {
   markDone: 'Mark done',
   openChange: 'Open change request',
   remove: 'Remove from project',
-  edit: 'Edit title and estimate…',
+  edit: 'Edit step…',
+  // D185: what the step's agent gets, where it sits, what it waits for (before it starts).
+  handoff: 'Handoff (what its agent gets)',
+  handoffHint: 'Its agent starts from this text. A Jira refresh no longer rewrites it once you change it.',
+  stepPlace: 'Place in the list',
+  stepPlaceOption: (at: number, of: number): string => `${at} of ${of}`,
+  runsAfter: 'Runs after',
+  // D185: a Jira import's progress after Create.
+  importSteps: { reading: 'Reading the epic and its issues…', creating: 'Creating steps', statuses: 'Bringing over the Jira statuses…', finishing: 'Finishing…', done: 'Done', failed: 'The import stopped' } as Readonly<Record<'reading' | 'creating' | 'statuses' | 'finishing' | 'done' | 'failed', string>>,
   combine: 'Combine',
   confirmDone: 'Confirm done',
   sendBack: 'Send back',

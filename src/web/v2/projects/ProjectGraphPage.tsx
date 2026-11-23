@@ -56,7 +56,7 @@ function GraphPageBody({ plan, put, todos }: { readonly plan: NonNullable<Return
     <div className="v2-p-graph-page" data-testid="v2-page-project-graph" data-area="project-graph" aria-label={GRAPH_WORDS.graphOf(plan.title)}>
       <GraphView page plan={plan} actions={actions} onDetails={(item) => setOverlay({ kind: 'details', itemId: item.id })} onSendBack={(item) => setOverlay({ kind: 'sendback', item })} />
       {overlay?.kind === 'sendback' ? <SendBackDialog item={overlay.item} onClose={close} onSend={(comment) => actions.sendBack(overlay.item, comment)} /> : null}
-      {overlay?.kind === 'edit' ? <EditStepDialog item={overlay.item} onClose={close} onSave={(title, estimate) => actions.edit(overlay.item, title, estimate)} /> : null}
+      {overlay?.kind === 'edit' ? <EditStepDialog plan={plan} item={overlay.item} todo={todos.get(overlay.item.todoId) ?? null} onClose={close} onSave={(change) => actions.edit(overlay.item, change)} /> : null}
       {detailsItem ? (
         <StepDetailSheet
           plan={plan}

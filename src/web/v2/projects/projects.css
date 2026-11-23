@@ -1848,3 +1848,10 @@
     display: none;
   }
 }
+
+/* D185: a Jira import's progress after Create, and the Edit step dialog's "Runs after" list. */
+.v2-import-progress { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+.v2-import-progress-bar { height: 4px; border-radius: 2px; background: var(--v2-line, rgba(127, 127, 127, 0.25)); overflow: hidden; }
+.v2-import-progress-bar > span { display: block; height: 100%; background: var(--v2-accent, #5b5bd6); transition: width 0.3s ease; }
+.v2-p-after { border: 0; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.v2-p-after > legend { font-size: 13px; margin-bottom: 4px; }

@@ -49,6 +49,7 @@ import {
   planRuleChangedMessage,
   planView,
   PLAN_MARKED_DONE_NOTE,
+  importedItemStart,
   PLAN_DONE_UNMERGED,
   PLAN_NOTHING_TO_MERGE,
   PLAN_REOPENED_PREFIX,
@@ -421,6 +422,8 @@ export interface ExternalPlanInput {
   }>;
   /** "`to` after `from`", by `ref`. */
   readonly edges: ReadonlyArray<{ readonly from: string; readonly to: string }>;
+  /** D185: called after each item is made (`done` = items made so far), for the import's progress. */
+  readonly onItem?: (done: number) => void;
 }
 
 const DEFAULT_POLL_MS = 60_000;
@@ -1407,6 +1410,13 @@ export class PlanService {
       if (input['solutions'] !== undefined) solutions = await this.#checkSolutions(plan, input['solutions']);
     }
     const hold = input['hold'] === undefined ? undefined : checkBool(input['hold'], 'hold');
+    // D185: its place in the plan's list (the order steps show and, among steps free to start, run), before it starts.
+    let position: number | null = null;
+    if (input['position'] !== undefined) {
+      if (typeof input['position'] !== 'number' || !Number.isInteger(input['position']) || input['position'] < 0) throw invalid('position', 'the position must be a whole number from 0');
+      if (item.state !== 'pending') throw new PlanError(409, 'started', `the order changes only before the item starts (${itemLabel(item)} is ${item.state})`);
+      position = input['position'];
+    }
     if (Object.keys(todoPatch).length > 0) {
       try {
         await this.#todos.update(plan.sourceSessionId, item.todoId, todoPatch, by);
@@ -1423,6 +1433,11 @@ export class PlanService {
       await this.#setHolds(plan, { [itemId]: hold });
     }
     if (Object.keys(patch).length > 0) await this.#repo().updateItem(itemId, patch);
+    if (position !== null) {
+      const ids = (await this.#repo().items(planId)).map((entry) => entry.id).filter((id) => id !== itemId);
+      ids.splice(Math.min(position, ids.length), 0, itemId);
+      await this.#repo().setOrder(planId, ids);
+    }
     await this.#repo().touch(planId);
     await this.#publish(planId);
     // D129: a hold changes when a held item waits for the developer (as `setHolds`).
@@ -2133,6 +2148,23 @@ export class PlanService {
     return this.get(planId);
   }
 
+  /**
+   * D185 · an imported item's Jira status, applied while it has not started: a Done-category issue
+   * makes the item done (never run; its dependents count it; nothing is told to Jira), an In
+   * Progress one notes "In progress in Jira" (it still runs here). Other items are left as they are.
+   */
+  async applyImportedStatus(planId: string, itemId: string, statusCategory: string | null): Promise<void> {
+    const plan = await this.#plan(planId);
+    const item = await this.#item(planId, itemId);
+    if (item.state !== 'pending') return;
+    const start = importedItemStart(statusCategory);
+    if (start.done) await this.#done(plan, item, start.note, null, null, false);
+    else if (start.note !== null && item.note !== start.note) {
+      await this.#repo().updateItem(itemId, { note: start.note });
+      await this.#publish(planId);
+    }
+  }
+
   /** `POST /api/plans/{id}/items/{itemId}/done`: the developer counts the item as done (its dependents may start). */
   async markItemDone(planId: string, itemId: string): Promise<Plan> {
     const plan = await this.#plan(planId);
@@ -2331,6 +2363,7 @@ export class PlanService {
         const added = await this.#todos.add(record.sourceSessionId, { title: item.title, description: item.description ?? null, plan: item.plan ?? undefined, priority: item.priority, estimateMinutes: item.estimateMinutes ?? null }, 'developer');
         const stored = await this.#repo().addItem({ id: newId(), planId: record.id, todoId: added.todo.id, key: keys.get(item.ref) ?? null, title: added.todo.title, estimateMinutes: added.todo.estimateMinutes, hold: item.hold === true, solutions });
         itemIds[item.ref] = stored.id;
+        input.onItem?.(Object.keys(itemIds).length);
       }
       for (const edge of edges) await this.#repo().addEdge(record.id, itemIds[edge.from] as string, itemIds[edge.to] as string);
     } catch (error) {

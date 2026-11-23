@@ -1058,14 +1058,26 @@ export function doneByGitDetection(item: Pick<PlanItemFacts, 'state' | 'note'>):
 export const PLAN_NOTHING_TO_MERGE = 'done: nothing to merge';
 /** D149: the start of the note of an agent-mode item done with work that is not merged into the target. */
 export const PLAN_DONE_UNMERGED = 'done without merging';
+/** D185: the note of an item imported already done (its Jira issue's status is in the Done category): never run. */
+export const PLAN_DONE_IN_JIRA = 'done in Jira';
+/** D185: the note of an item imported while its Jira issue was in progress (it still runs here). */
+export const PLAN_IN_PROGRESS_IN_JIRA = 'In progress in Jira';
 
 /**
  * D149: whether a done item's note says it was done without a merge (its todo done and its turn
- * over in an agents mode, nothing merged): never re-checked by D121's auto-repair, never told to
- * Jira as merged.
+ * over in an agents mode, nothing merged; D185: imported done from Jira): never re-checked by
+ * D121's auto-repair, never told to Jira as merged.
  */
 export function planDoneWithoutMerge(note: string | null | undefined): boolean {
-  return (note ?? '').startsWith(PLAN_NOTHING_TO_MERGE) || (note ?? '').startsWith(PLAN_DONE_UNMERGED);
+  const text = note ?? '';
+  return text.startsWith(PLAN_NOTHING_TO_MERGE) || text.startsWith(PLAN_DONE_UNMERGED) || text.startsWith(PLAN_DONE_IN_JIRA);
+}
+
+/** D185: what an imported item starts as, from its Jira status category: `done`, a noted to-do, or a plain to-do. */
+export function importedItemStart(statusCategory: string | null): { readonly done: boolean; readonly note: string | null } {
+  if (statusCategory === 'done') return { done: true, note: PLAN_DONE_IN_JIRA };
+  if (statusCategory === 'indeterminate') return { done: false, note: PLAN_IN_PROGRESS_IN_JIRA };
+  return { done: false, note: null };
 }
 
 /** D121: the start of a reopened item's note and of the dependents' warning (the UI marks them). */

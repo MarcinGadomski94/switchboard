@@ -67,6 +67,8 @@ export interface JiraPreviewItem {
   readonly acceptanceSource: 'field' | 'description' | null;
   readonly components: readonly string[];
   readonly status: string | null;
+  /** D185: the status's category key (`new`, `indeterminate`, `done`), `null` = unknown: what the import sets the item to. */
+  readonly statusCategory: string | null;
   readonly assignee: string | null;
   /** The original estimate in minutes (`timeoriginalestimate`), `null` = none. */
   readonly estimateMinutes: number | null;
@@ -423,6 +425,7 @@ export function jiraPreviewItem(issue: JiraIssueInput, baseUrl: string, acceptan
     acceptanceSource: fromField !== null ? 'field' : split.acceptance !== null ? 'description' : null,
     components,
     status: nameOf(fields['status']),
+    statusCategory: statusCategoryOf(issue),
     assignee: nameOf(fields['assignee'], 'displayName'),
     estimateMinutes: seconds !== null && seconds > 0 ? Math.max(1, Math.round(seconds / 60)) : null,
     url: `${baseUrl}/browse/${issue.key}`,

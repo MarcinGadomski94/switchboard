@@ -2727,6 +2727,24 @@ export interface HubEvents {
    * Never a hash. This machine's only: never forwarded between peers.
    */
   readonly userProfilesChanged: { readonly profiles: readonly UserProfile[] };
+  /**
+   * Additive (D185, `docs/plans.md` → *Jira import and status sync*): a Jira import's progress, for
+   * the form that asked with its `progressId` (reading, creating step N of M, the statuses, finishing,
+   * done or failed). This machine's only: never forwarded between peers.
+   */
+  readonly planImportProgress: JiraImportProgress;
+}
+
+/** D185: one step of a Jira import's progress (`planImportProgress`). */
+export interface JiraImportProgress {
+  /** The `progressId` the import form sent. */
+  readonly id: string;
+  readonly step: 'reading' | 'creating' | 'statuses' | 'finishing' | 'done' | 'failed';
+  /** Items made so far (`creating`), else the count the step covers. */
+  readonly done: number;
+  readonly total: number;
+  /** Why it failed (`failed`). */
+  readonly message?: string;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2780,6 +2798,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'movesChanged',
   // D165.
   'userProfilesChanged',
+  // D185.
+  'planImportProgress',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

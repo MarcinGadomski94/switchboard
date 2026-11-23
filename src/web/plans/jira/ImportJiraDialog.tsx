@@ -8,6 +8,8 @@ import { JiraApiError, jiraApi } from './api.ts';
 import { JiraCredentialsForm } from './JiraCredentialsForm.tsx';
 import { type JiraImportPlace, loadLastPlace, saveLastPlace, sidebarChoiceKey } from './place.ts';
 import { type ResolvedPlace, WhereItRuns } from './WhereItRuns.tsx';
+import { ImportProgress } from '../../v2/projects/ImportProgress.tsx';
+import { newProgressId } from '../../v2/projects/import-progress.ts';
 import './jira.css';
 
 /** Props of {@link ImportJiraDialog}. */
@@ -76,6 +78,7 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
   /** Which call {@link error} came from: a create's refusal shows by the button, a preview's above the preview. */
   const [errorFrom, setErrorFrom] = useState<'preview' | 'create'>('preview');
   const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
+  const [progressId, setProgressId] = useState<string | null>(null);
   // D115: empty = the plan's agent picks each item's repositories (never pre-filled from an earlier import).
   const [pickedRepos, setPickedRepos] = useState<readonly string[]>([]);
   const [reposOpen, setReposOpen] = useState(false);
@@ -157,7 +160,11 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
     if (!preview) return;
     setBusy('create');
     setError(null);
+    // D185: this import's progress (the server's planImportProgress events for this id).
+    const progress = newProgressId();
+    setProgressId(progress);
     const body = {
+      progressId: progress,
       epic: preview.epic.key,
       title,
       targetBranch: target,
@@ -425,6 +432,10 @@ export function ImportJiraDialog({ sourceSessionId, repos, initialEpic, onImport
           {createError ? (
             <span className="sb-jira-error sb-jira-foot-note" role="alert" data-testid="jira-create-error">
               {createError.message}
+            </span>
+          ) : busy === 'create' ? (
+            <span className="sb-jira-muted sb-jira-foot-note">
+              <ImportProgress progressId={progressId} />
             </span>
           ) : blocked ? (
             <span className="sb-jira-muted sb-jira-foot-note" data-testid="jira-create-blocked">
