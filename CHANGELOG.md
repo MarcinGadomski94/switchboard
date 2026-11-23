@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.10 (2026-11-23)
+
+### Projects
+- **Any folder, at any level, for a project's agents:** every folder picker (Start, the New sheet's "Put it in", Import a Jira epic) lists subfolders too, by their whole path ("Acme / Releases / Q4"), and **Import a Jira epic** in the new interface now has the **Sidebar folder** choice. See `docs/plans.md`.
 ## 2.5.9 (2026-11-20)
 
 ### Agents
