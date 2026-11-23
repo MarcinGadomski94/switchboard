@@ -16,7 +16,7 @@ import { peerApiAllowed } from '../../../src/server/peers/service.ts';
 import { agentTokenFor } from '../../../src/server/todos/agent-token.ts';
 import { todoRunOptions } from '../../../src/server/todos/run-options.ts';
 import { runSlug, runTitle } from '../../../src/server/todos/run.ts';
-import { TodoService } from '../../../src/server/todos/service.ts';
+import { TodoService, runArchived } from '../../../src/server/todos/service.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
@@ -190,6 +190,33 @@ describe('TodoService: the run scope (D76; D102: done is done)', () => {
     expect(finished.todo.doneAt).not.toBeNull();
     expect(finished.list).toMatchObject({ openCount: 0, doneCount: 1 });
     expect(finished.list).not.toHaveProperty('reviewCount');
+  });
+
+  it('D187: an archived agent’s tasks are archived with it (its own list, and an item it runs), and come back when it is reopened', async () => {
+    const todos = service();
+    const source = await session('source');
+    const run = await session('run');
+    const { todo: running } = await todos.add(source, { title: 'Given to the run agent' }, 'developer');
+    const { todo: stays } = await todos.add(source, { title: 'Stays with the source' }, 'developer');
+    await todos.beginRun(source, running.id, run);
+    const shown = async (): Promise<string[]> => (await todos.groups()).flatMap((group) => group.todos.map((todo) => todo.id)).sort();
+    expect(await shown()).toEqual([running.id, stays.id].sort());
+    // The run agent archived: the item it runs leaves the board; the source's other item stays.
+    await store.sessions.update(run, { closedAt: '2026-10-08T11:00:00.000Z' });
+    expect(await shown()).toEqual([stays.id]);
+    // Kept in the database: the source's own list still has both.
+    expect((await todos.list(source)).todos.map((todo) => todo.id).sort()).toEqual([running.id, stays.id].sort());
+    // Reopened: back.
+    await store.sessions.update(run, { closedAt: null });
+    expect(await shown()).toEqual([running.id, stays.id].sort());
+    // The source archived: its whole list leaves the board (as before D187).
+    await store.sessions.update(source, { closedAt: '2026-10-08T11:00:00.000Z' });
+    expect(await shown()).toEqual([]);
+    // The rule itself.
+    expect(runArchived({ runState: 'active', runSessionId: 'a' }, new Set(['a']))).toBe(true);
+    expect(runArchived({ runState: 'discarded', runSessionId: 'a' }, new Set(['a']))).toBe(false);
+    expect(runArchived({ runState: 'active', runSessionId: 'b' }, new Set(['a']))).toBe(false);
+    expect(runArchived({ runState: null, runSessionId: null }, new Set(['a']))).toBe(false);
   });
 
   it("a run session's agent reaches its one linked item (get, start, done), nothing else of the source's list", async () => {

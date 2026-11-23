@@ -53,6 +53,15 @@ export interface TodoServiceOptions {
   readonly onError?: (error: unknown) => void;
 }
 
+/**
+ * D187: whether an item is archived with the agent that runs it: its run is active and that run
+ * session is archived (`archived`: the archived sessions' ids). The item stays in the database and
+ * comes back when the agent is reopened.
+ */
+export function runArchived(record: Pick<TodoRecord, 'runState' | 'runSessionId'>, archived: ReadonlySet<string>): boolean {
+  return record.runState === 'active' && record.runSessionId !== null && archived.has(record.runSessionId);
+}
+
 /** The API shape of a stored item. */
 export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): SessionTodo {
   return {
@@ -469,13 +478,18 @@ export class TodoService {
    * its items (open and done), most recently active first.
    */
   async groups(): Promise<TodoGroup[]> {
-    const sessions = (await this.#store.sessions.list()).filter((record) => record.closedAt === null);
+    const all = await this.#store.sessions.list();
+    // D187: an archived agent's tasks are archived with it: its own list (an archived session is left out, as before)
+    // and the items another list gave it to run (an active run whose run session is archived). Derived, not stored:
+    // reopening the agent brings them back.
+    const archived = new Set(all.filter((record) => record.closedAt !== null).map((record) => record.id));
+    const sessions = all.filter((record) => record.closedAt === null);
     const byId = await this.#store.todos.listFor(sessions.map((record) => record.id));
     // D78: the completed items' actual vs. estimate (also the ones removed after their done hour).
     const actuals = await this.#store.todos.actualsFor(sessions.map((record) => record.id));
     const out: TodoGroup[] = [];
     for (const record of sessions) {
-      const items = byId.get(record.id);
+      const items = byId.get(record.id)?.filter((item) => !runArchived(item, archived));
       if (!items || items.length === 0) continue;
       out.push({
         sessionId: record.id,
