@@ -56,7 +56,8 @@ describe('the sync payload (D71 wire)', () => {
     layout = placeSession(layout, crewPinInput('team', true)) as SidebarLayout;
     const after = recordsAfter(EMPTY_RECORDS, layout, () => clock.next());
     const wire = JSON.parse(JSON.stringify(toWire(after.changes, A)));
-    expect(wire.places.map((p: { key: string }) => p.key)).toEqual([`${A}:x-1`, 'crew~team']);
+    // D186: a session's pin travels as `pin~<its key>`.
+    expect(wire.places.map((p: { key: string }) => p.key)).toEqual([`pin~${A}:x-1`, 'crew~team']);
     const onB = fromWire(wire, B);
     expect(onB.dropped).toBe(0);
     expect(layoutFromRecords(mergeRecords(EMPTY_RECORDS, onB.changes).records).pinned).toEqual([`r~${A}~x-1`, 'crew~team']);

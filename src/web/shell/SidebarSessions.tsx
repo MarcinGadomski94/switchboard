@@ -17,6 +17,7 @@ import {
   checkFolderParent,
   childFolders,
   descendantIds,
+  isPinned,
   looseList,
   needsYou,
   parentOf,
@@ -665,9 +666,9 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   };
 
   const sessionMenu = (session: SessionListItem, visible: readonly string[], group: RowGroup): MenuItem[] => {
-    const where = placeOf(layout, session.id);
     const items: MenuItem[] = [];
-    if (where === 'pinned') items.push({ label: 'Unpin', testId: 'sidebar-menu-unpin', run: () => place({ sessionId: session.id, place: 'loose' }) });
+    // D186: unpinning takes it out of Pinned only (its folder or loose place stays).
+    if (isPinned(layout, session.id)) items.push({ label: 'Unpin', testId: 'sidebar-menu-unpin', run: () => place({ sessionId: session.id, place: 'unpinned' }) });
     else items.push({ label: 'Pin', testId: 'sidebar-menu-pin', run: () => place({ sessionId: session.id, place: 'pinned' }) });
     // D71: loose sessions move up / down too (in the whole loose list: the unplaced ones, then the loose order).
     const stored = group.kind === 'pinned' ? layout.pinned : group.kind === 'loose' ? looseList(layout, listedIds) : (layout.folders.find((f) => f.id === group.folderId)?.sessionIds ?? []);
@@ -759,8 +760,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
 
   /** A session's "Move to folder ▸": the folder tree, indented (D58); its own folder is shown, not offered. */
   const folderTargets = (session: SessionListItem): MenuItem[] => {
-    const where = placeOf(layout, session.id);
-    const current = where !== null && where !== 'pinned' ? where.folderId : null;
+    const current = placeOf(layout, session.id)?.folderId ?? null;
     const items: MenuItem[] = tree.map(({ folder: f, level }) =>
       f.id === current
         ? { label: `${f.name} (here)`, testId: `sidebar-menu-current-folder-${f.id}`, level, disabled: true, run: () => undefined }

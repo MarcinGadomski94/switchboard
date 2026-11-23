@@ -89,9 +89,13 @@ describe('/api/sidebar (D54)', () => {
     const fid = folder?.id as string;
     const second = ((await call('POST', '/api/sidebar/folders', { name: 'Later' })).json() as SidebarLayout).folders[1]?.id as string;
 
-    // Into a folder (out of Pinned), then a second one before it.
+    // Into a folder (D186: still pinned: a pin is a shortcut), then a second one before it.
     let layout = (await call('POST', '/api/sidebar/place', { sessionId: s1, place: 'folder', folderId: fid })).json() as SidebarLayout;
+    expect(layout.pinned).toEqual([s2, s1]);
+    expect(layout.folders[0]?.sessionIds).toEqual([s1]);
+    layout = (await call('POST', '/api/sidebar/place', { sessionId: s1, place: 'unpinned' })).json() as SidebarLayout;
     expect(layout.pinned).toEqual([s2]);
+    expect(layout.folders[0]?.sessionIds).toEqual([s1]);
     layout = (await call('POST', '/api/sidebar/place', { sessionId: s3, place: 'folder', folderId: fid, index: 0 })).json() as SidebarLayout;
     expect(layout.folders[0]?.sessionIds).toEqual([s3, s1]);
 
@@ -106,11 +110,11 @@ describe('/api/sidebar (D54)', () => {
     layout = (await call('DELETE', `/api/sidebar/folders/${fid}`)).json() as SidebarLayout;
     expect(layout.folders.map((f) => f.id)).toEqual([second]);
     expect(layout.pinned).toEqual([s2]);
-    layout = (await call('POST', '/api/sidebar/place', { sessionId: s2, place: 'loose' })).json() as SidebarLayout;
+    layout = (await call('POST', '/api/sidebar/place', { sessionId: s2, place: 'unpinned' })).json() as SidebarLayout;
     expect(layout.pinned).toEqual([]);
 
     // One `sidebarLayoutChanged` per write, each the whole answer.
-    expect(layoutEvents()).toHaveLength(10);
+    expect(layoutEvents()).toHaveLength(11);
     expect(layoutEvents().at(-1)).toEqual(layout);
   });
 

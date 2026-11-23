@@ -253,6 +253,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* D186: a pinned agent in its folder (or the loose list): a small pin after its name. */
+.sb2 .v2-fl-pin {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--v2-text-3, currentColor);
+  opacity: 0.75;
+}
 
 .sb2 .v2-mst {
   width: 18px;

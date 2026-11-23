@@ -24,7 +24,31 @@
  */
 import { NO_CLOCK } from './hlc.ts';
 import { compareKeyed, keyBetween, rekeyGroup } from './sidebar-keys.ts';
-import { type SidebarFolder, type SidebarLayout, childFolders, looseOf, moveFolder, normalizeFolders, parentOf, placeSession, removeFolder } from './sidebar-layout.ts';
+import { type SidebarFolder, type SidebarLayout, childFolders, isPinOnlyId, looseOf, moveFolder, normalizeFolders, parentOf, placeSession, removeFolder } from './sidebar-layout.ts';
+
+/**
+ * D186: a session's pin is its own record, `pin~<session id>` (group `pinned`, or `none` once
+ * unpinned), beside the session's place record (its folder or loose order): pinning and unpinning
+ * never touch the place. A pinned crew or project (`crew~` / `plan~`, Pinned only) keeps its one
+ * record under its own id, as before. A session record with group `pinned` (written before D186,
+ * or sent by an older paired computer) reads as pinned and unplaced.
+ */
+export const PIN_RECORD_PREFIX = 'pin~';
+
+/** D186: the record id of `id`'s pin. */
+export function pinRecordId(id: string): string {
+  return isPinOnlyId(id) ? id : `${PIN_RECORD_PREFIX}${id}`;
+}
+
+/** D186: `true` for a session's pin record (`pin~<id>`). */
+export function isPinRecordId(recordId: string): boolean {
+  return recordId.startsWith(PIN_RECORD_PREFIX);
+}
+
+/** D186: the session (or crew / project pin) a record is about: a pin record's session, else the record id itself. */
+export function recordSubject(recordId: string): string {
+  return isPinRecordId(recordId) ? recordId.slice(PIN_RECORD_PREFIX.length) : recordId;
+}
 
 /** A stored folder (D71). */
 export interface FolderRecord {
@@ -132,7 +156,11 @@ export function layoutFromRecords(records: SidebarRecords): SidebarLayout {
   const pinned: string[] = [];
   const loose: string[] = [];
   for (const place of sorted(records.places, (p) => p.order, (p) => p.sessionId)) {
-    if (place.group === 'pinned') pinned.push(place.sessionId);
+    if (place.group === 'pinned') {
+      // D186: `pin~<id>` (a pin), a crew / project pin, or a pre-D186 session record (pinned, unplaced).
+      const id = recordSubject(place.sessionId);
+      if (!pinned.includes(id)) pinned.push(id);
+    } else if (isPinRecordId(place.sessionId)) continue;
     else if (place.group === 'loose') loose.push(place.sessionId);
     else if (place.group === 'folder') {
       const shown = shownFolder(byId, place.folderId);
@@ -143,13 +171,16 @@ export function layoutFromRecords(records: SidebarRecords): SidebarLayout {
   return { pinned, folders: normalizeFolders(folders), loose };
 }
 
-/** Where the layout shows a session: `pinned`, `loose`, `folder:<id>`, or `none`. */
+/**
+ * Where the layout puts each record: by record id (D186: a session's pin is `pin~<id>`, its place
+ * the session id): `pinned`, `loose`, `folder:<id>`.
+ */
 function groupsOf(layout: SidebarLayout): Map<string, string> {
   const out = new Map<string, string>();
   const put = (id: string, group: string): void => {
     if (!out.has(id)) out.set(id, group);
   };
-  for (const id of layout.pinned) put(id, 'pinned');
+  for (const id of layout.pinned) put(pinRecordId(id), 'pinned');
   for (const folder of layout.folders) for (const id of folder.sessionIds) put(id, `folder:${folder.id}`);
   for (const id of looseOf(layout)) put(id, 'loose');
   return out;
@@ -210,6 +241,10 @@ export function recordsAfter(records: SidebarRecords, next: SidebarLayout, clock
   // Sessions: each group's order; the ones the layout no longer holds become unplaced.
   const placeById = new Map(records.places.map((p) => [p.sessionId, p]));
   const beforeGroups = groupsOf(before);
+  // D186: a pre-D186 pinned session record (its pin now goes as `pin~<id>`) is unplaced at the next write unless the layout places it.
+  for (const p of records.places) {
+    if (p.group === 'pinned' && !isPinOnlyId(p.sessionId) && !isPinRecordId(p.sessionId) && !beforeGroups.has(p.sessionId)) beforeGroups.set(p.sessionId, 'legacy-pinned');
+  }
   const nextGroups = groupsOf(next);
   const changedPlaces = new Map<string, PlaceRecord>();
   const group = (ids: readonly string[], name: string, kind: PlaceGroup, folderId: string | null): void => {
@@ -217,7 +252,7 @@ export function recordsAfter(records: SidebarRecords, next: SidebarLayout, clock
     const { keys, changed } = rekeyGroup(unique, (id) => (beforeGroups.get(id) === name ? (placeById.get(id)?.order ?? null) : null));
     for (const id of changed) changedPlaces.set(id, { sessionId: id, group: kind, folderId, order: keys.get(id) as string, clock: now() });
   };
-  group(next.pinned, 'pinned', 'pinned', null);
+  group(next.pinned.map(pinRecordId), 'pinned', 'pinned', null);
   for (const folder of tree) group(folder.sessionIds, `folder:${folder.id}`, 'folder', folder.id);
   group(looseOf(next), 'loose', 'loose', null);
   for (const [id] of beforeGroups) {

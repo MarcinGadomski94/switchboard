@@ -17,13 +17,22 @@ import { type AgentTree, type FolderMoveCheck, type MoveTarget, checkFolderMove,
  * into another one or to the top level (2.4.16), fold a folder. (Teammates are the Crews pages'.)
  */
 
-/** Where a session sits, as a place input that puts it back exactly there. */
+/** Where a session sits (its folder or loose place; D186: its pin is apart), as a place input that puts it back exactly there. */
 export function restoreInput(layout: SidebarLayout, sessionId: string): SidebarPlaceInput {
-  const pinnedAt = layout.pinned.indexOf(sessionId);
-  if (pinnedAt >= 0) return { sessionId, place: 'pinned', index: pinnedAt };
   const folder = layout.folders.find((f) => f.sessionIds.includes(sessionId));
   if (folder) return { sessionId, place: 'folder', folderId: folder.id, index: folder.sessionIds.indexOf(sessionId) };
   return { sessionId, place: 'loose' };
+}
+
+/**
+ * D186: Pin / Unpin of a session: whether it is pinned now, the input that toggles it (pinning or
+ * unpinning only: its folder or loose place stays), and the input that undoes that exactly (back at
+ * its old position in Pinned, or out of Pinned again).
+ */
+export function pinToggle(layout: SidebarLayout, sessionId: string): { readonly pinned: boolean; readonly next: SidebarPlaceInput; readonly back: SidebarPlaceInput } {
+  const at = layout.pinned.indexOf(sessionId);
+  if (at >= 0) return { pinned: true, next: { sessionId, place: 'unpinned' }, back: { sessionId, place: 'pinned', index: at } };
+  return { pinned: false, next: { sessionId, place: 'pinned' }, back: { sessionId, place: 'unpinned' } };
 }
 
 function errorText(error: unknown): string {
@@ -74,10 +83,9 @@ export function useTreeActions(context: { readonly layout: SidebarLayout; readon
 
   const togglePin = useCallback(
     async (agent: AgentEntry) => {
-      const back = restoreInput(layout, agent.id);
-      const pinned = back.place === 'pinned';
+      const { pinned, next, back } = pinToggle(layout, agent.id);
       try {
-        await place(pinned ? { sessionId: agent.id, place: 'loose' } : { sessionId: agent.id, place: 'pinned' });
+        await place(next);
         toast({ text: pinned ? AGENTS_WORDS.unpinnedToast(agent.name) : AGENTS_WORDS.pinnedToast(agent.name), undo: () => place(back) });
       } catch (error) {
         toast({ text: errorText(error), tone: 'error' });

@@ -613,7 +613,7 @@ Developer request D54 (`docs/decisions.md` → *Pin, re-order and folders in the
 | PUT | /api/sidebar/folders/{folderId} | `{ name?, collapsed? }` (at least one) | SidebarLayout · 404 · 422 |
 | PUT | /api/sidebar/folders/{folderId}/position | `{ index }` | SidebarLayout · 404 · 422 |
 | DELETE | /api/sidebar/folders/{folderId} | — | SidebarLayout (its sessions are loose again) · 404 |
-| POST | /api/sidebar/place | `{ sessionId, place: "pinned" \| "folder" \| "loose", folderId?, index? }` | SidebarLayout · 404 unknown session or folder · 422 |
+| POST | /api/sidebar/place | `{ sessionId, place: "pinned" \| "unpinned" \| "folder" \| "loose", folderId?, index? }` (D186: a pin is not a place: `pinned` / `unpinned` leave the folder or loose place, `folder` / `loose` keep the pin; a pinned session's id is in `SidebarLayout.pinned` and in its folder's `sessionIds` or `loose`) | SidebarLayout · 404 unknown session or folder · 422 |
 
 - **SidebarLayout** `{ pinned: string[], folders: SidebarFolder[] }`, **SidebarFolder** `{ id, name, collapsed, sessionIds: string[] }`: session ids in their manual order; a session is in one place at most; a session in none is loose (listed after the folders in `GET /api/sessions` order). Ids of closed sessions stay (Reopen restores the place) and are not shown.
 - `name`: trimmed, 1–60 characters, may repeat. `index`: the final position in the target group (absent = the end; ignored for `loose`). `sessionId`: a session of this machine or a paired machine's remote id (`r~<machine>~<id>`); in the body, so it is never forwarded to the peer.

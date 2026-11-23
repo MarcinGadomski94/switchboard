@@ -1066,8 +1066,8 @@ export class TeamService {
   /** Where the session sits in the sidebar now (D54 / D71), to put it back on return. */
   async #placeNow(sessionId: string): Promise<TeamOriginalPlace> {
     const layout = await this.#o.store.sidebar.read();
+    // D186: a pin is not a place (it stays in Pinned as it is): the folder or loose place is what comes back.
     const where = placeOf(layout, sessionId);
-    if (where === 'pinned') return { place: 'pinned', folderId: null, index: layout.pinned.indexOf(sessionId) };
     if (where) return { place: 'folder', folderId: where.folderId, index: layout.folders.find((f) => f.id === where.folderId)?.sessionIds.indexOf(sessionId) ?? null };
     const loose = layout.loose ?? [];
     if (loose.includes(sessionId)) {

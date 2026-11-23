@@ -13,8 +13,8 @@ import { isPlanPinId, isPlanPinKey, planPinKey, planPinOfKey } from './plan-pins
 import { isClock } from './hlc.ts';
 import { isMachineId, isRemoteId, parseRemoteId, remoteId } from './peers.ts';
 import { isOrderKey } from './sidebar-keys.ts';
-import { SIDEBAR_FOLDER_NAME_MAX, SIDEBAR_SESSION_ID_MAX } from './sidebar-layout.ts';
-import type { FolderRecord, PlaceGroup, PlaceRecord, RecordChanges } from './sidebar-records.ts';
+import { SIDEBAR_FOLDER_NAME_MAX, SIDEBAR_SESSION_ID_MAX, isPinOnlyId } from './sidebar-layout.ts';
+import { type FolderRecord, type PlaceGroup, type PlaceRecord, type RecordChanges, PIN_RECORD_PREFIX, isPinRecordId, pinRecordId, recordSubject } from './sidebar-records.ts';
 
 /** The exchange's version (`v`): a machine that does not know it answers `enabled: false, unsupported: true`. */
 export const SIDEBAR_SYNC_VERSION = 1;
@@ -68,6 +68,8 @@ export interface SidebarSyncAnswer {
 
 /** The machine-independent key of a session id as this machine (`selfId`) knows it. */
 export function sessionKey(sessionId: string, selfId: string): string {
+  // D186: a session's pin record travels as `pin~<the session's key>` (a machine from before 2.5.11 reads it as malformed and leaves it out).
+  if (isPinRecordId(sessionId)) return `${PIN_RECORD_PREFIX}${sessionKey(recordSubject(sessionId), selfId)}`;
   // 2.4.4: a pinned crew's id is the same on every machine, so it is its own key (no `:`; a machine from before reads it as malformed and leaves it out).
   if (isCrewPinId(sessionId)) return sessionId;
   // D161: a pinned project is its plan's origin machine and id (a plan lives on one machine).
@@ -78,6 +80,12 @@ export function sessionKey(sessionId: string, selfId: string): string {
 
 /** The session id this machine (`selfId`) knows a key by: its own id, or a remote id. `null` for a malformed key. */
 export function sessionIdOf(key: string, selfId: string): string | null {
+  if (key.startsWith(PIN_RECORD_PREFIX)) {
+    const inner = key.slice(PIN_RECORD_PREFIX.length);
+    if (inner.startsWith(PIN_RECORD_PREFIX) || isCrewPinId(inner) || isPlanPinKey(inner)) return null;
+    const id = sessionIdOf(inner, selfId);
+    return id === null ? null : `${PIN_RECORD_PREFIX}${id}`;
+  }
   if (isCrewPinId(key)) return key;
   if (isPlanPinKey(key)) return planPinOfKey(key, selfId);
   const at = key.indexOf(':');
@@ -130,7 +138,11 @@ function readPlace(value: unknown, selfId: string): PlaceRecord | null {
   if (typeof group !== 'string' || !(GROUPS as readonly string[]).includes(group) || !isClock(clock)) return null;
   if (group === 'folder' ? !isId(folderId) : folderId !== null) return null;
   if (group === 'none' ? order !== '' : !isOrderKey(order)) return null;
-  return { sessionId, group: group as PlaceGroup, folderId: group === 'folder' ? (folderId as string) : null, order: order as string, clock };
+  // D186: a pin record is only ever pinned or none.
+  if (isPinRecordId(sessionId) && group !== 'pinned' && group !== 'none') return null;
+  // D186: an older machine (before 2.5.11) pins by moving the session's place to `pinned`: here that is its pin record, and the place stays as it is.
+  const id = group === 'pinned' && !isPinRecordId(sessionId) && !isPinOnlyId(sessionId) ? pinRecordId(sessionId) : sessionId;
+  return { sessionId: id, group: group as PlaceGroup, folderId: group === 'folder' ? (folderId as string) : null, order: order as string, clock };
 }
 
 /** What a peer sent → records (malformed items are left out and counted). */

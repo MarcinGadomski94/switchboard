@@ -115,10 +115,11 @@ describe('Board', () => {
     expect(GROUP_BYS).toEqual(['project', 'folder']);
     expect(isGroupBy('crew')).toBe(false);
     const byFolder = boardLanes(agents, 'folder', { plans, layout });
-    expect(byFolder.map((l) => l.id)).toEqual(['fold:pinned', 'fold:f1', 'fold:f3']);
+    // D186: a pinned agent shows in the Pinned lane and in its own place's lane (here: not in a folder).
+    expect(byFolder.map((l) => l.id)).toEqual(['fold:pinned', 'fold:f1', 'fold:f3', 'fold:none']);
     expect(byFolder[1]?.items.map((a) => a.id).sort()).toEqual(['b', 'c']);
     expect(topFolderOf(layout, 'c')).toBe('f1');
-    expect(topFolderOf(layout, 'a')).toBe('pinned');
+    expect(topFolderOf(layout, 'a')).toBeNull();
     expect(topFolderOf(layout, 'zzz')).toBeNull();
   });
 });

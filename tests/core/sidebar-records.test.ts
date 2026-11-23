@@ -61,7 +61,8 @@ describe('records ⇄ layout', () => {
     a.change((l) => placeSession(l, { sessionId: 's3', place: 'pinned' }));
     expect(a.layout.pinned).toEqual(['s1', 's2', 's3']);
     const moved = a.change((l) => placeSession(l, { sessionId: 's3', place: 'pinned', index: 0 }));
-    expect(moved.places.map((p) => p.sessionId)).toEqual(['s3']);
+    // D186: a session's pin is its own record (`pin~<id>`).
+    expect(moved.places.map((p) => p.sessionId)).toEqual(['pin~s3']);
     expect(a.layout.pinned).toEqual(['s3', 's1', 's2']);
 
     const created = a.change((l) => addFolder(l, 'f1', 'Acme'));
@@ -252,5 +253,51 @@ describe('the wire: machine-independent session keys', () => {
     expect(onB.dropped).toBe(2);
     const layout = layoutFromRecords(mergeRecords(EMPTY_RECORDS, onB.changes).records);
     expect(layout).toEqual({ pinned: ['y-1'], folders: [{ id: 'f1', name: 'Acme', collapsed: false, sessionIds: [`r~${A}~x-1`], parentId: null }], loose: [] });
+  });
+});
+
+describe('D186 · a pin is a shortcut, not a place', () => {
+  const A = 'aaaaaaaaaaaa';
+  const B = 'bbbbbbbbbbbb';
+
+  it('a pinned session keeps its folder: the pin is its own record (pin~<id>); unpin touches the pin only', () => {
+    const { a } = world();
+    a.change((l) => addFolder(l, 'f1', 'Acme'));
+    a.change((l) => placeSession(l, { sessionId: 's1', place: 'folder', folderId: 'f1' }));
+    const pinned = a.change((l) => placeSession(l, { sessionId: 's1', place: 'pinned' }));
+    expect(pinned.places.map((p) => [p.sessionId, p.group])).toEqual([['pin~s1', 'pinned']]);
+    expect(a.layout.pinned).toEqual(['s1']);
+    expect(a.layout.folders[0]?.sessionIds).toEqual(['s1']);
+    const unpinned = a.change((l) => placeSession(l, { sessionId: 's1', place: 'unpinned' }));
+    expect(unpinned.places.map((p) => [p.sessionId, p.group])).toEqual([['pin~s1', 'none']]);
+    expect(a.layout.pinned).toEqual([]);
+    expect(a.layout.folders[0]?.sessionIds).toEqual(['s1']);
+  });
+
+  it('a pre-D186 pinned session record reads as pinned and unplaced; the next write turns it into a pin record', () => {
+    const legacy: SidebarRecords = { folders: [], places: [{ sessionId: 's1', group: 'pinned', folderId: null, order: '0000000i', clock: '' }] };
+    expect(layoutFromRecords(legacy)).toEqual({ pinned: ['s1'], folders: [], loose: [] });
+    const clock = new HybridClock(A, () => 1_000);
+    const after = recordsAfter(legacy, layoutFromRecords(legacy), () => clock.next());
+    expect(after.changes.places.map((p) => [p.sessionId, p.group]).sort()).toEqual([['pin~s1', 'pinned'], ['s1', 'none']]);
+    expect(layoutFromRecords(after.records).pinned).toEqual(['s1']);
+  });
+
+  it('the wire: a pin goes as pin~<key> both ways; an older machine pinning (the place pinned) is a pin here and the folder stays', () => {
+    const { a, b } = world();
+    a.change((l) => addFolder(l, 'f1', 'Acme'));
+    a.change((l) => placeSession(l, { sessionId: 's1', place: 'folder', folderId: 'f1' }));
+    a.change((l) => placeSession(l, { sessionId: 's1', place: 'pinned' }));
+    const wire = JSON.parse(JSON.stringify(toWire(a.all(), A)));
+    expect(wire.places.map((p: { key: string }) => p.key).sort()).toEqual([`${A}:s1`, `pin~${A}:s1`]);
+    b.merge(fromWire(wire, B).changes);
+    expect(b.layout.pinned).toEqual([`r~${A}~s1`]);
+    expect(b.layout.folders[0]?.sessionIds).toEqual([`r~${A}~s1`]);
+    expect(sessionIdOf(`pin~${B}:x`, B)).toBe('pin~x');
+    expect(sessionKey('pin~r~aaaaaaaaaaaa~x', B)).toBe(`pin~${A}:x`);
+    expect(sessionIdOf('pin~crew~t', B)).toBeNull();
+    // An older machine (before 2.5.11) pins s1 by moving its place to `pinned`, with a later clock.
+    const old = fromWire({ folders: [], places: [{ key: `${B}:s1`, group: 'pinned', folderId: null, order: '0000000z', clock: b.clock.next() }] }, A);
+    expect(old.changes.places.map((p) => [p.sessionId, p.group])).toEqual([['pin~r~bbbbbbbbbbbb~s1', 'pinned']]);
   });
 });

@@ -208,7 +208,7 @@ const V2_5_6 = '2.5.6';
 const V2_5_7 = '2.5.7';
 /** The version D184 (the MCP sign-in mutes synced with the paired computers) ships in (adjust if it ships later). */
 const V2_5_8 = '2.5.8';
-/** The version D185 (a project before Start: Jira statuses, order, handoffs, the import's progress) ships in (adjust if it ships later). */
+/** The version D185 (a project before Start) and D186 (a pin is a shortcut, not a place) ship in (adjust if it ships later). */
 const V2_5_11 = '2.5.11';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -2248,6 +2248,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-nav-projects', 'v2-edit-step-handoff'],
         v2Route: '/projects',
         missing: 'Open a project that hasn’t started, then ⋯ › Edit step… on one of its steps.',
+      },
+    ],
+  },
+  // D186: a pin is a shortcut, not a place (docs/sidebar.md → Pinned).
+  {
+    id: 'pins-stay-in-folders',
+    decision: 'D186',
+    version: V2_5_11,
+    title: 'Pinned agents stay in their folders',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'both',
+        title: 'In Pinned and in its folder',
+        what: 'Pinning an agent no longer takes it out of its folder: it shows in Pinned and stays where it was, with a small pin in its folder. Unpin takes it out of Pinned only.',
+        todo: ['Pin an agent from its ⋯ menu and look in its folder.'],
+        anchors: ['v2-rail-pins', 'v2-tree-folders'],
+        v2Route: '/agents',
+        missing: 'Pin an agent first (its ⋯ menu › Pin to sidebar).',
       },
     ],
   },

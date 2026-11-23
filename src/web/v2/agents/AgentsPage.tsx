@@ -132,7 +132,7 @@ export function AgentsPage({ showClosed }: { readonly showClosed: boolean }) {
     (agent: AgentEntry): MenuItem[] => {
       const off = offline(agent);
       const offWhy = off && agent.computer ? AGENTS_WORDS.offlineWhy(agent.computer.name) : undefined;
-      const pinned = placeOfAgent(data.layout, agent.id) === 'pinned';
+      const pinned = data.layout.pinned.includes(agent.id);
       const notes = offersMemoryDraft(agent.session);
       return [
         { id: 'open', label: AGENTS_WORDS.open, icon: 'external', onSelect: () => openAgent(agent) },

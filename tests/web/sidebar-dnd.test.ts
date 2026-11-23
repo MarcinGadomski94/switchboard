@@ -68,7 +68,9 @@ describe('indicatorOf', () => {
     expect(indicatorOf(layout, session('x'), { zone: 'folder-head', folderId: 'fa', side: 'before' })).toBe('into');
     expect(indicatorOf(layout, folder('fb'), { zone: 'folder-head', folderId: 'fa', side: 'before' })).toBe('before');
     expect(indicatorOf(layout, session('x'), { zone: 'pinned-head' })).toBe('into');
-    expect(indicatorOf(layout, session('p1'), { zone: 'loose' })).toBe('into');
+    expect(indicatorOf(layout, session('a1'), { zone: 'loose' })).toBe('into');
+    // D186: a pinned session in no folder is loose already (the drop does not unpin it).
+    expect(indicatorOf(layout, session('p1'), { zone: 'loose' })).toBeNull();
     expect(indicatorOf(layout, session('x'), { zone: 'loose' })).toBeNull();
   });
 });

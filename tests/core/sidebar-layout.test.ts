@@ -3,6 +3,7 @@ import {
   EMPTY_SIDEBAR_LAYOUT,
   type SidebarLayout,
   addFolder,
+  isPinned,
   arrangeSidebar,
   SIDEBAR_FOLDER_DEPTH_MAX,
   checkFolderName,
@@ -45,11 +46,22 @@ describe('placeSession', () => {
     expect(placeSession(layout, { sessionId: 'x', place: 'pinned', index: 99 })?.pinned).toEqual(['p1', 'p2', 'x']);
   });
 
-  it('a session sits in one place only: pinning a foldered session takes it out of its folder', () => {
+  it('D186: pinning a foldered session keeps it in its folder (a pin is a shortcut); unpinned takes it out of Pinned only', () => {
     const next = placeSession(layout, { sessionId: 'a2', place: 'pinned', index: 1 });
     expect(next?.pinned).toEqual(['p1', 'a2', 'p2']);
-    expect(next?.folders[0]?.sessionIds).toEqual(['a1', 'a3']);
-    expect(placeOf(next as SidebarLayout, 'a2')).toBe('pinned');
+    expect(next?.folders[0]?.sessionIds).toEqual(['a1', 'a2', 'a3']);
+    expect(placeOf(next as SidebarLayout, 'a2')).toEqual({ folderId: 'fa' });
+    expect(isPinned(next as SidebarLayout, 'a2')).toBe(true);
+    const unpinned = placeSession(next as SidebarLayout, { sessionId: 'a2', place: 'unpinned' }) as SidebarLayout;
+    expect(unpinned.pinned).toEqual(['p1', 'p2']);
+    expect(unpinned.folders[0]?.sessionIds).toEqual(['a1', 'a2', 'a3']);
+    // A move keeps the pin.
+    const moved = placeSession(next as SidebarLayout, { sessionId: 'a2', place: 'folder', folderId: 'fb' }) as SidebarLayout;
+    expect(moved.pinned).toEqual(['p1', 'a2', 'p2']);
+    expect(placeOf(moved, 'a2')).toEqual({ folderId: 'fb' });
+    // A pinned crew or project has no place but Pinned: loose still unpins it.
+    const crew = placeSession({ ...layout, pinned: ['crew~t1'] }, { sessionId: 'crew~t1', place: 'loose' }) as SidebarLayout;
+    expect(crew.pinned).toEqual([]);
   });
 
   it('re-orders inside a group (index = the final position)', () => {
@@ -57,12 +69,13 @@ describe('placeSession', () => {
     expect(placeSession(layout, { sessionId: 'p2', place: 'pinned', index: 0 })?.pinned).toEqual(['p2', 'p1']);
   });
 
-  it('moves between folders, and loose takes a session out (unpin / out of the folder)', () => {
+  it('moves between folders, and loose takes a session out of its folder (D186: not out of Pinned)', () => {
     const moved = placeSession(layout, { sessionId: 'a1', place: 'folder', folderId: 'fb' });
     expect(moved?.folders.map((f) => f.sessionIds)).toEqual([['a2', 'a3'], ['a1']]);
-    const unpinned = placeSession(layout, { sessionId: 'p1', place: 'loose' });
-    expect(unpinned?.pinned).toEqual(['p2']);
-    expect(placeOf(unpinned as SidebarLayout, 'p1')).toBeNull();
+    const out = placeSession(layout, { sessionId: 'a1', place: 'loose' });
+    expect(placeOf(out as SidebarLayout, 'a1')).toBeNull();
+    const stillPinned = placeSession(layout, { sessionId: 'p1', place: 'loose' });
+    expect(stillPinned?.pinned).toEqual(['p1', 'p2']);
   });
 
   it('refuses an unknown folder, and never mutates its input', () => {
@@ -128,14 +141,14 @@ describe('arrangeSidebar', () => {
   const s = (id: string, status = 'idle') => ({ id, status });
   const sessions = [s('n3'), s('a2', 'need'), s('p2'), s('n2'), s('a1'), s('p1'), s('n1')];
 
-  it('Pinned, then folders in their order, then the loose ones in the list order (newest first)', () => {
+  it('Pinned, then folders in their order, then the loose ones in the list order (newest first; D186: pinned ones too)', () => {
     const arranged = arrangeSidebar(sessions, layout);
     expect(arranged.pinned.map((x) => x.id)).toEqual(['p1', 'p2']);
     expect(arranged.folders.map((f) => [f.folder.id, f.sessions.map((x) => x.id)])).toEqual([
       ['fa', ['a1', 'a2']],
       ['fb', []],
     ]);
-    expect(arranged.loose.map((x) => x.id)).toEqual(['n3', 'n2', 'n1']);
+    expect(arranged.loose.map((x) => x.id)).toEqual(['n3', 'p2', 'n2', 'p1', 'n1']);
   });
 
   it('ids the list does not hold (closed, a peer session that ended) are skipped, not dropped', () => {
@@ -149,10 +162,12 @@ describe('arrangeSidebar', () => {
     expect(arrangeSidebar(sessions, EMPTY_SIDEBAR_LAYOUT)).toEqual({ pinned: [], folders: [], loose: sessions });
   });
 
-  it('a stale layout listing a session twice shows it once, in its first place', () => {
+  it('D186: a pinned session in a folder shows in both; a stale layout listing it in two folders shows it once, in its first', () => {
     const arranged = arrangeSidebar([s('p1')], { pinned: ['p1'], folders: [{ id: 'f', name: 'F', collapsed: false, sessionIds: ['p1'] }] });
     expect(arranged.pinned.map((x) => x.id)).toEqual(['p1']);
-    expect(arranged.folders[0]?.sessions).toEqual([]);
+    expect(arranged.folders[0]?.sessions.map((x) => x.id)).toEqual(['p1']);
+    const twice = arrangeSidebar([s('p1')], { pinned: [], folders: [{ id: 'f', name: 'F', collapsed: false, sessionIds: ['p1'] }, { id: 'g', name: 'G', collapsed: false, sessionIds: ['p1'] }] });
+    expect(twice.folders.map((f) => f.sessions.length)).toEqual([1, 0]);
   });
 
   it('needsYou: a session waiting for the developer', () => {
@@ -329,7 +344,8 @@ describe('loose order (D71)', () => {
     const layout: SidebarLayout = { pinned: ['n2'], folders: [], loose: [] };
     const ids = listed.map((s) => s.id);
     const placed = placeSession(layout, { sessionId: 'n2', place: 'loose', index: 1 }, ids) as SidebarLayout;
-    expect(placed.pinned).toEqual([]);
+    // D186: a loose place keeps the pin.
+    expect(placed.pinned).toEqual(['n2']);
     expect(placed.loose).toEqual(['new', 'n2', 'n1', 'n3']);
     expect(arrangeSidebar(listed, placed).loose.map((s) => s.id)).toEqual(['new', 'n2', 'n1', 'n3']);
     // A newer session shows above them.
@@ -337,8 +353,8 @@ describe('loose order (D71)', () => {
     const out = placeSession(placed, { sessionId: 'n1', place: 'loose' }, ids) as SidebarLayout;
     expect(out.loose).toEqual(['new', 'n2', 'n3']);
     expect(arrangeSidebar(listed, out).loose.map((s) => s.id)).toEqual(['n1', 'new', 'n2', 'n3']);
-    // Pinning takes it out of the loose order.
-    expect(placeSession(placed, { sessionId: 'n1', place: 'pinned' }, ids)?.loose).toEqual(['new', 'n2', 'n3']);
+    // D186: pinning keeps it in the loose order.
+    expect(placeSession(placed, { sessionId: 'n3', place: 'pinned' }, ids)?.loose).toEqual(['new', 'n2', 'n1', 'n3']);
   });
 });
 

@@ -110,7 +110,8 @@ describe('D71 shared sidebar layout between two paired machines', () => {
     expect(merged.folders.filter((f) => f.parentId === null).map((f) => f.name).sort()).toEqual(['Acme', 'Mine']);
     expect(merged.folders.find((f) => f.id === mineA)).toBeDefined();
     expect(merged.folders.filter((f) => f.parentId === acme).map((f) => f.name).sort()).toEqual(['PROJ-1', 'PROJ-2']);
-    expect(merged.folders.find((f) => f.id === proj)?.sessionIds).toEqual([remoteId(bId, yOnB)]);
+    // D186: pinning x on B is a pin of its own: x stays in A's PROJ-1 (combined) and is pinned on both.
+    expect([...(merged.folders.find((f) => f.id === proj)?.sessionIds ?? [])].sort()).toEqual([remoteId(bId, yOnB), xOnA].sort());
     expect(merged.pinned).toEqual([xOnA]);
     // `collapsed` is each machine's own: Acme stays collapsed on A only (when A's Acme survived).
     if (acme === acmeA) {
@@ -130,14 +131,22 @@ describe('D71 shared sidebar layout between two paired machines', () => {
     expect((await b.call('POST', '/api/sidebar/place', { sessionId: remoteId(aId, xOnA), place: 'folder', folderId: live, index: 0 })).status).toBe(200);
     await waitFor('A follows B', async () => (await layoutOf(a)).folders.find((f) => f.id === live)?.sessionIds.join() === [xOnA, remoteId(bId, yOnB)].join());
 
-    // A conflict: both move x at once; the later write wins on both.
+    // A conflict: both move x at once (into two folders); the later write wins on both. D186: an unpin and a move at once both apply (a pin is its own record).
     await Promise.all([
-      a.call('POST', '/api/sidebar/place', { sessionId: xOnA, place: 'pinned' }),
+      a.call('POST', '/api/sidebar/place', { sessionId: xOnA, place: 'folder', folderId: live }),
       b.call('POST', '/api/sidebar/place', { sessionId: remoteId(aId, xOnA), place: 'folder', folderId: mineA }),
     ]);
     await waitFor('converged after the conflict', async () => JSON.stringify(keyed(await layoutOf(a), aId)) === JSON.stringify(keyed(await layoutOf(b), bId)));
     const after = await layoutOf(a);
-    expect(after.pinned.includes(xOnA) !== (after.folders.find((f) => f.id === mineA)?.sessionIds.includes(xOnA) ?? false)).toBe(true);
+    expect((after.folders.find((f) => f.id === live)?.sessionIds.includes(xOnA) ?? false) !== (after.folders.find((f) => f.id === mineA)?.sessionIds.includes(xOnA) ?? false)).toBe(true);
+    await Promise.all([
+      a.call('POST', '/api/sidebar/place', { sessionId: xOnA, place: 'unpinned' }),
+      b.call('POST', '/api/sidebar/place', { sessionId: remoteId(aId, xOnA), place: 'folder', folderId: mineA }),
+    ]);
+    await waitFor('the unpin and the move both on both', async () => {
+      const [onA, onB] = [await layoutOf(a), await layoutOf(b)];
+      return !onA.pinned.includes(xOnA) && !onB.pinned.includes(remoteId(aId, xOnA)) && onA.folders.find((f) => f.id === mineA)?.sessionIds.includes(xOnA) === true && onB.folders.find((f) => f.id === mineA)?.sessionIds.includes(remoteId(aId, xOnA)) === true;
+    });
 
     // Off on B: B stops taking A's changes (and A shows waiting at its next send).
     await setSync(b, aId, false);

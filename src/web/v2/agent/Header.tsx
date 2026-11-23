@@ -29,7 +29,7 @@ import { MoveBadge } from '../shared/MoveBadge.tsx';
 import { agentName, agentStatusOf, statusWithApps } from '../shared/agent-line.ts';
 import { type TeamMemberRef, agentDisplayName, reloadTeammates, sessionOwnName, teammateOf, useCrewsList, useTeamMembers } from '../shared/teammates.ts';
 import { continueAsAgent } from './agent-bits.ts';
-import { restoreInput } from '../agents/useTreeActions.ts';
+import { pinToggle } from '../agents/useTreeActions.ts';
 import { ConfirmDialog, RemoteDialog, RenameDialog, TerminalDialog } from './dialogs.tsx';
 import { type AgentMenuId, type AgentMenuSpec, agentMenu, ciView, folderTrail } from './header-model.ts';
 import { cleanSlateView } from './side-model.ts';
@@ -684,9 +684,9 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
             label: layout.pinned.includes(sessionId) ? AGENTS_WORDS.unpinFromSidebar : AGENTS_WORDS.pinToSidebar,
             icon: 'pin',
             onSelect: () => {
-              const back = restoreInput(layout, sessionId);
-              const pinned = back.place === 'pinned';
-              api.placeSidebarSession(pinned ? { sessionId, place: 'loose' } : { sessionId, place: 'pinned' }).then(
+              // D186: Pin / Unpin leave its folder as it is.
+              const { pinned, next, back } = pinToggle(layout, sessionId);
+              api.placeSidebarSession(next).then(
                 () => toast({ text: pinned ? AGENTS_WORDS.unpinnedToast(name) : AGENTS_WORDS.pinnedToast(name), undo: () => api.placeSidebarSession(back) }),
                 (caught: unknown) => toast({ text: errorText(caught), tone: 'error' }),
               );

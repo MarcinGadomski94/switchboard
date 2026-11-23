@@ -37,7 +37,7 @@ export interface TreeFolder {
 export interface AgentTree {
   readonly pinned: readonly AgentEntry[];
   readonly folders: readonly TreeFolder[];
-  /** In no folder (and not pinned). */
+  /** In no folder (D186: pinned ones too: a pin is not a place). */
   readonly loose: readonly AgentEntry[];
   readonly all: number;
   readonly needs: number;
@@ -48,7 +48,7 @@ export function buildTree(layout: SidebarLayout, agents: readonly AgentEntry[]):
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   const placed = new Set<string>();
   const pinned = layout.pinned.map((id) => byId.get(id)).filter((agent): agent is AgentEntry => agent !== undefined);
-  for (const agent of pinned) placed.add(agent.id);
+  // D186: a pinned agent stays in its folder (or loose) too: Pinned is a shortcut.
   for (const folder of layout.folders) for (const id of folder.sessionIds) placed.add(id);
   const kids = new Map<string | null, SidebarFolder[]>();
   for (const folder of layout.folders) {
@@ -140,9 +140,8 @@ export type MoveTarget = { readonly kind: 'folder'; readonly folderId: string } 
 /** What a move does: a sidebar placement, or nothing with the reason. */
 export type MoveCheck = { readonly ok: true; readonly via: 'place' } | { readonly ok: false; readonly reason: string };
 
-/** The folder an agent sits in now (`pinned`, a folder id, or `null` = loose). */
-export function placeOfAgent(layout: SidebarLayout, sessionId: string): 'pinned' | string | null {
-  if (layout.pinned.includes(sessionId)) return 'pinned';
+/** The folder an agent sits in now (a folder id, or `null` = loose). D186: pinned or not (a pin is not a place). */
+export function placeOfAgent(layout: SidebarLayout, sessionId: string): string | null {
   return layout.folders.find((folder) => folder.sessionIds.includes(sessionId))?.id ?? null;
 }
 
@@ -153,7 +152,7 @@ export function placeOfAgent(layout: SidebarLayout, sessionId: string): 'pinned'
  */
 export function checkMove(agent: Pick<AgentEntry, 'id' | 'name' | 'kind'>, target: MoveTarget, layout: SidebarLayout, tree: Pick<AgentTree, 'folders'>): MoveCheck {
   const now = placeOfAgent(layout, agent.id);
-  const nowFolder = now && now !== 'pinned' ? findFolder(tree, now) : null;
+  const nowFolder = now ? findFolder(tree, now) : null;
   if (agent.kind === 'step' && nowFolder?.plan) return { ok: false, reason: `Project steps stay in their project’s folder (${nowFolder.name}).` };
   if (target.kind === 'loose') return now === null ? { ok: false, reason: `${agent.name} is already there.` } : { ok: true, via: 'place' };
   const folder = findFolder(tree, target.folderId);

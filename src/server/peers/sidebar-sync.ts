@@ -1,7 +1,7 @@
 import type { MachineSidebarSync, SidebarSyncState } from '../../core/peers.ts';
 import { isCrewPinId } from '../../core/crew-pins.ts';
 import { isPlanPinId } from '../../core/plan-pins.ts';
-import { type FolderRecord, type RecordChanges, noChanges } from '../../core/sidebar-records.ts';
+import { type FolderRecord, type RecordChanges, noChanges, recordSubject } from '../../core/sidebar-records.ts';
 import { DEFAULT_USER_PROFILE_ID } from '../../core/user-profiles.ts';
 import { SIDEBAR_SYNC_VERSION, type SidebarSyncAnswer, type SidebarSyncMessage, fromWire, readSyncMessage, toWire } from '../../core/sidebar-sync.ts';
 import type { SidebarWrite } from '../db/repos/sidebar.ts';
@@ -219,7 +219,8 @@ export class SidebarSync {
     const folders = changes.folders.filter((folder) => profiles.has(folder.userProfileId ?? DEFAULT_USER_PROFILE_ID) && (live === null || live.has(folder.userProfileId ?? DEFAULT_USER_PROFILE_ID)));
     const places = changes.places.filter((place) => {
       if (isCrewPinId(place.sessionId) || isPlanPinId(place.sessionId)) return profiles.size > 0;
-      const session = this.#options.profileOfSession?.(place.sessionId) ?? null;
+      // D186: a session's pin record (`pin~<id>`) goes with its session's profile.
+      const session = this.#options.profileOfSession?.(recordSubject(place.sessionId)) ?? null;
       if (session !== null && !profiles.has(session)) return false;
       if (place.group !== 'folder' || place.folderId === null) return true;
       const folder = folderProfile.get(place.folderId);

@@ -260,9 +260,8 @@ export interface BoardLane {
   readonly items: readonly AgentEntry[];
 }
 
-/** The top-level folder an agent sits in (through its subfolders), `null` when loose; `pinned` when pinned. */
-export function topFolderOf(layout: SidebarLayout, sessionId: string): string | 'pinned' | null {
-  if (layout.pinned.includes(sessionId)) return 'pinned';
+/** The top-level folder an agent sits in (through its subfolders), `null` when loose. D186: pinned or not (the Pinned lane shows the pins besides). */
+export function topFolderOf(layout: SidebarLayout, sessionId: string): string | null {
   const byId = new Map(layout.folders.map((folder) => [folder.id, folder]));
   let folder = layout.folders.find((f) => f.sessionIds.includes(sessionId));
   if (!folder) return null;
@@ -280,7 +279,7 @@ export function boardLanes(agents: readonly AgentEntry[], groupBy: GroupBy, cont
   const lanes: BoardLane[] = [];
   if (groupBy === 'folder') {
     const top = new Map(on.map((agent) => [agent.id, topFolderOf(context.layout, agent.id)]));
-    lanes.push({ id: 'fold:pinned', title: 'Pinned', icon: 'pin', items: on.filter((agent) => top.get(agent.id) === 'pinned') });
+    lanes.push({ id: 'fold:pinned', title: 'Pinned', icon: 'pin', items: on.filter((agent) => context.layout.pinned.includes(agent.id)) });
     for (const folder of context.layout.folders.filter((f) => !f.parentId)) lanes.push({ id: `fold:${folder.id}`, title: folder.name, icon: isPlanFolderName(folder.name) ? 'projects' : 'folder', items: on.filter((agent) => top.get(agent.id) === folder.id) });
     lanes.push({ id: 'fold:none', title: 'Not in a folder', icon: 'agents', items: on.filter((agent) => top.get(agent.id) === null) });
   } else {

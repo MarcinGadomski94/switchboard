@@ -52,11 +52,26 @@ export interface SidebarLayout {
   readonly loose?: readonly string[];
 }
 
-/** Where a session goes (`POST /api/sidebar/place`). */
-export type SidebarPlace = 'pinned' | 'folder' | 'loose';
+/**
+ * Where a session goes (`POST /api/sidebar/place`). D186: `pinned` adds the session to Pinned
+ * (it keeps its folder or loose place: a pin is a shortcut, not a place); `unpinned` takes it out
+ * of Pinned only; `folder` / `loose` move its place and keep its pin. A pinned crew or project
+ * (`crew~` / `plan~`, no place of their own) is unpinned by `loose` too, as before.
+ */
+export type SidebarPlace = 'pinned' | 'unpinned' | 'folder' | 'loose';
 
 /** The values of {@link SidebarPlace}. */
-export const SIDEBAR_PLACES: readonly SidebarPlace[] = ['pinned', 'folder', 'loose'];
+export const SIDEBAR_PLACES: readonly SidebarPlace[] = ['pinned', 'unpinned', 'folder', 'loose'];
+
+/** D186: an id that lives in Pinned only (a pinned crew or project: no folder or loose place of its own). */
+export function isPinOnlyId(id: string): boolean {
+  return id.startsWith('crew~') || id.startsWith('plan~');
+}
+
+/** D186: `true` when `sessionId` is in Pinned (besides its place). */
+export function isPinned(layout: SidebarLayout, sessionId: string): boolean {
+  return layout.pinned.includes(sessionId);
+}
 
 /**
  * Body of `POST /api/sidebar/place`. `index` = the final position in the target
@@ -129,9 +144,11 @@ function insertAt<T>(list: readonly T[], item: T, index: number | undefined): T[
   return out;
 }
 
-/** Where a session sits now: `pinned`, the id of its folder, or `null` (loose: unplaced or in the loose order). */
-export function placeOf(layout: SidebarLayout, sessionId: string): 'pinned' | { readonly folderId: string } | null {
-  if (layout.pinned.includes(sessionId)) return 'pinned';
+/**
+ * The folder a session sits in, or `null` (loose: unplaced or in the loose order). D186: a pin is
+ * not a place: a pinned session answers its folder too ({@link isPinned} tells the pin).
+ */
+export function placeOf(layout: SidebarLayout, sessionId: string): { readonly folderId: string } | null {
   const folder = layout.folders.find((f) => f.sessionIds.includes(sessionId));
   return folder ? { folderId: folder.id } : null;
 }
@@ -141,7 +158,7 @@ export function looseOf(layout: SidebarLayout): readonly string[] {
   return layout.loose ?? [];
 }
 
-/** D71: `true` when the layout holds `sessionId` somewhere (pinned, in a folder, or in the loose order). */
+/** D71: `true` when the layout gives `sessionId` a place (a folder, or the loose order). D186: a pin alone is no place. */
 export function isPlaced(layout: SidebarLayout, sessionId: string): boolean {
   return placeOf(layout, sessionId) !== null || looseOf(layout).includes(sessionId);
 }
@@ -174,12 +191,19 @@ export function withoutSession(layout: SidebarLayout, sessionId: string): Sideba
  */
 export function placeSession(layout: SidebarLayout, input: SidebarPlaceInput, listed: readonly string[] = []): SidebarLayout | null {
   if (input.place === 'folder' && !layout.folders.some((f) => f.id === input.folderId)) return null;
-  const rest = withoutSession(layout, input.sessionId);
+  const id = input.sessionId;
+  const unpinned = { ...layout, pinned: layout.pinned.filter((pin) => pin !== id) };
+  // D186: Pinned is a shortcut: pinning and unpinning leave the session's folder or loose place as it is.
+  if (input.place === 'pinned') return { ...unpinned, pinned: insertAt(unpinned.pinned, id, input.index) };
+  if (input.place === 'unpinned') return unpinned;
+  // A pinned crew or project has no place but Pinned: `loose` unpins it (as before D186).
+  if (isPinOnlyId(id)) return input.place === 'loose' ? withoutSession(layout, id) : null;
+  // A move keeps the pin (D186).
+  const rest = { ...withoutSession(layout, id), pinned: layout.pinned };
   if (input.place === 'loose') {
     if (input.index === undefined) return rest;
-    return { ...rest, loose: insertAt(looseList(rest, listed.filter((id) => id !== input.sessionId)), input.sessionId, input.index) };
+    return { ...rest, loose: insertAt(looseList(rest, listed.filter((other) => other !== id)), id, input.index) };
   }
-  if (input.place === 'pinned') return { ...rest, pinned: insertAt(rest.pinned, input.sessionId, input.index) };
   return {
     ...rest,
     folders: rest.folders.map((f) => (f.id === input.folderId ? { ...f, sessionIds: insertAt(f.sessionIds, input.sessionId, input.index) } : f)),
@@ -195,7 +219,9 @@ export function placeSession(layout: SidebarLayout, input: SidebarPlaceInput, li
  * moved since, or this ran before).
  */
 export function inheritPlace(layout: SidebarLayout, oldId: string, newId: string): SidebarLayout | null {
-  if (isPlaced(layout, newId) || !isPlaced(layout, oldId)) return null;
+  // D186: a pin counts too (the pin and the place both pass on).
+  const held = (id: string): boolean => isPlaced(layout, id) || isPinned(layout, id);
+  if (held(newId) || !held(oldId)) return null;
   const swap = (ids: readonly string[]): string[] => ids.map((id) => (id === oldId ? newId : id));
   return {
     pinned: swap(layout.pinned),
@@ -240,8 +266,9 @@ function afterRuns(ids: readonly string[], from: number, runs: ReadonlySet<strin
  * - the source loose (in the loose order or unplaced) → the loose list, after the
  *   source (and its runs); the unplaced sessions keep the order they show in, as
  *   after a loose drop ({@link placeSession});
- * - a pinned source, or one this layout does not list → the root, unplaced (the top
- *   of the loose list, as before).
+ * - one this layout does not list → the root, unplaced (the top of the loose list,
+ *   as before). D186: a pinned source counts by its folder or loose place (a pin is
+ *   not a place).
  *
  * `null` (nothing to change) when the run is placed already (a later move by the
  * developer wins) or it stays unplaced.
@@ -251,7 +278,7 @@ export function placeRun(layout: SidebarLayout, input: RunPlaceInput): SidebarLa
   if (isPlaced(layout, runId)) return null;
   const where = placeOf(layout, sourceId);
   const into = (folderId: string, index: number): SidebarLayout | null => placeSession(layout, { sessionId: runId, place: 'folder', folderId, index });
-  if (where !== null && where !== 'pinned') {
+  if (where !== null) {
     const ids = layout.folders.find((f) => f.id === where.folderId)?.sessionIds ?? [];
     return into(where.folderId, afterRuns(ids, ids.indexOf(sourceId) + 1, runsOfSource));
   }
@@ -261,7 +288,6 @@ export function placeRun(layout: SidebarLayout, input: RunPlaceInput): SidebarLa
     if (!folder) return null;
     return into(folder.id, afterRuns(folder.sessionIds, clamp(input.member.index ?? undefined, folder.sessionIds.length), runsOfSource));
   }
-  if (where === 'pinned') return null;
   const listed = input.listed.filter((id) => id !== runId);
   const loose = looseList(layout, listed);
   const at = loose.indexOf(sourceId);
@@ -283,10 +309,9 @@ export function cutSidebarFolderName(text: string, max: number = SIDEBAR_FOLDER_
   return `${cut.replace(/[\s·,;:–-]+$/u, '')}…`;
 }
 
-/** D130: the sidebar folder a session sits in (`null` = the top level: loose, unplaced, pinned or not listed). */
+/** D130: the sidebar folder a session sits in (`null` = the top level: loose, unplaced or not listed; D186: pinned or not). */
 export function folderOfSession(layout: SidebarLayout, sessionId: string): string | null {
-  const where = placeOf(layout, sessionId);
-  return where !== null && where !== 'pinned' ? where.folderId : null;
+  return placeOf(layout, sessionId)?.folderId ?? null;
 }
 
 /** D130: what {@link runSubfolder} answers. */
@@ -619,7 +644,16 @@ export function arrangeSidebar<T extends { readonly id: string }>(sessions: read
     }
     return out;
   };
-  const pinned = take(layout.pinned);
+  // D186: Pinned is a shortcut: a pinned session also shows in its folder (or loose), so it is not "taken" here.
+  const pinnedSeen = new Set<string>();
+  const pinned: T[] = [];
+  for (const id of layout.pinned) {
+    const session = byId.get(id);
+    if (session && !pinnedSeen.has(id)) {
+      pinnedSeen.add(id);
+      pinned.push(session);
+    }
+  }
   const tree = normalizeFolders(layout.folders);
   const own = tree.map((folder) => ({ folder, sessions: take(folder.sessionIds) }));
   const level = new Map<string, number>();

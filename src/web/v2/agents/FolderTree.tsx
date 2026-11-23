@@ -64,7 +64,7 @@ export function FolderTree({ tree, selection, onSelect, draftCount, closedCount,
         </button>
       </h4>
       {tree.loose.map((agent) => (
-        <Leaf key={agent.id} agent={agent} depth={0} />
+        <Leaf key={agent.id} agent={agent} depth={0} pinned={tree.pinned.some((pin) => pin.id === agent.id)} />
       ))}
       <h4>{AGENTS_WORDS.also}</h4>
       {draftCount > 0 ? <SmartRow id="drafts" icon="edit" label={AGENTS_WORDS.drafts} count={draftCount} selection={selection} onSelect={onSelect} /> : null}
@@ -222,7 +222,7 @@ function FolderNode({ folder, tree, selection, onSelect }: { readonly folder: Tr
             <FolderNode key={child.id} folder={child} tree={tree} selection={selection} onSelect={onSelect} />
           ))}
           {folder.agents.map((agent) => (
-            <Leaf key={agent.id} agent={agent} depth={folder.level} />
+            <Leaf key={agent.id} agent={agent} depth={folder.level} pinned={tree.pinned.some((pin) => pin.id === agent.id)} />
           ))}
         </div>
       ) : null}
@@ -231,7 +231,8 @@ function FolderNode({ folder, tree, selection, onSelect }: { readonly folder: Tr
 }
 
 /** An agent in the tree (`.fl`): its status mark, name, computer; draggable; ⋯ and `M`. */
-function Leaf({ agent, depth }: { readonly agent: AgentEntry; readonly depth: number }) {
+/** An agent row. D186: `pinned` marks a pinned agent where it sits (its folder or the loose list) with a small pin. */
+function Leaf({ agent, depth, pinned = false }: { readonly agent: AgentEntry; readonly depth: number; readonly pinned?: boolean }) {
   const page = useAgentsPage();
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [menu, setMenu] = useState(false);
@@ -246,6 +247,12 @@ function Leaf({ agent, depth }: { readonly agent: AgentEntry; readonly depth: nu
       <button type="button" className="v2-fl-main" onClick={() => page.openAgent(agent)} title={off && agent.computer ? AGENTS_WORDS.offlineLine(agent.computer.name, computerProblem(agent.computer.state === 'reconnecting' ? 'reconnecting' : 'offline')) : agent.name}>
         <MiniStatus status={agent.status} />
         <span className="v2-nm">{agent.name}</span>
+        {pinned ? (
+          <span className="v2-fl-pin" title={AGENTS_WORDS.pinned} data-testid="v2-tree-agent-pin">
+            <Icon name="pin" size="s" />
+            <span className="v2-sr">{AGENTS_WORDS.pinned}</span>
+          </span>
+        ) : null}
         {agent.computer ? (
           <span className="v2-ctag" data-state={agent.computer.state} title={`${agent.computer.name}${off ? ' · offline' : ''}`}>
             <Icon name={off ? 'offline' : 'desktop'} size="s" />
