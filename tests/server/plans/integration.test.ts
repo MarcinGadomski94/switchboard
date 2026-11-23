@@ -398,7 +398,9 @@ describe('D99 · a plan on the real path', () => {
     const created = await makePlan(r, { 'PROJ-1': [], 'PROJ-2': ['PROJ-1'] });
     const cycle = await call('POST', `/api/plans/${created.id}/edges`, { from: 'PROJ-2', to: 'PROJ-1' });
     expect(cycle.statusCode).toBe(409);
-    expect(cycle.json()).toEqual({ error: 'cycle', message: 'that dependency would make a cycle: PROJ-2 → PROJ-1 → PROJ-2 (each waits for the next)' });
+    // A direct reverse says how to turn it round (D185 follow-up, 2.5.12).
+    expect(cycle.json()).toMatchObject({ error: 'cycle' });
+    expect((cycle.json() as { message: string }).message).toMatch(/^that dependency would make a cycle: PROJ-2 → PROJ-1 → PROJ-2 \(each waits for the next\)/);
     const noMode = await call('POST', `/api/plans/${created.id}/start`, {});
     expect(noMode.statusCode).toBe(422);
     expect(noMode.json()).toMatchObject({ error: 'merge-mode-required', errors: [{ field: 'mergeMode' }] });
