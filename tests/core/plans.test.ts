@@ -165,8 +165,11 @@ describe('D99 · plan graph rules', () => {
     expect(pickReposMessage({ planId: 'p1', planTitle: 'T', solutions: [], items: [], also: true })).toMatch(/^Also pick the repositories/);
   });
 
-  it('the MCP tools: eleven plan tools (D159 plan_list), plan_start requires the merge mode and tells the agent to ask', () => {
-    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_list', 'plan_start', 'plan_set_solutions', 'plan_update_item', 'plan_remove_item', 'plan_remove_dependency', 'plan_set_mode']);
+  it('the MCP tools: twelve plan tools (D159 plan_list, 2026-11-23 plan_set_parallel), plan_start requires the merge mode and tells the agent to ask', () => {
+    expect(PLAN_TOOLS.map((tool) => tool.name)).toEqual(['plan_create', 'plan_add_item', 'plan_add_dependency', 'plan_status', 'plan_list', 'plan_start', 'plan_set_solutions', 'plan_update_item', 'plan_remove_item', 'plan_remove_dependency', 'plan_set_mode', 'plan_set_parallel']);
+    const parallel = PLAN_TOOLS.find((tool) => tool.name === 'plan_set_parallel');
+    expect(parallel?.inputSchema['required']).toEqual(['plan_id', 'max_parallel']);
+    expect(parallel?.description).toContain('running');
     // D159: any plan of this computer; plan_create says to change an existing plan instead of making a new one.
     expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_list')?.annotations.readOnlyHint).toBe(true);
     expect(PLAN_TOOLS.find((tool) => tool.name === 'plan_create')?.description).toContain('never create a new one: find it with plan_list');

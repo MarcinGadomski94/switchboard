@@ -322,6 +322,20 @@ export async function registerPlanRoutes(app: FastifyInstance, plans: PlanServic
     }
   });
 
+  // 2026-11-23 (plan_set_parallel): how many items run at once, on an existing plan; only that field, by any agent (D159).
+  app.put<{ Params: { planId: string } }>('/agent/v1/plans/:planId/parallel', async (request, reply) => {
+    try {
+      const session = agentSession(request);
+      await plans.agentPlan(session, request.params.planId);
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      if (body['maxConcurrency'] === undefined) return reply.code(422).send({ error: 'invalid', message: 'give maxConcurrency (1–16)' });
+      const who = (await plans.agentName(session)) ?? 'an agent';
+      return await plans.update(request.params.planId, { maxConcurrency: body['maxConcurrency'] }, who);
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
+
   app.put<{ Params: { planId: string } }>('/agent/v1/plans/:planId/mode', async (request, reply) => {
     try {
       await plans.agentPlan(agentSession(request), request.params.planId);

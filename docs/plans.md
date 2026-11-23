@@ -4,6 +4,10 @@ A **plan** groups todo items of one session (D68) into a dependency graph ("B af
 
 Plans is **always on** since 2.0 (D132; it was experimental, switchable and revertible like Team, D100). Contract → *Plans (D99)* in `docs/handoff/contracts/local-api.md`; the Plans page (web UI) → `docs/plans-ui.md`; removal → `docs/plans-removal.md`; decision → D99 in `docs/decisions.md`; assumptions → `.loop/questions.md` → *D99*.
 
+## Max agents at once (2026-11-23)
+
+*N* (1–16, 3 by default) is set at creation and changes any time before the plan is done: the developer on the v2 project page's header (**Max agents at once**) or the classic Plans page's Limits; an agent with `plan_set_parallel { plan_id, max_parallel }` (`PUT /agent/v1/plans/{planId}/parallel`, any agent, D159). Raising it starts waiting steps at once; lowering it never stops a running step (new starts wait until fewer run). The plan's activity says `Max agents at once: 3 → 16 (by <agent | you>)`. Decision → the 2026-11-23 follow-up under D99 / D129 in `docs/decisions.md`.
+
 ## Always on (D132)
 
 Plans was experimental behind Settings → Experimental → **Plans** (`experimental.plans`, off by default) until 2.0; it graduated to general release (D132, `docs/plans-removal.md`) and has **no switch** any more.

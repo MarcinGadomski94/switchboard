@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { type Plan, type PlanItem } from '../../../src/core/plans.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
-import { planAddDependency, planAddItem, planList, planRemoveDependency, planRemoveItem, planSetMode, planUpdateItem, registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
+import { planAddDependency, planAddItem, planList, planRemoveDependency, planRemoveItem, planSetMode, planSetParallel, planUpdateItem, registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
@@ -302,6 +302,35 @@ describe('D129 · plan_set_mode', () => {
     expect(r.sent).toEqual([{ sessionId: running.runSessionId, text: expect.stringContaining('merge the pull request into main yourself') }]);
     // No mode: the tool asks for the developer's choice and calls nothing.
     expect(text(await planSetMode(api, { plan_id: plan.id }))).toContain("merge_mode is the developer's choice");
+  });
+});
+
+describe('2026-11-23 · plan_set_parallel', () => {
+  it('another agent raises a running plan\'s limit: the waiting items start at once; the activity says who; out of range is refused', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Acme wide', targetBranch: 'feature/PROJ-200-acme', maxConcurrency: 1 });
+    for (const key of ['PROJ-1', 'PROJ-2', 'PROJ-3']) await r.plans.addItem(plan.id, { key, todo: { title: `Item ${key}`, plan: 'Do it.', estimateMinutes: 30 } });
+    await r.plans.startPlan(plan.id, { mergeMode: 'developer' });
+    await settle(r);
+    const started = async (): Promise<number> => (await r.plans.get(plan.id)).items.filter((item) => item.runSessionId !== null).length;
+    expect(await started()).toBe(1);
+    await r.store.sessions.update(r.otherId, { title: 'On-call helper' });
+    const api = helperApi(r, r.otherId);
+    const tooMany = await planSetParallel(api, { plan_id: plan.id, max_parallel: 17 });
+    expect(tooMany.isError).toBe(true);
+    const raised = await planSetParallel(api, { plan_id: plan.id, max_parallel: 3 });
+    expect(raised.isError, text(raised)).toBeFalsy();
+    expect(text(raised)).toContain('Up to 3 items now run at once.');
+    await settle(r);
+    expect(await started()).toBe(3);
+    const after = await r.plans.get(plan.id);
+    expect(after.maxConcurrency).toBe(3);
+    expect((after.activity ?? []).map((line) => line.text)).toContain('Max agents at once: 1 → 3 (by On-call helper)');
+    // The developer's own change (PUT /api/plans/{id}) says "by you"; lowering never stops a running item.
+    await r.plans.update(plan.id, { maxConcurrency: 1 });
+    await settle(r);
+    expect(await started()).toBe(3);
+    expect(((await r.plans.get(plan.id)).activity ?? [])[0]?.text).toBe('Max agents at once: 3 → 1 (by you)');
   });
 });
 

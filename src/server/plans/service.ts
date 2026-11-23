@@ -11,6 +11,7 @@ import {
   DEFAULT_PLAN_CONCURRENCY,
   DEFAULT_PLAN_USAGE_THRESHOLD,
   PLAN_CONCURRENCY_MAX,
+  maxAgentsChangedText,
   PLAN_ITEMS_MAX,
   PLAN_MERGE_MODES,
   PLAN_NOTES_MAX,
@@ -1018,6 +1019,12 @@ export class PlanService {
    * agent's session ("<title> (another agent) <what>"), published with the plan. The source's own
    * changes add nothing (as before).
    */
+  /** An agent's name as activity lines show it (its title, else its name); `null` for an unknown session. */
+  async agentName(sessionId: string): Promise<string | null> {
+    const session = await this.#store.sessions.get(sessionId);
+    return session ? (session.title ?? session.name) : null;
+  }
+
   async noteAgentEdit(sessionId: string, planId: string, what: string): Promise<void> {
     const plan = await this.#repo().get(planId);
     if (!plan || plan.sourceSessionId === sessionId) return;
@@ -1254,7 +1261,7 @@ export class PlanService {
    * `PUT /api/plans/{id}`: `title`, `baseBranch`, `maxConcurrency`, `usageThreshold`, `answers`,
    * `external` any time (before it is done or cancelled); `targetBranch` and `repos` only in a draft.
    */
-  async update(planId: string, body: unknown): Promise<Plan> {
+  async update(planId: string, body: unknown, by = 'you'): Promise<Plan> {
     const plan = await this.#plan(planId);
     const input = isRecord(body) ? body : {};
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
@@ -1278,6 +1285,10 @@ export class PlanService {
       }
     }
     await this.#repo().update(planId, patch);
+    // 2026-11-23: a changed limit of agents at once is a line of the plan's activity; raising it starts waiting items at once (the kick below).
+    if (patch['maxConcurrency'] !== undefined && patch['maxConcurrency'] !== plan.maxConcurrency) {
+      await this.#repo().addActivity(planId, { kind: 'settings', text: maxAgentsChangedText(plan.maxConcurrency, patch['maxConcurrency'] as number, by) }, PLAN_ACTIVITY_MAX);
+    }
     await this.#publish(planId);
     this.kick();
     if (patch['accounts'] !== undefined && JSON.stringify(patch['accounts']) !== JSON.stringify(plan.accounts)) await this.#accountsChanged(planId);

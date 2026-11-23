@@ -179,6 +179,7 @@ Every tool the `switchboard` server can expose declares a `title` and all four M
 | `plan_remove_item` | Plans | false | true | true | false |
 | `plan_remove_dependency` | Plans | false | true | true | false |
 | `plan_set_mode` | Plans | false | false | true | true |
+| `plan_set_parallel` | Plans | false | false | true | false |
 | `plan_propose_dependencies` | Plans | false | false | true | false |
 | `plan_jira_context` | Plans | true | false | true | true |
 | `memory_propose` | Project memory | false | false | true | false |

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import type { Plan, PlanItem, PlanMergeMode } from '../../../core/plans.ts';
+import { PLAN_CONCURRENCY_MAX, type Plan, type PlanItem, type PlanMergeMode } from '../../../core/plans.ts';
 import type { PlanJiraState } from '../../../core/plans-jira.ts';
 import { plansApi, refusalText } from '../../plans/api.ts';
 import { jiraApi } from '../../plans/jira/api.ts';
@@ -139,6 +139,16 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
     }
   };
 
+  const changeParallel = async (next: number): Promise<void> => {
+    if (!Number.isInteger(next) || next === plan.maxConcurrency) return;
+    try {
+      put(await plansApi.update(plan.id, { maxConcurrency: next }));
+      toast({ text: PROJECT_WORDS.maxAgentsSet(next) });
+    } catch (e) {
+      toast({ text: refusalText(e), tone: 'error' });
+    }
+  };
+
   const toggleAck = async (checked: boolean): Promise<void> => {
     if (!plan.mergeMode) return;
     try {
@@ -270,6 +280,21 @@ function ProjectBody({ plan, jira, proposals, todos, put, reload }: { readonly p
               ...options.map((option) => ({ value: option, label: MODE_LABELS[option], disabled: started && plan.mergeMode !== null && (option === 'none') !== (plan.mergeMode === 'none') })),
             ]}
           />
+          {/* 2026-11-23: how many steps run at once, before Start and while it runs (raising it starts waiting steps at once). */}
+          <label className="v2-muted v2-p-mode-label" htmlFor="v2-project-parallel">
+            {PROJECT_WORDS.maxAgents}:
+          </label>
+          <span data-tour="v2-project-parallel" style={{ display: 'inline-flex' }}>
+            <Select
+              id="v2-project-parallel"
+              className="v2-p-mode-select"
+              value={String(plan.maxConcurrency)}
+              disabled={finished || blocked !== null}
+              onChange={(event) => void changeParallel(Number(event.currentTarget.value))}
+              data-testid="v2-project-parallel"
+              options={Array.from({ length: PLAN_CONCURRENCY_MAX }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+            />
+          </span>
           {plan.state === 'draft' ? (
             <Button variant="primary" icon="play" disabled={plan.items.length === 0 || blocked !== null} onClick={() => setOverlay({ kind: 'start' })} data-testid="v2-project-start">
               {PROJECT_WORDS.start}

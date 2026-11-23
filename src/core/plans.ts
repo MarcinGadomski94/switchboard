@@ -192,7 +192,12 @@ export interface PlanSidebarFolderRef {
  * D151: the kinds of a project's activity line (`runs-folder`: its runs folder was moved; D159
  * `agent-edit`: an agent that is not the plan's source changed it).
  */
-export type PlanActivityKind = 'runs-folder' | 'agent-edit';
+export type PlanActivityKind = 'runs-folder' | 'agent-edit' | 'settings';
+
+/** 2026-11-23: the activity line of a changed limit of agents at once ("Max agents at once: 3 → 16 (by you)"). */
+export function maxAgentsChangedText(from: number, to: number, by: string): string {
+  return `Max agents at once: ${from} → ${to} (by ${by})`;
+}
 
 /** D159 · one plan of this machine as the agent's `plan_list` shows it. */
 export interface AgentPlanSummary {
@@ -1424,6 +1429,20 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
     },
     // Open-world like plan_start: the mode decides whether agents merge PRs, and the protected-target check asks gh.
     annotations: { title: "Change a plan's merge mode", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
+    name: 'plan_set_parallel',
+    description: `Change how many items of a plan of this computer run at once (max_parallel, 1–${PLAN_CONCURRENCY_MAX}; plans start with 3). Works on a draft, a running or a paused plan, by any agent (not only the plan's own). Raising it starts more waiting items at once; lowering it never stops a running item: new starts wait until fewer run. The plan's activity records the change.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_id: PLAN_ID,
+        max_parallel: { type: 'integer', minimum: 1, maximum: PLAN_CONCURRENCY_MAX, description: `At most this many items run at once (1–${PLAN_CONCURRENCY_MAX}).` },
+      },
+      required: ['plan_id', 'max_parallel'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Change how many plan items run at once', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ];
 

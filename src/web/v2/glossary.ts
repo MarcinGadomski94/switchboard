@@ -1865,6 +1865,9 @@ export const PROJECT_WORDS = {
   board: 'Board',
   graph: 'Graph',
   whoApproves: 'Who approves combining',
+  /** 2026-11-23: how many steps run at once (1–16), changeable before Start and while it runs. */
+  maxAgents: 'Max agents at once',
+  maxAgentsSet: (n: number): string => `Up to ${n} ${n === 1 ? 'agent' : 'agents'} at once.`,
   protectedAck: (branch: string): string => `Agents will combine straight into ${branch}`,
   protectedAckNote: 'Needed before agents may combine into a protected branch.',
   start: 'Start project',

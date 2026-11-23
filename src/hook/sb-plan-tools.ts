@@ -253,6 +253,17 @@ export async function planSetMode(api: AgentApi, input: ToolInput): Promise<Call
   return request(api, 'PUT', planRoute(id, '/mode'), body, (answer) => (isPlan(answer) ? textResult(`The merge mode is ${answer.mergeMode ?? mode}.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
+/** 2026-11-23 · `plan_set_parallel`: how many items run at once, on an existing plan (`PUT /agent/v1/plans/{id}/parallel`). */
+export async function planSetParallel(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const max = input['max_parallel'];
+  if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > PLAN_CONCURRENCY_MAX) return textResult(`Give max_parallel: a whole number from 1 to ${PLAN_CONCURRENCY_MAX}.`, true);
+  return request(api, 'PUT', planRoute(id, '/parallel'), { maxConcurrency: max }, (answer) =>
+    isPlan(answer) ? textResult(`Up to ${answer.maxConcurrency} items now run at once.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true),
+  );
+}
+
 /** D115 · `plan_set_solutions`: the agent picks its items' repositories; applied at once. */
 export async function planSetSolutions(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
   const id = planIdOf(input);
@@ -503,6 +514,20 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
       annotations: { title: setModeTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     (input) => serial(() => planSetMode(api, input)),
+  );
+  const setParallelTool = tool('plan_set_parallel');
+  server.registerTool(
+    'plan_set_parallel',
+    {
+      title: setParallelTool.annotations.title,
+      description: setParallelTool.description,
+      inputSchema: inputSchema('plan_set_parallel', {
+        plan_id: field.text('plan_set_parallel', 'plan_id'),
+        max_parallel: z.int().min(1).max(PLAN_CONCURRENCY_MAX).describe(about('plan_set_parallel', 'max_parallel')),
+      }),
+      annotations: { title: setParallelTool.annotations.title, readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    (input) => serial(() => planSetParallel(api, input)),
   );
   // D99-Jira-q1: proposals only (src/core/plans-jira.ts).
   const proposeSchema = PLAN_PROPOSE_TOOL.inputSchema;

@@ -210,6 +210,8 @@ const V2_5_7 = '2.5.7';
 const V2_5_8 = '2.5.8';
 /** The version D185 (a project before Start) and D186 (a pin is a shortcut, not a place) ship in (adjust if it ships later). */
 const V2_5_11 = '2.5.11';
+/** The version a plan's Max agents at once on the v2 project page ships in (adjust if it ships later). */
+const V2_5_13 = '2.5.13';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2267,6 +2269,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-rail-pins', 'v2-tree-folders'],
         v2Route: '/agents',
         missing: 'Pin an agent first (its ⋯ menu › Pin to sidebar).',
+      },
+    ],
+  },
+  // 2026-11-23: a plan's Max agents at once, changeable on an existing plan (docs/plans.md → Max agents at once).
+  {
+    id: 'plan-parallel',
+    decision: 'D99',
+    version: V2_5_13,
+    title: 'Change how many agents a project runs at once',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'max',
+        title: 'Max agents at once',
+        what: 'A project’s page has Max agents at once (1–16) in its header, before Start and while it runs. Raising it starts waiting steps right away; lowering it never stops a running one. Agents can change it too.',
+        todo: ['Open a project and pick a number in Max agents at once.'],
+        anchors: ['v2-project-parallel'],
+        v2Route: '/projects',
+        missing: 'Open one of your projects: the choice is in its header.',
       },
     ],
   },

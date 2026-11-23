@@ -64,6 +64,8 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean, boolean]> = 
   plan_remove_item: [false, true, true, false],
   plan_remove_dependency: [false, true, true, false],
   plan_set_mode: [false, false, true, true],
+  // 2026-11-23: how many items run at once, on an existing plan.
+  plan_set_parallel: [false, false, true, false],
   plan_propose_dependencies: [false, false, true, false],
   plan_jira_context: [true, false, true, true],
   memory_propose: [false, false, true, false],
