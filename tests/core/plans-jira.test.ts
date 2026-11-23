@@ -79,12 +79,12 @@ describe('D99-Jira · route classification', () => {
   });
 });
 
-describe('D117 · Jira "Blocks" direction (real REST v3 shape)', () => {
+describe('Jira "Blocks" direction (Jira’s documented REST v3 shape; 2026-11-23, D117 reversed)', () => {
   const BLOCKS = { name: 'Blocks', inward: 'is blocked by', outward: 'blocks' };
   const issue = (key: string, links: unknown[], parent = 'PROJ-1'): JiraIssueInput => ({ key, fields: { summary: `Acme ${key}`, issuelinks: links, parent: { key: parent } } });
-  // "X blocks Y": on X the entry carries Y under `inwardIssue`; on Y it carries X under `outwardIssue`.
-  const blocks = (other: string) => ({ type: BLOCKS, inwardIssue: { key: other } });
-  const blockedBy = (other: string) => ({ type: BLOCKS, outwardIssue: { key: other } });
+  // "X blocks Y": on X the entry carries Y under `outwardIssue`; on Y it carries X under `inwardIssue`.
+  const blocks = (other: string) => ({ type: BLOCKS, outwardIssue: { key: other } });
+  const blockedBy = (other: string) => ({ type: BLOCKS, inwardIssue: { key: other } });
   const preview = (children: JiraIssueInput[]) => buildJiraPreview({ baseUrl: 'https://acme.atlassian.net', epic: { key: 'PROJ-1', fields: { summary: 'Acme epic' } }, children, acceptanceField: null });
 
   it('reads each side of one link the way Jira shows it', () => {

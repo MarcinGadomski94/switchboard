@@ -805,9 +805,10 @@ describe('D99-Jira-q1 · proposed order (unit)', () => {
     const other = await r.store.sessions.create({ name: 'other', claudeSessionId: 'c-other', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: [], worktrees: false });
     expect((await agent(other.id, { proposals: [{ from: 'PROJ-11', to: 'PROJ-15', reason: 'x' }] })).statusCode).toBe(404);
     expect((await agent(r.sourceId, { proposals: [] })).statusCode).toBe(422);
-    const made = await agent(r.sourceId, { proposals: [{ from: 'PROJ-11', to: 'PROJ-15', reason: 'needs the cart' }, { from: 'PROJ-13', to: 'PROJ-12', reason: 'cycle' }, { from: 'proj-11', to: 'PROJ-15', reason: 'again' }] });
+    // A genuine cycle through three items (PROJ-11 → 12 → 13 → 11): a direct reverse would be swapped (2026-11-23).
+    const made = await agent(r.sourceId, { proposals: [{ from: 'PROJ-11', to: 'PROJ-15', reason: 'needs the cart' }, { from: 'PROJ-13', to: 'PROJ-11', reason: 'cycle' }, { from: 'proj-11', to: 'PROJ-15', reason: 'again' }] });
     expect(made.statusCode, made.body).toBe(201);
-    expect(made.json().added.map((entry: { text: string }) => entry.text)).toEqual(['PROJ-15 should wait on PROJ-11', 'PROJ-12 should wait on PROJ-13']);
+    expect(made.json().added.map((entry: { text: string }) => entry.text)).toEqual(['PROJ-15 should wait on PROJ-11', 'PROJ-11 should wait on PROJ-13']);
     expect(made.json().skipped).toEqual([{ from: 'proj-11', to: 'PROJ-15', why: 'proposed before' }]);
     const all = await call(r, 'POST', `/api/plans/${planId}/proposals/accept-all`);
     expect(all.status).toBe(200);
@@ -823,7 +824,7 @@ describe('D99-Jira-q1 · proposed order (unit)', () => {
 
 /** The embedded fields of the first link's other issue. */
 function link0Fields(links: Array<Record<string, unknown>>): unknown {
-  return (links[0]?.['inwardIssue'] as { fields?: unknown } | undefined)?.fields;
+  return (links[0]?.['outwardIssue'] as { fields?: unknown } | undefined)?.fields;
 }
 
 /** D117: a chain epic: backend → front → E2E tests (each blocks the next), plus an unlinked docs item. */
@@ -840,12 +841,12 @@ function chainEpic(): FakeIssue[] {
 describe('D117 · Jira "Blocks" direction', () => {
   const states = async (r: Rig, planId: string) => Object.fromEntries((await r.plans.get(planId)).items.map((entry) => [entry.key, entry.state]));
 
-  it('the fake answers real Jira\'s shape: "X blocks Y" is inwardIssue Y on X and outwardIssue X on Y', async () => {
+  it('the fake answers real Jira\'s shape: "X blocks Y" is outwardIssue Y on X and inwardIssue X on Y', async () => {
     const r = await setup({ issues: chainEpic() });
     const answer = await fetch(`${r.fake.url}/rest/api/3/issue/PROJ-21?fields=issuelinks`, { headers: { authorization: `Basic ${Buffer.from(`${r.fake.email}:${r.fake.token}`).toString('base64')}` } });
     const links = ((await answer.json()) as { fields: { issuelinks: Array<Record<string, unknown>> } }).fields.issuelinks.filter((link) => (link['type'] as { name: string }).name === 'Blocks');
     // Real Jira also embeds the other issue's summary and status (D118 reads them for outside links).
-    expect(links.map((link) => [(link['inwardIssue'] as { key?: string } | undefined)?.key, link['outwardIssue']])).toEqual([['PROJ-22', undefined]]);
+    expect(links.map((link) => [(link['outwardIssue'] as { key?: string } | undefined)?.key, link['inwardIssue']])).toEqual([['PROJ-22', undefined]]);
     expect(link0Fields(links)).toMatchObject({ summary: 'Acme tracking front', status: { name: 'To Do' } });
   });
 
@@ -911,6 +912,59 @@ describe('D117 · Jira "Blocks" direction', () => {
     expect(preview.body.removed).toEqual([]);
     expect(preview.body.kept.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-21 waits on PROJ-22']);
     expect(preview.body.cycles.map((edge: { text: string }) => edge.text)).toEqual(['PROJ-22 waits on PROJ-21']);
+  });
+});
+
+describe('2026-11-23 · Jira "blocks" read the documented way; accepting a proposal turns a reversed dependency round', () => {
+  it('imports "X blocks Y" as Y waits on X (both link sides)', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const imported = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    const byId = new Map<string, string>(imported.body.plan.items.map((entry: { key: string; id: string }) => [entry.id, entry.key]));
+    const edges = (await r.plans.get(imported.body.plan.id)).edges.map((edge) => `${byId.get(edge.to)} waits on ${byId.get(edge.from)}`).sort();
+    expect(edges).toEqual(['PROJ-22 waits on PROJ-21', 'PROJ-23 waits on PROJ-22']);
+  });
+
+  it('Accept all swaps every reversed dependency (a batch), records it, and still refuses a real cycle', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const imported = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    const planId: string = imported.body.plan.id;
+    const ids: Record<string, string> = Object.fromEntries(imported.body.plan.items.map((entry: { key: string; id: string }) => [entry.key, entry.id]));
+    const id = (key: string): string => ids[key] as string;
+    // As a wrongly-read import left them: PROJ-21 waits on PROJ-22, PROJ-22 waits on PROJ-23.
+    await r.plans.removeEdge(planId, id('PROJ-21'), id('PROJ-22'));
+    await r.plans.removeEdge(planId, id('PROJ-22'), id('PROJ-23'));
+    await r.plans.addEdge(planId, { from: id('PROJ-22'), to: id('PROJ-21') });
+    await r.plans.addEdge(planId, { from: id('PROJ-23'), to: id('PROJ-22') });
+    await r.jira.propose(r.sourceId, planId, {
+      proposals: [
+        { from: 'PROJ-21', to: 'PROJ-22', reason: 'Jira: 21 blocks 22' },
+        { from: 'PROJ-22', to: 'PROJ-23', reason: 'Jira: 22 blocks 23' },
+        // After the swaps 21 → 22 → 23: "21 waits on 23" closes a real three-item cycle.
+        { from: 'PROJ-23', to: 'PROJ-21', reason: 'a real loop' },
+      ],
+    });
+    const all = await call(r, 'POST', `/api/plans/${planId}/proposals/accept-all`);
+    expect(all.status).toBe(200);
+    expect(all.body.proposals.map((entry: { state: string }) => entry.state)).toEqual(['accepted', 'accepted', 'pending']);
+    expect(all.body.refused).toHaveLength(1);
+    expect(all.body.refused[0].reason).toContain('cycle');
+    const byId = new Map(Object.entries(ids).map(([key, value]) => [value, key]));
+    expect((await r.plans.get(planId)).edges.map((edge) => `${byId.get(edge.to)} waits on ${byId.get(edge.from)}`).sort()).toEqual(['PROJ-22 waits on PROJ-21', 'PROJ-23 waits on PROJ-22']);
+    const jira = await call(r, 'GET', `/api/plans/${planId}/jira`);
+    expect(JSON.stringify(jira.body)).toContain('Reversed: PROJ-22 now waits on PROJ-21');
+  });
+
+  it('a direct reverse added by hand is refused with how to turn it round', async () => {
+    const r = await setup({ issues: chainEpic() });
+    const imported = await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/import`, { epic: 'PROJ-20', targetBranch: 'feature/PROJ-20-acme-tracking' });
+    const planId: string = imported.body.plan.id;
+    const ids: Record<string, string> = Object.fromEntries(imported.body.plan.items.map((entry: { key: string; id: string }) => [entry.key, entry.id]));
+    const refused = await r.plans.addEdge(planId, { from: ids['PROJ-22'], to: ids['PROJ-21'] }).then(
+      () => null,
+      (error: unknown) => error as { status?: number; message?: string },
+    );
+    expect(refused?.status).toBe(409);
+    expect(String(refused?.message)).toContain('remove that dependency first');
   });
 });
 

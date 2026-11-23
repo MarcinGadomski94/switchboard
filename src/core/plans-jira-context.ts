@@ -141,11 +141,10 @@ export function parseJiraRemoteLink(raw: unknown): JiraContextRemoteLink | null 
 
 /**
  * The links of an issue to issues not in `exclude` (the epic and its children), of any type, with
- * the phrase Jira shows **on this issue** (D117's rule, generalised): a link entry carries the
- * other issue under the side that issue is on, and this issue reads the opposite side's phrase.
- * So on issue I, `{ outwardIssue: O }` reads "I <type.inward> O" (Blocks: "I is blocked by O") and
- * `{ inwardIssue: N }` reads "I <type.outward> N" (Blocks: "I blocks N"). Real Jira gives the other
- * issue's `fields.summary` and `fields.status` in the entry.
+ * the phrase Jira shows **on this issue** (2026-11-23, Jira's documented shape; D117 had it the other
+ * way round): on issue I, `{ outwardIssue: O }` reads "I <type.outward> O" (Blocks: "I blocks O") and
+ * `{ inwardIssue: N }` reads "I <type.inward> N" (Blocks: "I is blocked by N"). Real Jira gives the
+ * other issue's `fields.summary` and `fields.status` in the entry.
  */
 export function jiraOutsideLinks(issue: JiraIssueInput, exclude: ReadonlySet<string>): JiraContextLink[] {
   const out: JiraContextLink[] = [];
@@ -159,8 +158,8 @@ export function jiraOutsideLinks(issue: JiraIssueInput, exclude: ReadonlySet<str
     const other = outward ?? inward;
     const key = str(other?.['key'])?.toUpperCase();
     if (!other || !key || key === issue.key || exclude.has(key)) continue;
-    // outwardIssue → this issue is on the inward side: the type's inward phrase (D117).
-    const phrase = (outward ? str(type?.['inward']) : str(type?.['outward'])) ?? str(type?.['name'])?.toLowerCase() ?? 'is linked to';
+    // outwardIssue O → "this <outward> O" (Blocks: "this blocks O"); inwardIssue N → "this <inward> N".
+    const phrase = (outward ? str(type?.['outward']) : str(type?.['inward'])) ?? str(type?.['name'])?.toLowerCase() ?? 'is linked to';
     const fields = record(other['fields']);
     const summary = str(fields?.['summary']);
     const status = str(record(fields?.['status'])?.['name']);

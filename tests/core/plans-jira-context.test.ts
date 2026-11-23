@@ -52,16 +52,16 @@ function cartIssue(): JiraIssueInput {
       assignee: { displayName: 'Ada Acme' },
       components: [{ name: 'acme-front' }],
       issuelinks: [
-        // "PROJ-11 blocks PROJ-12": on PROJ-12 an outwardIssue (inside the epic: not "outside").
-        { id: '1', type: BLOCKS, outwardIssue: other('PROJ-11', 'Cart API', 'Done') },
+        // "PROJ-11 blocks PROJ-12": on PROJ-12 an inwardIssue (inside the epic: not "outside").
+        { id: '1', type: BLOCKS, inwardIssue: other('PROJ-11', 'Cart API', 'Done') },
         // "PROJ-99 blocks PROJ-12": on PROJ-12 Jira says "is blocked by PROJ-99".
-        { id: '2', type: BLOCKS, outwardIssue: other('PROJ-99', 'Mail service', 'In Progress') },
-        // "PROJ-12 blocks PROJ-97": on PROJ-12 an inwardIssue, "blocks PROJ-97".
-        { id: '3', type: BLOCKS, inwardIssue: other('PROJ-97', 'Acme analytics', 'To Do') },
-        // "PROJ-12 clones PROJ-98": on PROJ-12 an inwardIssue, read with the outward phrase "clones".
-        { id: '4', type: CLONERS, inwardIssue: other('PROJ-98', 'Old cart page', 'Done') },
-        // "PROJ-96 clones PROJ-12": on PROJ-12 an outwardIssue, "is cloned by PROJ-96".
-        { id: '5', type: CLONERS, outwardIssue: other('PROJ-96', 'Cart page v3', 'To Do') },
+        { id: '2', type: BLOCKS, inwardIssue: other('PROJ-99', 'Mail service', 'In Progress') },
+        // "PROJ-12 blocks PROJ-97": on PROJ-12 an outwardIssue, "blocks PROJ-97".
+        { id: '3', type: BLOCKS, outwardIssue: other('PROJ-97', 'Acme analytics', 'To Do') },
+        // "PROJ-12 clones PROJ-98": on PROJ-12 an outwardIssue, read with the outward phrase "clones".
+        { id: '4', type: CLONERS, outwardIssue: other('PROJ-98', 'Old cart page', 'Done') },
+        // "PROJ-96 clones PROJ-12": on PROJ-12 an inwardIssue, "is cloned by PROJ-96".
+        { id: '5', type: CLONERS, inwardIssue: other('PROJ-96', 'Cart page v3', 'To Do') },
         // To the epic: never "outside".
         { id: '6', type: { name: 'Relates', inward: 'relates to', outward: 'relates to' }, outwardIssue: { id: 'PROJ-10', key: 'PROJ-10' } },
       ],

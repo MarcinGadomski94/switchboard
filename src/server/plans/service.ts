@@ -1479,7 +1479,9 @@ export class PlanService {
     if (cycle) {
       const byId = new Map(items.map((item) => [item.id, item]));
       const names = cycle.map((id) => (byId.get(id) ? itemLabel(byId.get(id) as PlanItemRecord) : id));
-      throw new PlanError(409, 'cycle', `that dependency would make a cycle: ${names.join(' → ')} (each waits for the next)`);
+      // 2026-11-23: a direct reverse (A → B → A) says how to turn it round.
+      const hint = cycle.length === 3 ? `; ${names[0]} already waits on ${names[1]}: remove that dependency first to turn it round` : '';
+      throw new PlanError(409, 'cycle', `that dependency would make a cycle: ${names.join(' → ')} (each waits for the next)${hint}`);
     }
     await this.#repo().addEdge(planId, from, to);
   }

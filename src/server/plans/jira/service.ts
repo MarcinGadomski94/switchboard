@@ -1264,9 +1264,24 @@ export class PlanJiraService {
         await db.decideProposal(entry.id, { state: 'rejected', note: null });
         continue;
       }
+      // 2026-11-23: a proposal that is the exact reverse of a dependency the plan has (a Jira link
+      // imported the wrong way round) swaps it: the old edge goes, the proposed one comes, in one
+      // step (put back if the proposed one still makes a cycle through other items).
+      const current = await this.#plan(planId);
+      const reverse = current.edges.some((edge) => edge.from === entry.toItemId && edge.to === entry.fromItemId);
       try {
-        await this.#options.plans.addEdge(planId, { from: entry.fromItemId, to: entry.toItemId });
+        if (reverse) await this.#options.plans.removeEdge(planId, entry.toItemId, entry.fromItemId);
+        try {
+          await this.#options.plans.addEdge(planId, { from: entry.fromItemId, to: entry.toItemId });
+        } catch (error) {
+          if (reverse) await this.#options.plans.addEdge(planId, { from: entry.toItemId, to: entry.fromItemId });
+          throw error;
+        }
         await db.decideProposal(entry.id, { state: 'accepted', note: null });
+        if (reverse) {
+          const label = (id: string): string => current.items.find((item) => item.id === id)?.key ?? current.items.find((item) => item.id === id)?.title ?? id;
+          await db.addActivity(planId, { itemId: entry.toItemId, key: null, kind: 'import', text: `Reversed: ${label(entry.toItemId)} now waits on ${label(entry.fromItemId)} (an accepted proposal; it waited the other way round)` });
+        }
       } catch (error) {
         if (!(error instanceof PlanError)) throw error;
         await db.decideProposal(entry.id, { state: 'pending', note: error.message });

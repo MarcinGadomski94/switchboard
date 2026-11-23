@@ -360,15 +360,15 @@ export function isBlocksLink(type: unknown): boolean {
 /**
  * The "blocks" links of an issue, as "`to` waits on `from`" pairs (both directions read).
  *
- * Jira REST v3 (`fields=issuelinks`; D117, the D99 direction fix): a link entry on an issue
- * carries the **other** issue, under the side that other issue is on, and Jira shows the
- * **opposite** side's verb. For the type `{ name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }`:
- * - on X ("X blocks Y" in Jira's UI) the entry is `{ inwardIssue: Y }`: Y waits on X;
- * - on Y ("Y is blocked by X") the entry is `{ outwardIssue: X }`: Y waits on X.
+ * Jira REST v3 (`fields=issuelinks`), its documented shape (2026-11-23: D117 had read it the
+ * other way round, and a real epic imported every "blocks" link reversed). For the type
+ * `{ name: 'Blocks', inward: 'is blocked by', outward: 'blocks' }`:
+ * - on X ("X blocks Y" in Jira's UI) the entry is `{ outwardIssue: Y }`: Y waits on X;
+ * - on Y ("Y is blocked by X") the entry is `{ inwardIssue: X }`: Y waits on X.
  *
- * So on issue I, `outwardIssue: O` means "I is blocked by O" (I waits on O) and
- * `inwardIssue: N` means "I blocks N" (N waits on I). Both sides of one link give the same
- * pair; {@link buildJiraPreview} keeps it once.
+ * So on issue I, `outwardIssue: O` means "I blocks O" (O waits on I) and `inwardIssue: N`
+ * means "I is blocked by N" (I waits on N). Both sides of one link give the same pair;
+ * {@link buildJiraPreview} keeps it once.
  */
 export function blocksLinks(issue: JiraIssueInput): Array<{ readonly from: string; readonly to: string }> {
   const out: Array<{ from: string; to: string }> = [];
@@ -378,10 +378,10 @@ export function blocksLinks(issue: JiraIssueInput): Array<{ readonly from: strin
     if (!link || !isBlocksLink(link['type'])) continue;
     const outward = nameOf(link['outwardIssue'], 'key');
     const inward = nameOf(link['inwardIssue'], 'key');
-    // `outwardIssue: O` = "this issue is blocked by O": this one waits on O.
-    if (outward) out.push({ from: outward.toUpperCase(), to: issue.key });
-    // `inwardIssue: N` = "this issue blocks N": N waits on this one.
-    if (inward) out.push({ from: issue.key, to: inward.toUpperCase() });
+    // `outwardIssue: O` = "this issue blocks O": O waits on this one.
+    if (outward) out.push({ from: issue.key, to: outward.toUpperCase() });
+    // `inwardIssue: N` = "this issue is blocked by N": this one waits on N.
+    if (inward) out.push({ from: inward.toUpperCase(), to: issue.key });
   }
   return out;
 }

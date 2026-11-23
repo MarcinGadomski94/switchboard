@@ -158,13 +158,12 @@ function commentJson(comment: FakeIssue['comments'][number]): Record<string, unk
 
 function issueJson(issue: FakeIssue, all: Map<string, FakeIssue>, fields: string[] | null): Record<string, unknown> {
   const links: unknown[] = [];
-  // Real Jira's shape (D117): an entry carries the OTHER issue, under the opposite side's verb.
-  // "X blocks Y" is `inwardIssue: Y` on X and `outwardIssue: X` on Y.
-  for (const target of issue.blocks ?? []) links.push({ id: `${issue.key}>${target}`, type: FAKE_LINK_TYPES.Blocks, inwardIssue: linked(target, all) });
-  for (const other of all.values()) if ((other.blocks ?? []).includes(issue.key)) links.push({ id: `${other.key}>${issue.key}`, type: FAKE_LINK_TYPES.Blocks, outwardIssue: linked(other.key, all) });
-  // D118: other types the same way: "X clones Y" is `inwardIssue: Y` on X and `outwardIssue: X` on Y.
-  for (const link of issue.links ?? []) links.push({ id: `${issue.key}~${link.type}~${link.to}`, type: FAKE_LINK_TYPES[link.type], inwardIssue: linked(link.to, all) });
-  for (const other of all.values()) for (const link of other.links ?? []) if (link.to === issue.key) links.push({ id: `${other.key}~${link.type}~${issue.key}`, type: FAKE_LINK_TYPES[link.type], outwardIssue: linked(other.key, all) });
+  // Real Jira's documented shape (2026-11-23; D117 had it reversed): "X blocks Y" is `outwardIssue: Y` on X and `inwardIssue: X` on Y.
+  for (const target of issue.blocks ?? []) links.push({ id: `${issue.key}>${target}`, type: FAKE_LINK_TYPES.Blocks, outwardIssue: linked(target, all) });
+  for (const other of all.values()) if ((other.blocks ?? []).includes(issue.key)) links.push({ id: `${other.key}>${issue.key}`, type: FAKE_LINK_TYPES.Blocks, inwardIssue: linked(other.key, all) });
+  // D118: other types the same way: "X clones Y" is `outwardIssue: Y` on X and `inwardIssue: X` on Y.
+  for (const link of issue.links ?? []) links.push({ id: `${issue.key}~${link.type}~${link.to}`, type: FAKE_LINK_TYPES[link.type], outwardIssue: linked(link.to, all) });
+  for (const other of all.values()) for (const link of other.links ?? []) if (link.to === issue.key) links.push({ id: `${other.key}~${link.type}~${issue.key}`, type: FAKE_LINK_TYPES[link.type], inwardIssue: linked(other.key, all) });
   // A link of another type, never a dependency.
   links.push({ id: `${issue.key}~rel`, type: FAKE_LINK_TYPES.Relates, outwardIssue: linked('PROJ-10', all) });
   const every: Record<string, unknown> = {
