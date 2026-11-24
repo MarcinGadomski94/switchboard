@@ -212,6 +212,8 @@ const V2_5_8 = '2.5.8';
 const V2_5_11 = '2.5.11';
 /** The version a plan's Max agents at once on the v2 project page ships in (adjust if it ships later). */
 const V2_5_13 = '2.5.13';
+/** The version D188 (the Tasks page by agent) ships in (adjust if it ships later). */
+const V2_5_14 = '2.5.14';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2288,6 +2290,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-project-parallel'],
         v2Route: '/projects',
         missing: 'Open one of your projects: the choice is in its header.',
+      },
+    ],
+  },
+  // D188: the Tasks page by agent (docs/todos.md → The Tasks page).
+  {
+    id: 'tasks-by-agent',
+    decision: 'D188',
+    version: V2_5_14,
+    title: 'See one agent’s tasks',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'filter',
+        title: 'Pick the agents, or group by agent',
+        what: 'On Tasks, the agents button shows only the agents you pick (find one by name or computer); Group by agent splits the board into a section per agent. Both are remembered in this browser, and an agent’s ⋯ › Its tasks opens the page on that agent.',
+        todo: ['Open Tasks and pick an agent with the agents button.'],
+        anchors: ['v2-tasks-agents'],
+        v2Route: '/tasks',
+        missing: 'The button shows once an agent has a task.',
       },
     ],
   },

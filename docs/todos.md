@@ -110,6 +110,14 @@ Developer request 2026-10-08 (rulings: `docs/decisions.md` → D76): an item can
 - **Phones (≤ 767 px, ruling 2026-10-08): swipeable columns**: the four columns side by side, one per screen width (horizontal scroll snap), under a **tab strip** (the four names and their counts) that follows the swipe and scrolls to a column when tapped; the last column is remembered (`sb.todos.boardColumn`). A card moves with **⋯ → Move to**, or by a **long-press drag onto a tab** (the tab lights up; the drop moves it into that column). A card's ⋯ menu is placed in the window there (the sideways-scrolling strip would clip it) and closes when a scroll moves its ⋯. Tablets and short windows: the board scrolls as a whole (the four columns side by side, sideways inside the board when narrower than four); desktop unchanged.
 - Under the board: **Actual vs. estimate (completed)**, one row per session with recorded actuals (below).
 
+## The v2 Tasks page by agent (D188)
+- **The agents button** (Tasks' bar, `data-tour="v2-tasks-agents"`): a searchable list of the agents that have tasks (name · its computer · its tasks and how many are not done), each a check box; picking some shows only their lists' tasks. "All agents" is the default; the picked ones show as chips under the bar (✕ on each, **Show every agent**). A task belongs to the agent whose list holds it (the card's agent line); one run by another agent stays under its own list's agent. An agent that no longer has tasks (finished, archived) drops out of the filter by itself, so it never hides the whole board.
+- **Remembered and linkable:** the pick is kept in this browser (`v2.tasks.agents`) and carried in the address (`/tasks?agent=<id>[,…]`); the address wins when it names agents. An agent's ⋯ menu has **Its tasks**, which opens `/tasks?agent=<its id>`.
+- **Group by agent** (a switch beside it, remembered: `v2.tasks.group`): the board splits into one section per agent (its name, its computer, "N tasks · M not done"), each with the same four columns; a section folds (remembered: `v2.tasks.folded`). It works with the filter. The estimates' accuracy line follows the agents shown.
+- **Counts stay whole:** the rail's Tasks badge and the unfinished count count every agent (D187's rules), whatever the page shows.
+- **Phones:** the agents list opens as a bottom sheet; grouped sections stack, each showing the column picked above.
+- Rules: `src/web/v2/agents/tasks/tasks-agents.ts` (`taskAgents`, `agentsFromSearch`, `agentsSearch`, `filterGroups`, `liveFilter`, `agentSections`); tests `tests/web/v2-tasks-agents.test.ts`.
+
 ## Actual vs. estimate (D78, D147)
 Two times per item, both kept (D147, `docs/decisions.md`): its **working time** (what it took: the card's "took", the agents' calibration and Insights' estimate accuracy) and its **open time** (D78's measure, from in progress to done: for planning and Insights).
 

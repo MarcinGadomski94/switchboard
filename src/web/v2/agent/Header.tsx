@@ -20,7 +20,8 @@ import { actionErrorText, attachWarningText, pauseButton, remoteToggle, rootLine
 import { stoppableBackground } from '../../views/session/stop.ts';
 import { accountLine, accountLineTitle } from '../shared/AccountChoice.tsx';
 import { Button, Chip, Dialog, Icon, IconButton, Menu, type MenuItem, Popover, Select, StatusBadge, Tabs, TextArea, useToast } from '../components/index.ts';
-import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, CLI_MODE_WORDS, PROFILE_WORDS, WORDS } from '../glossary.ts';
+import { AGENT_TAB_LABELS, AGENT_WORDS, AGENTS_WORDS, CLI_MODE_WORDS, PROFILE_WORDS, TASKS_WORDS, WORDS } from '../glossary.ts';
+import { agentTasksPath } from '../agents/tasks/tasks-agents.ts';
 import { MoveToProfileDialog } from '../profiles/Profiles.tsx';
 import { V2Link, useV2Router } from '../nav.tsx';
 import type { AgentTab } from '../routes.ts';
@@ -698,10 +699,13 @@ export function AgentMenuButton({ data, extra = [] }: { readonly data: AgentData
   // D165: Move to profile… (an agent of this computer or a paired one; the target's password when it has one).
   // 2026-11-17: a conversation (D106 chat) too: it belongs to a profile like any agent, and the server moves it the same way.
   const profileItems: MenuItem[] = session ? [{ id: 'user-profile', label: PROFILE_WORDS.moveMenu, icon: 'agents', onSelect: () => setMovingProfile(true) }] : [];
+  // D188: its tasks on the Tasks page (filtered to this agent).
+  const taskItems: MenuItem[] = session ? [{ id: 'agent-tasks', label: TASKS_WORDS.agentTasks, icon: 'task', onSelect: () => navigate(agentTasksPath(sessionId)) }] : [];
   const items: MenuItem[] = [
     ...extra,
     ...pinItems,
     ...profileItems,
+    ...taskItems,
     ...specs.map((spec): MenuItem => ('sep' in spec ? { separator: true, id: `sep-${spec.sep}` } : { id: spec.id, label: spec.label, icon: spec.icon, ...(spec.disabledReason ? { disabledReason: spec.disabledReason } : {}), ...(spec.danger ? { danger: true } : {}), onSelect: () => select(spec.id) })),
   ];
   return (

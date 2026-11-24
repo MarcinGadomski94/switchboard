@@ -15,12 +15,14 @@ import { usePlans } from '../../../plans/store.ts';
 import { savePatch } from '../../../views/session/TodoStrip.tsx';
 import { TodoCard } from '../../shared/TodoCard.tsx';
 import { type TodoPlanLink, todoPlanLink } from '../../shared/todo-card-model.ts';
-import { Button, Chip, ComputerTag, Dialog, EmptyState, Field, Icon, type MenuItem, Segmented, Select, Skeleton, useToast } from '../../components/index.ts';
+import { BottomSheet, Button, Checkbox, Chip, ComputerTag, Dialog, EmptyState, Field, Icon, type MenuItem, Popover, Segmented, Select, Skeleton, Switch, useToast } from '../../components/index.ts';
 import { TASKS_WORDS as W, computerStateToV2 } from '../../glossary.ts';
 import { openNew } from '../../new/index.tsx';
 import { V2Link, useV2Router } from '../../nav.tsx';
+import { usePref } from '../useAgentsData.ts';
 import { ImportTasksDialog } from './ImportTasksDialog.tsx';
 import { TASK_COLUMNS, TASK_COLUMN_LOOK, type TaskCard, type TaskColumn, addedTodo, blockedReason, boardOf, cardKey, estimateAccuracy, estimateText, movePatch, moveTargets, priorityLook, quickAddInput, workerOf } from './tasks-model.ts';
+import { TASKS_AGENTS_KEY, TASKS_FOLDED_KEY, TASKS_GROUP_KEY, type TaskAgent, agentMatches, agentSections, agentsFromSearch, agentsSearch, filterGroups, liveFilter, readStoredAgents, taskAgents, toggleAgent } from './tasks-agents.ts';
 import './tasks.css';
 
 /** How long a deleted task waits before it is really deleted (the toast's Undo window). */
@@ -169,11 +171,13 @@ interface CardExtras {
 }
 
 /** One column (the prototype's `.col`). */
-function Column({ column, cards, actions, busy, now, extras, footer }: { readonly column: TaskColumn; readonly cards: readonly TaskCard[]; readonly actions: CardActions; readonly busy: ReadonlySet<string>; readonly now: number; readonly extras: CardExtras; readonly footer?: string | null }) {
+function Column({ column, cards, actions, busy, now, extras, footer, scope = '' }: { readonly column: TaskColumn; readonly cards: readonly TaskCard[]; readonly actions: CardActions; readonly busy: ReadonlySet<string>; readonly now: number; readonly extras: CardExtras; readonly footer?: string | null; readonly scope?: string }) {
   const look = TASK_COLUMN_LOOK[column];
+  // D188: a section's columns (grouped by agent) get their own heading ids.
+  const headingId = `v2-tasks-h-${scope}${column}`;
   return (
-    <section className="v2-tasks-col" data-col={column} data-testid={`v2-tasks-col-${column}`} aria-labelledby={`v2-tasks-h-${column}`}>
-      <h2 id={`v2-tasks-h-${column}`} className="v2-tasks-col-h" title={column === 'review' ? W.colReviewHint : undefined}>
+    <section className="v2-tasks-col" data-col={column} data-testid={`v2-tasks-col-${column}`} aria-labelledby={headingId}>
+      <h2 id={headingId} className="v2-tasks-col-h" title={column === 'review' ? W.colReviewHint : undefined}>
         <span className="v2-tasks-col-icon" data-tone={look.tone ?? undefined}>
           <Icon name={look.icon} size="s" />
         </span>
@@ -191,6 +195,126 @@ function Column({ column, cards, actions, busy, now, extras, footer }: { readonl
           {footer}
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // No storage: the choice lasts until the page closes.
+  }
+}
+
+/** A phone-wide window (the filter opens as a bottom sheet there). */
+function usePhoneWidth(): boolean {
+  const query = '(max-width: 767px)';
+  const [phone, setPhone] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const list = window.matchMedia(query);
+    const on = (): void => setPhone(list.matches);
+    list.addEventListener('change', on);
+    return () => list.removeEventListener('change', on);
+  }, []);
+  return phone;
+}
+
+/** D188: the filter's list: a search, then every agent with tasks as a check box (name · computer · counts). */
+function AgentPicker({ agents, picked, onChange }: { readonly agents: readonly TaskAgent[]; readonly picked: readonly string[]; readonly onChange: (ids: string[]) => void }) {
+  const [query, setQuery] = useState('');
+  const shown = agents.filter((agent) => agentMatches(agent, query));
+  return (
+    <div className="v2-tasks-picker" data-testid="v2-tasks-agents-list">
+      <Field autoFocus placeholder={W.agentsSearch} aria-label={W.agentsSearch} value={query} onChange={(event) => setQuery(event.target.value)} data-testid="v2-tasks-agents-search" />
+      <div className="v2-tasks-picker-rows" role="group" aria-label={W.agentsLabel}>
+        {shown.length === 0 ? <p className="v2-muted">{W.agentsNone}</p> : null}
+        {shown.map((agent) => (
+          <Checkbox
+            key={agent.sessionId}
+            checked={picked.includes(agent.sessionId)}
+            onChange={() => onChange(toggleAgent(picked, agent.sessionId))}
+            data-testid="v2-tasks-agents-option"
+            data-session={agent.sessionId}
+            label={
+              <span className="v2-tasks-picker-row">
+                <span className="v2-tasks-picker-name">{agent.title}</span>
+                {agent.computer ? <span className="v2-muted"> · {agent.computer}</span> : null}
+                <span className="v2-muted v2-tasks-picker-count">{W.agentsCount(agent.count, agent.open)}</span>
+              </span>
+            }
+          />
+        ))}
+      </div>
+      {picked.length > 0 ? (
+        <Button size="sm" variant="ghost" icon="x" onClick={() => onChange([])} data-testid="v2-tasks-agents-clear">
+          {W.agentsClear}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** D188: the agent filter's button (a popover; a bottom sheet on a phone). */
+function AgentFilter({ agents, picked, onChange }: { readonly agents: readonly TaskAgent[]; readonly picked: readonly string[]; readonly onChange: (ids: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const phone = usePhoneWidth();
+  const label = picked.length === 0 ? W.agentsAll : picked.length === 1 ? (agents.find((agent) => agent.sessionId === picked[0])?.title ?? W.agentsSome(1)) : W.agentsSome(picked.length);
+  const picker = <AgentPicker agents={agents} picked={picked} onChange={onChange} />;
+  return (
+    <>
+      <span ref={(element) => setAnchor(element?.querySelector('button') ?? null)} className="v2-tasks-agents" data-tour="v2-tasks-agents">
+        <Button size="sm" icon="agents" aria-haspopup="dialog" aria-expanded={open} title={W.agentsLabel} onClick={() => setOpen((on) => !on)} data-testid="v2-tasks-agents">
+          {label}
+        </Button>
+      </span>
+      {phone ? (
+        <BottomSheet open={open} onClose={() => setOpen(false)} title={W.agentsLabel} testId="v2-tasks-agents-sheet">
+          {picker}
+        </BottomSheet>
+      ) : (
+        <Popover open={open} onClose={() => setOpen(false)} anchor={anchor} label={W.agentsLabel} align="start" width={360} testId="v2-tasks-agents-popover">
+          {picker}
+        </Popover>
+      )}
+    </>
+  );
+}
+
+/** D188: one agent's section of the grouped board: its header (fold), then its own columns. */
+function AgentSectionView({ section, folded, onFold, phoneColumn, actions, busy, now, extras }: { readonly section: ReturnType<typeof agentSections>[number]; readonly folded: boolean; readonly onFold: () => void; readonly phoneColumn: TaskColumn; readonly actions: CardActions; readonly busy: ReadonlySet<string>; readonly now: number; readonly extras: CardExtras }) {
+  const { group } = section;
+  const machine = useLiveMachine(group.machine ?? null);
+  const id = `v2-tasks-sec-${group.sessionId}`;
+  return (
+    <section className="v2-tasks-section" data-folded={folded ? 'true' : undefined} data-testid="v2-tasks-section" data-session={group.sessionId} aria-labelledby={id}>
+      <h2 className="v2-tasks-section-h" id={id}>
+        <button type="button" className="v2-tasks-section-fold" aria-expanded={!folded} aria-label={folded ? W.sectionUnfold(group.title) : W.sectionFold(group.title)} onClick={onFold} data-testid="v2-tasks-section-fold">
+          <Icon name={folded ? 'chev' : 'chev-down'} size="s" />
+        </button>
+        <V2Link to={{ area: 'agent', id: group.sessionId, tab: 'chat' }} className="v2-tasks-section-name">
+          {group.title}
+        </V2Link>
+        {machine ? <ComputerTag name={machine.name} state={computerStateToV2(machine.state)} short /> : null}
+        <span className="v2-muted v2-tasks-section-counts">{W.sectionCounts(section.total, section.open)}</span>
+      </h2>
+      {folded ? null : (
+        <div className="v2-tasks-board" data-show={phoneColumn}>
+          {TASK_COLUMNS.map((column) => (
+            <Column key={column} column={column} cards={section.board[column]} actions={actions} busy={busy} now={now} extras={extras} scope={`${group.sessionId}-`} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -274,7 +398,7 @@ export function TasksPage() {
   const sessions = useSessionListOf('open');
   const plans = usePlans();
   const toast = useToast();
-  const { navigate } = useV2Router();
+  const { navigate, search } = useV2Router();
   const now = useClock();
   const reload = useThrottled(groups.reload, 300);
   useHubEvent('todosChanged', () => reload());
@@ -301,9 +425,37 @@ export function TasksPage() {
   const importAgents = useMemo(() => targets.filter((session) => session.kind !== 'chat'), [targets]);
 
   const all: readonly TodoGroup[] = useMemo(() => groups.data ?? [], [groups.data]);
-  const board = useMemo(() => boardOf(all, statusOf, hidden), [all, statusOf, hidden]);
+  // D188: which agents' tasks the board shows: the address's `?agent=` (a link from an agent), else this browser's remembered pick.
+  const [stored, setStored] = useState<readonly string[]>(() => readStoredAgents(readStorage(TASKS_AGENTS_KEY)));
+  const fromAddress = useMemo(() => agentsFromSearch(search), [search]);
+  const agents = useMemo(() => taskAgents(all), [all]);
+  const asked = fromAddress ?? stored;
+  // An agent that no longer has tasks never hides the whole board (only once the list is in).
+  const picked = useMemo(() => (groups.data ? liveFilter(asked, agents) : [...asked]), [groups.data, asked, agents]);
+  const setPicked = useCallback(
+    (ids: string[]) => {
+      setStored(ids);
+      writeStorage(TASKS_AGENTS_KEY, JSON.stringify(ids));
+      navigate(`/tasks${agentsSearch(ids)}`, { replace: true });
+    },
+    [navigate],
+  );
+  const [grouping, setGrouping] = usePref<'on' | 'off'>(TASKS_GROUP_KEY, 'off', (value): value is 'on' | 'off' => value === 'on' || value === 'off');
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set(readStoredAgents(readStorage(TASKS_FOLDED_KEY))));
+  const fold = (sessionId: string): void =>
+    setFolded((current) => {
+      const next = new Set(current);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      writeStorage(TASKS_FOLDED_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  const shown = useMemo(() => filterGroups(all, picked), [all, picked]);
+  const board = useMemo(() => boardOf(shown, statusOf, hidden), [shown, statusOf, hidden]);
+  const sections = useMemo(() => (grouping === 'on' ? agentSections(shown, statusOf, hidden) : []), [grouping, shown, statusOf, hidden]);
   const total = TASK_COLUMNS.reduce((sum, column) => sum + board[column].length, 0);
-  const accuracy = estimateAccuracy(all.map((group) => group.actuals));
+  const anyTask = all.some((group) => group.todos.length > 0);
+  const accuracy = estimateAccuracy(shown.map((group) => group.actuals));
 
   const unhide = useCallback((key: string) => {
     setHidden((current) => {
@@ -496,10 +648,40 @@ export function TasksPage() {
           {W.withDetails}
         </Button>
         <span className="v2-grow" />
+        {agents.length > 0 ? <AgentFilter agents={agents} picked={picked} onChange={setPicked} /> : null}
+        {agents.length > 0 ? (
+          <span className="v2-tasks-group">
+            <Switch checked={grouping === 'on'} onChange={(on) => setGrouping(on ? 'on' : 'off')} label={W.groupByAgent} testId="v2-tasks-group" />
+            <span className="v2-tasks-group-word" aria-hidden="true" onClick={() => setGrouping(grouping === 'on' ? 'off' : 'on')}>
+              {W.groupByAgent}
+            </span>
+          </span>
+        ) : null}
         <Button size="sm" icon="download" onClick={() => setImportOpen(true)} data-testid="v2-tasks-import-open">
           {W.import}
         </Button>
       </div>
+      {picked.length > 0 ? (
+        <div className="v2-tasks-chips" data-testid="v2-tasks-agent-chips">
+          {picked.map((id) => {
+            const agent = agents.find((candidate) => candidate.sessionId === id);
+            const name = agent?.title ?? id;
+            return (
+              <span key={id} className="v2-tasks-chip" data-testid="v2-tasks-agent-chip">
+                <Icon name="agents" size="s" />
+                <span className="v2-tasks-chip-name">{name}</span>
+                {agent?.computer ? <span className="v2-muted"> · {agent.computer}</span> : null}
+                <button type="button" className="v2-tasks-chip-x" aria-label={W.agentRemove(name)} onClick={() => setPicked(picked.filter((other) => other !== id))} data-testid="v2-tasks-agent-chip-x">
+                  <Icon name="x" size="s" />
+                </button>
+              </span>
+            );
+          })}
+          <Button size="sm" variant="ghost" onClick={() => setPicked([])} data-testid="v2-tasks-agent-chips-clear">
+            {W.agentsClear}
+          </Button>
+        </div>
+      ) : null}
       {targets.length === 0 && list !== null ? (
         <p className="v2-tasks-note" data-testid="v2-tasks-noagent">
           {W.noAgentToAdd}
@@ -517,18 +699,33 @@ export function TasksPage() {
         </div>
       ) : groups.error && groups.data === null ? (
         <EmptyState icon="alert" tone="grey" title={W.loadError} text={refusal(groups.error)} action={<Button onClick={reloadNow}>Try again</Button>} />
-      ) : total === 0 ? (
+      ) : total === 0 && !anyTask ? (
         <EmptyState icon="task" tone="grey" title={W.emptyTitle} text={W.emptyText} testId="v2-tasks-empty" />
+      ) : total === 0 ? (
+        <EmptyState icon="task" tone="grey" title={W.filteredEmpty} action={<Button onClick={() => setPicked([])}>{W.agentsClear}</Button>} testId="v2-tasks-filtered-empty" />
       ) : (
         <>
           <div className="v2-tasks-switch">
             <Segmented label={W.columns} size="s" value={phoneColumn} onChange={setPhoneColumn} options={TASK_COLUMNS.map((column) => ({ value: column, label: COLUMN_WORD[column], hint: String(board[column].length) }))} testId="v2-tasks-switch" />
           </div>
-          <div className="v2-tasks-board" data-show={phoneColumn} data-testid="v2-tasks-board">
-            {TASK_COLUMNS.map((column) => (
-              <Column key={column} column={column} cards={board[column]} actions={actions} busy={busy} now={now} extras={extras} footer={column === 'done' && accuracy ? W.accuracy(accuracy.percent, accuracy.count) : null} />
-            ))}
-          </div>
+          {grouping === 'on' ? (
+            <div className="v2-tasks-sections" data-testid="v2-tasks-sections">
+              {sections.map((section) => (
+                <AgentSectionView key={section.group.sessionId} section={section} folded={folded.has(section.group.sessionId)} onFold={() => fold(section.group.sessionId)} phoneColumn={phoneColumn} actions={actions} busy={busy} now={now} extras={extras} />
+              ))}
+              {accuracy ? (
+                <p className="v2-tasks-accuracy" data-testid="v2-tasks-accuracy" data-tour="v2-tasks-accuracy">
+                  {W.accuracy(accuracy.percent, accuracy.count)}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="v2-tasks-board" data-show={phoneColumn} data-testid="v2-tasks-board">
+              {TASK_COLUMNS.map((column) => (
+                <Column key={column} column={column} cards={board[column]} actions={actions} busy={busy} now={now} extras={extras} footer={column === 'done' && accuracy ? W.accuracy(accuracy.percent, accuracy.count) : null} />
+              ))}
+            </div>
+          )}
         </>
       )}
       <TaskDetail card={detailCard} onClose={() => setDetail(null)} actions={actions} busy={detailCard ? busy.has(cardKey(detailCard.group.sessionId, detailCard.todo.id)) : false} now={now} />

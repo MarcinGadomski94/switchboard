@@ -351,3 +351,151 @@
     min-height: var(--v2-touch);
   }
 }
+
+/* D188 · the agent filter, its chips, and the board grouped by agent. */
+.sb2 .v2-tasks-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--v2-sp-2);
+  margin: calc(-1 * var(--v2-sp-1)) 0 var(--v2-sp-3);
+}
+
+.sb2 .v2-tasks-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--v2-line);
+  border-radius: 999px;
+  background: var(--v2-surface);
+  font-size: var(--v2-fs-sm);
+}
+
+.sb2 .v2-tasks-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-tasks-chip-x {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--v2-muted);
+  cursor: pointer;
+}
+
+.sb2 .v2-tasks-chip-x:hover,
+.sb2 .v2-tasks-chip-x:focus-visible {
+  background: var(--v2-hover);
+  color: var(--v2-text);
+}
+
+.sb2 .v2-tasks-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v2-sp-2);
+  padding: var(--v2-sp-2);
+}
+
+.sb2 .v2-tasks-picker-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.sb2 .v2-tasks-picker-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sb2 .v2-tasks-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb2 .v2-tasks-picker-count {
+  margin-left: auto;
+  padding-left: var(--v2-sp-2);
+  font-size: var(--v2-fs-xs, 12px);
+  white-space: nowrap;
+}
+
+.sb2 .v2-tasks-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v2-sp-4, 20px);
+}
+
+.sb2 .v2-tasks-section-h {
+  display: flex;
+  align-items: center;
+  gap: var(--v2-sp-2);
+  margin: 0 0 var(--v2-sp-2);
+  font-size: var(--v2-fs-md, 15px);
+  font-weight: 600;
+  min-width: 0;
+}
+
+.sb2 .v2-tasks-section-fold {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--v2-muted);
+  cursor: pointer;
+}
+
+.sb2 .v2-tasks-section-fold:hover,
+.sb2 .v2-tasks-section-fold:focus-visible {
+  background: var(--v2-hover);
+  color: var(--v2-text);
+}
+
+.sb2 .v2-tasks-section-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sb2 .v2-tasks-section-name:hover {
+  text-decoration: underline;
+}
+
+.sb2 .v2-tasks-section-counts {
+  font-size: var(--v2-fs-sm);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.sb2 .v2-tasks-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--v2-sp-2);
+  font-size: var(--v2-fs-sm);
+  white-space: nowrap;
+}
+
+.sb2 .v2-tasks-group-word {
+  cursor: pointer;
+  user-select: none;
+}
