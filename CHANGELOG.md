@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.14 (2026-11-24)
+
+### Phones
+- **Pair your phone once, use every computer:** a phone paired with one computer can switch to your other paired computers (Settings › Phones › Your computers › **Switch**), and when the one it uses is off, the offline page links to the others. Each computer signs the phone in with its own key: no key ever travels between computers. Revoking a phone on any computer revokes it everywhere. Every computer needs 2.5.14; notifications stay per computer. Database migration. See `docs/devices.md` (D189).
+
+### Tasks
+- **Tasks by agent:** the Tasks page has an agents filter (searchable, remembered, also in the address) and **Group by agent**, which gives each agent its own board; an agent's ⋯ has **Its tasks**. See `docs/todos.md` (D188).
+
+### Releases
+- The release packager no longer waits forever on `git archive`, and survives a reader that stops early.
 ## 2.5.13 (2026-11-23)
 
 ### Projects
