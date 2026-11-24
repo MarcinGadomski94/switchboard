@@ -65,7 +65,8 @@ async function archiveEntries(repoDir: string, ref: string, prefix: string): Pro
     child.once('close', resolve);
   });
   const entries: TarInput[] = [];
-  await walkTar(child.stdout, {
+  try {
+    await walkTar(child.stdout, {
     entry(entry) {
       const relative = entry.path.replace(/\/+$/, '');
       if (relative === '' || isReleaseExcluded(entry.type === 'dir' ? `${relative}/` : relative)) return null;
@@ -85,6 +86,15 @@ async function archiveEntries(repoDir: string, ref: string, prefix: string): Pro
       };
     },
   });
+  } catch (error) {
+    // A broken archive: never leave git running (its pipe unread would keep it, and this, waiting).
+    child.kill();
+    await closed.catch(() => undefined);
+    throw error;
+  }
+  // The walk stops at the end-of-archive marker: read the rest (git's trailing padding), so git can
+  // finish writing and exit instead of waiting on a full pipe.
+  child.stdout.resume();
   const code = await closed;
   if (code !== 0) throw new Error(`git archive ${ref} failed: ${stderr.trim()}`);
   return entries;
@@ -178,14 +188,35 @@ function parseArgs(argv: readonly string[]): Omit<PackageOptions, 'repoDir'> | s
 }
 
 if (import.meta.main) {
+  // A reader that stops early (e.g. a filtering pipe) closes stdout: the output is lost, the package is not.
+  // An unhandled EPIPE would end the process with an error; the work goes on and the exit code says how it went.
+  const ignoreClosedPipe = (error: NodeJS.ErrnoException): void => {
+    if (error.code !== 'EPIPE') throw error;
+  };
+  process.stdout.on('error', ignoreClosedPipe);
+  process.stderr.on('error', ignoreClosedPipe);
   const args = parseArgs(process.argv.slice(2));
   if (typeof args === 'string') {
     console.error(`release:package: ${args}\nusage: npm run release:package -- [--ref <ref>] [--out <folder>] [--skip-build] [--allow-dirty]`);
     process.exit(2);
   }
+  // If the process ever ends before the package is done (exit 13: a step left pending), say which step it was.
+  let lastStep = 'starting';
+  let finished = false;
+  process.on('exit', (code) => {
+    if (!finished && code !== 1 && code !== 2) process.stderr.write(`release:package: stopped before it finished (exit ${code}); the last step was: ${lastStep}\n`);
+  });
   try {
     const repoDir = path.resolve(import.meta.dirname, '..', '..');
-    const result = await packageRelease({ repoDir, ...args });
+    const result = await packageRelease({
+      repoDir,
+      ...args,
+      log: (line) => {
+        lastStep = line;
+        console.log(line);
+      },
+    });
+    lastStep = 'writing the summary';
     const rel = (file: string): string => {
       const relative = path.relative(process.cwd(), file);
       return relative && !relative.startsWith('..') ? relative : file;
@@ -193,6 +224,7 @@ if (import.meta.main) {
     console.log(`wrote ${rel(result.tarball)} (${result.entries} entries)\nwrote ${rel(result.checksumFile)}\nsha256 ${result.sha256}\n`);
     console.log('Publish it (the tag is created from the pushed commit if it does not exist):');
     console.log(`  gh release create ${releaseTag(result.version)} "${rel(result.tarball)}" "${rel(result.checksumFile)}" --title "Switchboard ${result.version}" --notes-file <notes.md>`);
+    finished = true;
   } catch (error) {
     console.error(`release:package: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
