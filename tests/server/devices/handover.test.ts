@@ -24,9 +24,9 @@ function phone(over: Partial<SharedDevice> = {}): SharedDevice {
   return { id: 'phonephone22', name: 'Phone', userAgent: null, tailscaleLogin: null, userProfileId: 'default', pairedAt: '2026-11-24T09:00:00.000Z', pairedOn: OTHER, clock: '00000000a.0000.other', ...over };
 }
 
-async function offer(w: DeviceWorld, device: SharedDevice = phone()): Promise<{ token: string; status: number; body: any }> {
+async function offer(w: DeviceWorld, device: SharedDevice = phone(), from = OTHER): Promise<{ token: string; status: number; body: any }> {
   const token = newDeviceSecret();
-  const answer = await w.devices.acceptOffer(OTHER, { device, tokenHash: hashDeviceSecret(token), expiresAt: new Date(clock + HANDOVER_TTL_MS).toISOString() });
+  const answer = await w.devices.acceptOffer(from, { device, tokenHash: hashDeviceSecret(token), ttlMs: HANDOVER_TTL_MS });
   return { token, status: answer.status, body: answer.body };
 }
 
@@ -65,9 +65,9 @@ describe('D189 handover · the target computer', () => {
     expect((await redeem(w, late.token)).body.error).toBe('expired');
     expect((await redeem(w, 'short')).status).toBe(400);
     expect((await redeem(w, newDeviceSecret())).status).toBe(400);
-    // A sender's long expiry is capped at the TTL from now.
+    // A sender's long wait is capped at the TTL from this computer's now.
     const token = newDeviceSecret();
-    await w.devices.acceptOffer(OTHER, { device: phone(), tokenHash: hashDeviceSecret(token), expiresAt: new Date(clock + 24 * 3_600_000).toISOString() });
+    await w.devices.acceptOffer(OTHER, { device: phone(), tokenHash: hashDeviceSecret(token), ttlMs: 24 * 3_600_000 });
     clock += HANDOVER_TTL_MS + 1;
     expect((await redeem(w, token)).body.error).toBe('expired');
     // Revoked after the offer: its waiting offers go with it, the redeem is refused.
@@ -80,7 +80,7 @@ describe('D189 handover · the target computer', () => {
     expect(deviceCookieOf(refused)).toBeNull();
     // Revoked here: a later offer is refused (a revoke always wins).
     expect((await offer(w)).body.error).toBe('revoked');
-    expect((await w.devices.acceptOffer(OTHER, { device: phone(), tokenHash: 'x', expiresAt: 'later' })).status).toBe(422);
+    expect((await w.devices.acceptOffer(OTHER, { device: phone(), tokenHash: 'x', ttlMs: 'later' })).status).toBe(422);
   });
 
   it('a phone recorded with a Tailscale login must come with that login', async () => {
@@ -90,6 +90,88 @@ describe('D189 handover · the target computer', () => {
     expect((await redeem(w, offered.token, { 'tailscale-user-login': 'other@example.com' })).body.error).toBe('other-login');
     const again = await offer(w, phone({ tailscaleLogin: 'dev@example.com' }));
     expect((await redeem(w, again.token, { 'tailscale-user-login': 'dev@example.com' })).status).toBe(200);
+  });
+
+  it('review · only the phone’s own computer (or one it is signed in on) may offer it', async () => {
+    world = await startDeviceWorld({ now: () => clock });
+    const w = world;
+    const stranger = 'cccccccccccc';
+    expect((await offer(w, phone(), stranger)).body.error).toBe('not-allowed');
+    // Known here as paired on OTHER: a stranger's record naming itself does not change who may offer it.
+    expect((await offer(w)).status).toBe(200);
+    expect((await offer(w, phone({ pairedOn: stranger, clock: '00000000z.0000.other' }), stranger)).body.error).toBe('not-allowed');
+    expect((await w.store.devices.get('phonephone22'))?.pairedOn).toBe(OTHER);
+    // A computer that says it has the phone signed in may (the phone switches on from there).
+    await w.devices.mergeShared(stranger, { v: 1, origin: null, devices: [], tombstones: [], setUp: ['phonephone22'] });
+    expect((await offer(w, phone(), stranger)).status).toBe(200);
+  });
+
+  it('review · a handover never replaces the credential of a phone signed in here', async () => {
+    world = await startDeviceWorld({ now: () => clock });
+    const w = world;
+    const local = await w.pair('Local phone');
+    const before = (await w.store.devices.get(local.id))?.credentialHash;
+    const record = await w.store.devices.get(local.id);
+    const offered = await offer(w, phone({ id: local.id, pairedOn: OTHER, clock: '00000000z.0000.other' }));
+    expect(offered.body.error).toBe('already-set-up');
+    expect(w.devices.pendingOffers()).toBe(0);
+    expect((await w.store.devices.get(local.id))?.credentialHash).toBe(before);
+    expect((await w.store.devices.get(local.id))?.tailscaleLogin).toBe(record?.tailscaleLogin);
+    expect((await w.device('GET', '/api/device', { cookie: local.cookie })).status).toBe(200);
+  });
+
+  it('review · a peer record never drops the recorded Tailscale login, nor gives a pattern or unknown profile', async () => {
+    world = await startDeviceWorld({ now: () => clock });
+    const w = world;
+    const first = await offer(w, phone({ tailscaleLogin: 'dev@example.com' }));
+    expect(first.status).toBe(200);
+    // A later record (another computer's) without a login, a new pairing time, and a '*' profile / an unknown one.
+    await w.devices.mergeShared('cccccccccccc', { v: 1, origin: null, devices: [phone({ tailscaleLogin: null, pairedAt: '2020-01-01T00:00:00.000Z', userProfileId: '*', clock: '00000000y.0000.evil' })], tombstones: [] });
+    expect((await w.store.devices.get('phonephone22'))?.userProfileId).toBe('default');
+    await w.devices.mergeShared('cccccccccccc', { v: 1, origin: null, devices: [phone({ tailscaleLogin: null, pairedAt: '2020-01-01T00:00:00.000Z', userProfileId: 'no-such-profile', clock: '00000000z.0000.evil' })], tombstones: [] });
+    const stored = await w.store.devices.get('phonephone22');
+    expect(stored?.tailscaleLogin).toBe('dev@example.com');
+    expect(stored?.pairedAt).toBe('2026-11-24T09:00:00.000Z');
+    expect(stored?.userProfileId).toBe('default');
+    expect((await redeem(w, first.token)).body.error).toBe('other-login');
+    const again = await offer(w, phone({ tailscaleLogin: null, clock: '00000000z.0001.other' }));
+    expect((await redeem(w, again.token)).body.error).toBe('other-login');
+  });
+
+  it('review · redeems have their own limit per source; offers are capped', async () => {
+    world = await startDeviceWorld({ now: () => clock });
+    const w = world;
+    for (let i = 0; i < 10; i++) expect((await redeem(w, newDeviceSecret(), { 'tailscale-user-login': 'x@example.com' })).status).toBe(400);
+    expect((await redeem(w, newDeviceSecret(), { 'tailscale-user-login': 'x@example.com' })).status).toBe(429);
+    expect((await redeem(w, newDeviceSecret(), { 'tailscale-user-login': 'y@example.com' })).status).toBe(400);
+    // Pairing keeps its own tries.
+    const code = await w.ui('POST', '/api/devices/pairing');
+    expect((await w.device('POST', '/device/v1/pair', { body: { code: code.body.code }, headers: { origin: w.origin } })).status).toBe(201);
+    for (let i = 0; i < 105; i++) await offer(w);
+    expect(w.devices.pendingOffers()).toBe(100);
+  });
+
+  it('review · revokes: 250 old ones still let a new one through; very old ones are forgotten; a removed computer’s phones that never signed in here go', async () => {
+    world = await startDeviceWorld({ now: () => clock });
+    const w = world;
+    for (let i = 0; i < 250; i++) await w.store.devices.addTombstone({ id: `tombstone${[...String(i).padStart(3, '0')].map((d) => 'abcdefghij'[Number(d)]).join('')}`, clock: '00000000a.0000.old', revokedAt: '2026-11-01T00:00:00.000Z' });
+    await w.store.devices.addTombstone({ id: 'zzzzzzzzzzzz', clock: '00000000a.0000.old', revokedAt: '2026-01-01T00:00:00.000Z' });
+    const local = await w.pair('Phone');
+    expect((await w.ui('DELETE', `/api/devices/${local.id}`)).status).toBe(204);
+    const wire = await w.devices.wire();
+    expect(wire.tombstones).toHaveLength(200);
+    expect(wire.tombstones[0]?.id).toBe(local.id);
+    expect(await w.store.devices.tombstone('zzzzzzzzzzzz')).toBeNull();
+    // A body of 250 revokes is read (the first 200), not refused.
+    expect(w.devices.readWire({ ...wire, tombstones: [...wire.tombstones, ...wire.tombstones.slice(0, 50)] })?.tombstones).toHaveLength(200);
+    // A revoke of a phone never known here is not kept.
+    await w.devices.mergeShared(OTHER, { v: 1, origin: null, devices: [], tombstones: [{ id: 'qqqqqqqqqqqq', clock: '00000000b.0000.other', revokedAt: '2026-11-24T00:00:00.000Z' }] });
+    expect(await w.store.devices.tombstone('qqqqqqqqqqqq')).toBeNull();
+    // Removed computer: its phone that never signed in here goes; one signed in here stays.
+    expect((await offer(w)).status).toBe(200);
+    await w.devices.forgetComputer(OTHER);
+    expect(await w.store.devices.get('phonephone22')).toBeNull();
+    expect(w.devices.pendingOffers()).toBe(0);
   });
 
   it('refuses an offer while phones cannot reach this computer', async () => {

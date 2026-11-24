@@ -21,8 +21,14 @@ export const DEVICES_SYNC_VERSION = 1;
 /** A handover token lives this long (ms): minted on one computer, redeemed on the other. */
 export const HANDOVER_TTL_MS = 60_000;
 
-/** At most this many devices / tombstones in one exchange. */
+/** At most this many devices / tombstones in one exchange (the sender sends its newest; a reader keeps the first this many). */
 export const DEVICES_SYNC_MAX = 200;
+
+/** A revoke is kept this long (ms), then forgotten (the phone is long gone everywhere). */
+export const DEVICE_TOMBSTONE_KEEP_MS = 90 * 24 * 3_600_000;
+
+/** A profile id as it may travel (a peer-link id: letters, digits, `-`; never a pattern such as `*`). */
+export const DEVICE_PROFILE_ID = /^[A-Za-z0-9-]{1,64}$/;
 
 /** One phone as the paired computers share it (no credential). */
 export interface SharedDevice {
@@ -53,6 +59,8 @@ export interface DevicesWire {
   readonly origin: string | null;
   readonly devices: readonly SharedDevice[];
   readonly tombstones: readonly DeviceTombstone[];
+  /** The phones that have this sender's own credential (they switched there, or were paired there). Absent before the review fix: none. */
+  readonly setUp?: readonly string[];
 }
 
 const DEVICE_ID = /^[a-z2-7]{12}$/;
@@ -61,8 +69,15 @@ function str(value: unknown, max: number): string | null {
   return typeof value === 'string' && value.length > 0 && value.length <= max ? value : null;
 }
 
-/** A device origin as a computer may announce it: `https://` and a host, nothing else. */
-export function readDeviceOrigin(value: unknown): string | null {
+/** Where a device origin may point: a `tailscale serve` name (`https://<machine>.<tailnet>.ts.net[:port]`). */
+const TS_NET_HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+ts\.net$/i;
+
+/**
+ * A device origin as a computer may announce it: `https://<name>.ts.net[:port]` (the shape
+ * `tailscale serve` gives), nothing else; plain `http` on loopback only with `allowLoopback` (the
+ * test servers' `SWITCHBOARD_DEVICE_TEST_ORIGIN`).
+ */
+export function readDeviceOrigin(value: unknown, allowLoopback = false): string | null {
   if (typeof value !== 'string' || value.length > 300) return null;
   let url: URL;
   try {
@@ -71,8 +86,8 @@ export function readDeviceOrigin(value: unknown): string | null {
     return null;
   }
   // The test servers' device origin is plain http on loopback (`deviceTestOrigin`); everything real is https.
-  const loopback = url.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost');
-  if (url.protocol !== 'https:' && !loopback) return null;
+  const loopback = allowLoopback && url.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost');
+  if (!loopback && !(url.protocol === 'https:' && TS_NET_HOST.test(url.hostname))) return null;
   if (url.username || url.password || (url.pathname !== '/' && url.pathname !== '') || url.search || url.hash) return null;
   return url.origin;
 }
@@ -84,7 +99,7 @@ function readDevice(raw: unknown): SharedDevice | null {
   const name = str(d['name'], 40);
   const pairedAt = str(d['pairedAt'], 40);
   const pairedOn = isMachineId(d['pairedOn']) ? d['pairedOn'] : null;
-  const userProfileId = str(d['userProfileId'], 64);
+  const userProfileId = typeof d['userProfileId'] === 'string' && DEVICE_PROFILE_ID.test(d['userProfileId']) ? d['userProfileId'] : null;
   if (!id || !name || !pairedAt || !pairedOn || !userProfileId || !isClock(d['clock'])) return null;
   return {
     id,
@@ -107,18 +122,28 @@ function readTombstone(raw: unknown): DeviceTombstone | null {
   return { id, clock: t['clock'] as string, revokedAt };
 }
 
-/** Reads an exchange body (`null` when it is not one); malformed entries are left out. */
-export function readDevicesWire(body: unknown): DevicesWire | null {
+/**
+ * Reads an exchange body (`null` when it is not one); malformed entries are left out, and past
+ * {@link DEVICES_SYNC_MAX} of each kind the rest is (never the whole body: a long list of revokes
+ * must not stop the sync).
+ */
+export function readDevicesWire(body: unknown, allowLoopback = false): DevicesWire | null {
   if (typeof body !== 'object' || body === null) return null;
   const b = body as Record<string, unknown>;
   if (b['v'] !== DEVICES_SYNC_VERSION || !Array.isArray(b['devices']) || !Array.isArray(b['tombstones'])) return null;
-  if (b['devices'].length > DEVICES_SYNC_MAX || b['tombstones'].length > DEVICES_SYNC_MAX) return null;
+  const setUp = Array.isArray(b['setUp']) ? b['setUp'].slice(0, DEVICES_SYNC_MAX).filter((id): id is string => typeof id === 'string' && DEVICE_ID.test(id)) : [];
   return {
     v: DEVICES_SYNC_VERSION,
-    origin: readDeviceOrigin(b['origin']),
-    devices: b['devices'].map(readDevice).filter((d): d is SharedDevice => d !== null),
-    tombstones: b['tombstones'].map(readTombstone).filter((t): t is DeviceTombstone => t !== null),
+    origin: readDeviceOrigin(b['origin'], allowLoopback),
+    devices: b['devices'].slice(0, DEVICES_SYNC_MAX).map(readDevice).filter((d): d is SharedDevice => d !== null),
+    tombstones: b['tombstones'].slice(0, DEVICES_SYNC_MAX).map(readTombstone).filter((t): t is DeviceTombstone => t !== null),
+    setUp,
   };
+}
+
+/** The revokes to send: the newest {@link DEVICES_SYNC_MAX}. */
+export function newestTombstones<T extends { readonly revokedAt: string }>(tombstones: readonly T[]): T[] {
+  return [...tombstones].sort((a, b) => (a.revokedAt < b.revokedAt ? 1 : a.revokedAt > b.revokedAt ? -1 : 0)).slice(0, DEVICES_SYNC_MAX);
 }
 
 /** What to do here with a paired computer's records. */
@@ -131,14 +156,16 @@ export interface DevicesMergePlan {
 
 /**
  * The merge (pure): a revoke always wins (a device with a tombstone here or in the message is never
- * stored); otherwise the later clock wins per device (equal clocks: nothing changes).
+ * stored); otherwise the later clock wins per device (equal clocks: nothing changes). Only revokes of
+ * phones known here are kept.
  */
 export function planDevicesMerge(
   local: { readonly devices: ReadonlyMap<string, { readonly clock: string }>; readonly tombstones: ReadonlySet<string> },
   incoming: Pick<DevicesWire, 'devices' | 'tombstones'>,
 ): DevicesMergePlan {
   const revokedThere = new Set(incoming.tombstones.map((t) => t.id));
-  const revokes = incoming.tombstones.filter((t) => !local.tombstones.has(t.id));
+  // A revoke of a phone never known here is not kept (nothing to stop; and a sender cannot fill this table).
+  const revokes = incoming.tombstones.filter((t) => !local.tombstones.has(t.id) && local.devices.has(t.id));
   const upserts: SharedDevice[] = [];
   for (const device of incoming.devices) {
     if (local.tombstones.has(device.id) || revokedThere.has(device.id)) continue;

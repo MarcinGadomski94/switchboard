@@ -57,7 +57,6 @@ import { memoryPeerChanged } from '../memory/hooks.ts';
 import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
 import { type McpSyncComputer, mcpSignInServerOf, readMcpSignInWire } from '../../core/mcp-sign-in.ts';
 import type { McpSignInService } from '../mcp/sign-in.ts';
-import { readDeviceOrigin, readDevicesWire } from '../../core/devices-sync.ts';
 import type { DeviceService, HandoverOffer } from '../devices/service.ts';
 import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
 import { runOutsideProfileScope } from '../user-profiles/context.ts';
@@ -1042,6 +1041,9 @@ export class PeerService implements PeerHandlers {
     await this.#store.peerSnapshots.deleteMachine(id);
     // D71: forgetting it stops sharing the sidebar layout with it (the layout here stays as it is).
     await this.#sidebar.forget(id);
+    // D189: the phones it introduced that never signed in here go with it.
+    this.#peerDevices.delete(id);
+    await this.#devices?.forgetComputer(id).catch((error: unknown) => this.#log('warn', `phones of ${id}: ${error instanceof Error ? error.message : String(error)}`));
     await this.#store.machines.delete(id);
     this.#records.delete(id);
     this.#savedLists.delete(id);
@@ -1872,8 +1874,9 @@ export class PeerService implements PeerHandlers {
     this.#devicesOff = null;
     this.#devices = service;
     if (!service) return;
-    this.#devicesOff = service.onShare(() => {
-      for (const id of this.#records.keys()) void this.#exchangeDevices(id);
+    // A change goes to every paired computer at once; the service may wait for it (a revoke does, briefly).
+    this.#devicesOff = service.onShare(async () => {
+      await Promise.allSettled([...this.#records.keys()].map((id) => this.#exchangeDevices(id)));
     });
     service.usePeers({
       selfId: async () => (await this.self()).id,
@@ -1907,7 +1910,7 @@ export class PeerService implements PeerHandlers {
         this.#peerDevices.set(machineId, { synced: false, origin: null });
         return;
       }
-      const wire = answer.status === 200 ? readDevicesWire(answer.body) : null;
+      const wire = answer.status === 200 ? service.readWire(answer.body) : null;
       if (!wire) return;
       this.#peerDevices.set(machineId, { synced: true, origin: wire.origin });
       this.#relayDevices(machineId, await service.mergeShared(machineId, wire));
@@ -1927,7 +1930,7 @@ export class PeerService implements PeerHandlers {
     if (this.#closed) return { status: 503, body: { error: 'closing' } };
     const service = this.#devices;
     if (!service || this.#testDevicesOld) return { status: 404, body: { error: 'not-found' } };
-    const wire = readDevicesWire(body);
+    const wire = service.readWire(body);
     if (!wire) return { status: 422, body: { error: 'invalid' } };
     this.#peerDevices.set(machine.id, { synced: true, origin: wire.origin });
     this.#relayDevices(machine.id, await service.mergeShared(machine.id, wire));
@@ -1951,7 +1954,7 @@ export class PeerService implements PeerHandlers {
       if (answer.status === 404 || answer.status === 403 || answer.status === 405) {
         return { ok: false, status: 409, error: 'old-computer', message: `Update Switchboard on ${name} to switch this phone to it.` };
       }
-      const origin = answer.status === 200 ? readDeviceOrigin((answer.body as { origin?: unknown } | null)?.origin) : null;
+      const origin = answer.status === 200 && this.#devices ? this.#devices.readOrigin((answer.body as { origin?: unknown } | null)?.origin) : null;
       if (origin) return { ok: true, origin };
       const refusal = (answer.body ?? {}) as { error?: unknown; message?: unknown };
       return { ok: false, status: answer.status === 200 ? 502 : answer.status, error: typeof refusal.error === 'string' ? refusal.error : 'refused', message: typeof refusal.message === 'string' ? refusal.message : `${name} refused the switch.` };

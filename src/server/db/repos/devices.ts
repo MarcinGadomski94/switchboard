@@ -146,13 +146,26 @@ export class DeviceRepository {
 
   /**
    * D189: stores a phone a paired computer shared (new here: `setUpHere` false with an unusable
-   * `credentialHash` placeholder; known: its shared fields and clock, its credential kept).
+   * `credentialHash` placeholder; known: only its name, user agent, profile and clock change: its
+   * Tailscale login, pairing time and computer, and its credential are never changed by a peer).
    */
   async upsertShared(input: Pick<DeviceRecord, 'id' | 'name' | 'userAgent' | 'tailscaleLogin' | 'pairedAt' | 'userProfileId' | 'clock' | 'pairedOn'> & { readonly placeholderHash: string }): Promise<DeviceRecord> {
     const existing = this.#devices.get(input.id);
-    const shared = { name: input.name, userAgent: input.userAgent, tailscaleLogin: input.tailscaleLogin, userProfileId: input.userProfileId ?? 'default', clock: input.clock ?? '' };
+    const shared = { name: input.name, userAgent: input.userAgent, userProfileId: input.userProfileId ?? 'default', clock: input.clock ?? '' };
     if (existing) return this.#devices.update(input.id, shared) ?? existing;
-    return this.#devices.insert({ id: input.id, ...shared, credentialHash: input.placeholderHash, pairedAt: input.pairedAt, lastSeenAt: null, pairedOn: input.pairedOn ?? null, setUpHere: false });
+    return this.#devices.insert({ id: input.id, ...shared, tailscaleLogin: input.tailscaleLogin, credentialHash: input.placeholderHash, pairedAt: input.pairedAt, lastSeenAt: null, pairedOn: input.pairedOn ?? null, setUpHere: false });
+  }
+
+  /** D189: a removed computer's phones that never signed in here go with it (their ids). */
+  async deleteNotSetUpFrom(pairedOn: string): Promise<string[]> {
+    const rows = this.#devices.select('paired_on = ? AND set_up_here = 0', [pairedOn], 'id');
+    for (const row of rows) this.#devices.delete(row.id);
+    return rows.map((row) => row.id);
+  }
+
+  /** D189: forgets revokes older than `before` (ISO): a revoked phone is long gone everywhere by then. */
+  async pruneTombstones(before: string): Promise<void> {
+    this.#ctx.db.prepare('DELETE FROM device_tombstones WHERE revoked_at < ?').run(before);
   }
 
   /** D189: the phone's credential of this computer (a handover set it up here). */

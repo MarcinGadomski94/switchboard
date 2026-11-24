@@ -587,6 +587,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   deviceService.useProfileLinks({
     toLink: (id) => (id === 'default' ? userProfiles.selfWireId() : id),
     fromRemote: (machineId, linkId) => userProfiles.fromRemote(machineId, linkId),
+    exists: async (id) => (await userProfiles.get(id)) !== null,
   });
   peers.useDevices(deviceService);
   app.addHook('onReady', async () => {

@@ -100,6 +100,7 @@ The developer's ruling (`docs/decisions.md` → D189): a phone paired on one com
 - **Revoke anywhere:** revoking on any computer revokes everywhere: the tombstone reaches every paired computer, each deletes the phone, ends its connections and drops its waiting handovers.
 - **Push stays per computer:** a push subscription belongs to the origin it was made on. D73 already brings a paired computer's questions and finished turns to this computer's phones, so enable notifications on one computer; enabling them on two gives each computer's notifications from both.
 - **Older computers** (before 2.5.14) answer 404: shown as "Update Switchboard on X", no switch.
+- **Trust rules** (security review, docs/security.md → *Device handover*): only the computer a phone was paired on, or one it is signed in on, may switch it to another; a phone already signed in on a computer is never handed over there again (its credential is never replaced: if its cookie was lost there, pair it there again); a peer never changes a phone's recorded Tailscale login, pairing time or computer; a profile that does not exist here becomes Default; removing a paired computer removes the phones it brought that never signed in here.
 - **Settings › Phones on a computer** lists phones paired anywhere with *Paired on X*, and *Your other computers*: which ones phones can reach (device access on), which are off or older.
 
 ## API

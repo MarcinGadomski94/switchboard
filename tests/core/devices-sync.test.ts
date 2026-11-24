@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEVICES_SYNC_VERSION, type SharedDevice, planDevicesMerge, readDeviceOrigin, readDevicesWire } from '../../src/core/devices-sync.ts';
+import { DEVICES_SYNC_VERSION, type SharedDevice, newestTombstones, planDevicesMerge, readDeviceOrigin, readDevicesWire } from '../../src/core/devices-sync.ts';
 import { phoneComputerRows, storedComputers } from '../../src/web/v2/settings/phone-computers.ts';
 
 /**
@@ -30,12 +30,22 @@ describe('D189 · the phones exchange', () => {
     expect(JSON.stringify(wire)).not.toContain('should-not-pass');
     expect(wire?.tombstones).toEqual([{ id: 'phonephone33', clock: CLOCK_2, revokedAt: '2026-11-24T11:00:00.000Z' }]);
     expect(readDevicesWire({ v: 2, origin: null, devices: [], tombstones: [] })).toBeNull();
-    expect(readDevicesWire({ v: 1, origin: null, devices: new Array(201).fill(device()), tombstones: [] })).toBeNull();
+    // Past the cap the rest is left out, never the whole body (a long list of revokes must not stop the sync).
+    expect(readDevicesWire({ v: 1, origin: null, devices: new Array(201).fill(device()), tombstones: [] })?.devices).toHaveLength(200);
+    const many = Array.from({ length: 250 }, (_, i) => ({ id: 'phonephone33', clock: CLOCK_1, revokedAt: `2026-11-0${i % 9 + 1}T00:00:00.000Z` }));
+    expect(readDevicesWire({ v: 1, origin: null, devices: [], tombstones: many })?.tombstones).toHaveLength(200);
+    expect(newestTombstones([...many, { id: 'phonephone44', clock: CLOCK_2, revokedAt: '2026-11-24T00:00:00.000Z' }])[0]?.id).toBe('phonephone44');
+    // A profile id is a link id: never a pattern such as '*'.
+    for (const userProfileId of ['*', 'a b', '', 'x'.repeat(65)]) expect(readDevicesWire({ v: 1, origin: null, devices: [device({ userProfileId })], tombstones: [] })?.devices).toEqual([]);
   });
 
-  it('an origin is https (or the tests’ loopback), nothing more', () => {
+  it('an origin is https on a ts.net name (or the tests’ loopback, only when allowed), nothing more', () => {
     expect(readDeviceOrigin('https://pc.example.ts.net')).toBe('https://pc.example.ts.net');
-    expect(readDeviceOrigin('http://localhost:13003')).toBe('http://localhost:13003');
+    expect(readDeviceOrigin('https://pc.example.ts.net:8443')).toBe('https://pc.example.ts.net:8443');
+    expect(readDeviceOrigin('https://evil.example.com')).toBeNull();
+    expect(readDeviceOrigin('https://ts.net.evil.com')).toBeNull();
+    expect(readDeviceOrigin('http://localhost:13003')).toBeNull();
+    expect(readDeviceOrigin('http://localhost:13003', true)).toBe('http://localhost:13003');
     expect(readDeviceOrigin('http://pc.example.ts.net')).toBeNull();
     expect(readDeviceOrigin('https://pc.example.ts.net/path')).toBeNull();
     expect(readDeviceOrigin('https://user:pw@pc.example.ts.net')).toBeNull();
@@ -59,6 +69,8 @@ describe('D189 · the phones exchange', () => {
     const plan = planDevicesMerge(known, { devices: [device({ clock: '00000zzzz.0000.node9' })], tombstones: [{ id: 'phonephone22', clock: CLOCK_1, revokedAt: '2026-11-24T11:00:00.000Z' }] });
     expect(plan.upserts).toEqual([]);
     expect(plan.revokes.map((t) => t.id)).toEqual(['phonephone22']);
+    // A revoke of a phone never known here is not kept.
+    expect(planDevicesMerge({ devices: new Map(), tombstones: new Set<string>() }, { devices: [], tombstones: [{ id: 'phonephone22', clock: CLOCK_1, revokedAt: 'x' }] }).revokes).toEqual([]);
     // A revoke already known here is not applied twice.
     expect(planDevicesMerge(revokedHere, { devices: [], tombstones: [{ id: 'phonephone22', clock: CLOCK_1, revokedAt: 'x' }] }).revokes).toEqual([]);
   });
