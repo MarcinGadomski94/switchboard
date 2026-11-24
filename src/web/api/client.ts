@@ -108,6 +108,7 @@ import type { CleanupRun, CleanupRunRequest, CleanupScan, CleanupSettings } from
 import type { TourOutcome, TutorialState } from '../../core/tutorial.ts';
 import type { DraftPutInput, SessionDraft } from '../../core/drafts.ts';
 import type { Device, DeviceAccessInput, DeviceAccessState, DevicePairingCode, DevicePushInput, DeviceSelfView, DevicesView } from '../../core/devices.ts';
+import type { DeviceComputer } from '../../core/devices-sync.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState, ReconnectResult } from '../../core/peers.ts';
 
 /**
@@ -664,6 +665,10 @@ export const api = {
   saveDevicePush: (body: DevicePushInput) => request<DeviceSelfView>('PUT', '/api/device/push', body),
   deleteDevicePush: () => request<DeviceSelfView>('DELETE', '/api/device/push'),
   testDevicePush: () => request<{ readonly ok: boolean; readonly error?: string }>('POST', '/api/device/push/test'),
+  /** D189 (a paired phone): the computers it can switch to, this one first. */
+  deviceComputers: () => request<DeviceComputer[]>('GET', '/api/device/computers'),
+  /** D189 (a paired phone): a one-time switch to another computer; open the answered URL. */
+  deviceHandover: (machineId: string) => request<{ readonly url: string }>('POST', '/api/device/handover', { machineId }),
   /** D84: the clean-up dry run (nothing changes). */
   cleanupScan: () => request<CleanupScan>('GET', '/api/cleanup'),
   saveCleanupSettings: (body: CleanupSettings) => request<CleanupSettings>('PUT', '/api/cleanup/settings', body),

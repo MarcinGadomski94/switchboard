@@ -56,6 +56,10 @@ export interface PeerHandlers {
   userProfiles(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /** D184 · `POST /peer/v1/mcp-sign-in`: the caller's MCP sign-in mute records and claude.ai connectors (merged); answers this computer's. */
   mcpSignIn(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /** D189 · `POST /peer/v1/devices`: the caller's phones and revokes (no credentials); answers this computer's. */
+  devicesSync(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /** D189 · `POST /peer/v1/devices/handover`: expect a phone (its record and a one-time token's hash); answers this computer's device origin. */
+  deviceHandover(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /**
    * D170 · `GET /peer/v1/terminals/{id}/socket` (WebSocket): the caller's browser attaches to a terminal
    * of this computer, in the profile the caller's request works in (`null`: none named, everything).
@@ -146,6 +150,15 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
   // D184: the MCP sign-in mutes and claude.ai connectors (pairing auth like every route here).
   app.post('/peer/v1/mcp-sign-in', async (request, reply) => {
     const answer = await handlers.mcpSignIn(request.peerMachine as MachineRecord, request.body);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
+  // D189: the phones (no credentials) and a phone's handover offer (pairing auth like every route here).
+  app.post('/peer/v1/devices', async (request, reply) => {
+    const answer = await handlers.devicesSync(request.peerMachine as MachineRecord, request.body);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
+  app.post('/peer/v1/devices/handover', async (request, reply) => {
+    const answer = await handlers.deviceHandover(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
   // D170: a terminal's socket for the caller's browser (the same guard ran on the upgrade: Host, no Origin, the bearer).

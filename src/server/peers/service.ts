@@ -57,6 +57,8 @@ import { memoryPeerChanged } from '../memory/hooks.ts';
 import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
 import { type McpSyncComputer, mcpSignInServerOf, readMcpSignInWire } from '../../core/mcp-sign-in.ts';
 import type { McpSignInService } from '../mcp/sign-in.ts';
+import { readDeviceOrigin, readDevicesWire } from '../../core/devices-sync.ts';
+import type { DeviceService, HandoverOffer } from '../devices/service.ts';
 import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
 import { runOutsideProfileScope } from '../user-profiles/context.ts';
 import { INTERNAL_SCOPE_HEADER, INTERNAL_SECRET, USER_PROFILE_HEADER } from '../user-profiles/scope.ts';
@@ -87,6 +89,9 @@ export const USER_PROFILES_SYNC_PATH = '/peer/v1/user-profiles';
 
 /** D184: the MCP sign-in exchange (`docs/mcp.md` → *Synced with paired computers (D184)*): the mutes and the claude.ai connectors. */
 export const MCP_SIGN_IN_SYNC_PATH = '/peer/v1/mcp-sign-in';
+/** D189: the phones exchange, and a phone's handover offer. */
+export const DEVICES_SYNC_PATH = '/peer/v1/devices';
+export const DEVICE_HANDOVER_PATH = '/peer/v1/devices/handover';
 
 /** Settings key of this install's identity. */
 export const SELF_SETTING = 'peers.self';
@@ -1159,6 +1164,8 @@ export class PeerService implements PeerHandlers {
       void this.#exchangeProfiles(id, true);
       // D184: the MCP sign-in mutes and connectors too.
       void this.#exchangeMcp(id);
+      // D189: and the phones.
+      void this.#exchangeDevices(id);
     }
     else if (state === 'offline' || state === 'auth-failed') this.#sidebar.disconnected(id);
   }
@@ -1844,6 +1851,113 @@ export class PeerService implements PeerHandlers {
     this.#peerMcp.set(machine.id, { synced: true, connectors: wire.connectors });
     this.#relayMcp(machine.id, (await service.merge(wire.mutes)).length);
     return { status: 200, body: service.wire() };
+  }
+
+  // ── D189 · phones paired on one computer work on every paired computer (docs/devices.md) ──
+
+  #devices: DeviceService | null = null;
+  #devicesOff: (() => void) | null = null;
+  /** D189: what each paired computer last told of itself: whether it syncs (`false`: older) and its device origin. */
+  readonly #peerDevices = new Map<string, { readonly synced: boolean; readonly origin: string | null }>();
+  /** D189, tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): act as a computer older than 2.5.14 (no device exchange). */
+  #testDevicesOld = false;
+
+  testDevicesOld(on: boolean): void {
+    this.#testDevicesOld = on;
+  }
+
+  /** D189: the device service (set by the app): its changes go to every paired computer at once; it can hand a phone over. */
+  useDevices(service: DeviceService | null): void {
+    this.#devicesOff?.();
+    this.#devicesOff = null;
+    this.#devices = service;
+    if (!service) return;
+    this.#devicesOff = service.onShare(() => {
+      for (const id of this.#records.keys()) void this.#exchangeDevices(id);
+    });
+    service.usePeers({
+      selfId: async () => (await this.self()).id,
+      offer: (machineId, offer) => this.#offerHandover(machineId, offer),
+      computers: () => this.deviceComputers(),
+    });
+  }
+
+  /** D189: every paired computer with its device origin (while it is online and phones can reach it). */
+  deviceComputers(): Array<{ id: string; name: string; origin: string | null; synced: boolean; online: boolean }> {
+    return [...this.#records.values()]
+      .map((record) => {
+        const known = this.#peerDevices.get(record.id);
+        return { id: record.id, name: record.name, origin: known?.origin ?? null, synced: known?.synced ?? true, online: this.#connections.get(record.id)?.state === 'online' };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  #exchangeDevices(machineId: string): Promise<void> {
+    return runOutsideProfileScope(() => this.#exchangeDevicesNow(machineId));
+  }
+
+  async #exchangeDevicesNow(machineId: string): Promise<void> {
+    const service = this.#devices;
+    const connection = this.#connections.get(machineId);
+    if (!service || !connection || connection.state !== 'online' || this.#testDevicesOld) return;
+    try {
+      const answer = await connection.request('POST', DEVICES_SYNC_PATH, await service.wire(), { timeoutMs: 30_000 });
+      // An older computer has no such route: it keeps its own phones (Settings says so).
+      if (answer.status === 404 || answer.status === 403 || answer.status === 405) {
+        this.#peerDevices.set(machineId, { synced: false, origin: null });
+        return;
+      }
+      const wire = answer.status === 200 ? readDevicesWire(answer.body) : null;
+      if (!wire) return;
+      this.#peerDevices.set(machineId, { synced: true, origin: wire.origin });
+      this.#relayDevices(machineId, await service.mergeShared(machineId, wire));
+    } catch (error) {
+      this.#log('warn', `phones sync with ${machineId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** D189: records a paired computer's exchange wrote here go on to the other paired computers (as D176's profiles). */
+  #relayDevices(fromMachine: string, written: number): void {
+    if (written === 0) return;
+    for (const id of this.#records.keys()) if (id !== fromMachine) void this.#exchangeDevices(id);
+  }
+
+  /** D189 · `POST /peer/v1/devices`: a paired computer's phones and revokes; answers this computer's. */
+  async devicesSync(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    if (this.#closed) return { status: 503, body: { error: 'closing' } };
+    const service = this.#devices;
+    if (!service || this.#testDevicesOld) return { status: 404, body: { error: 'not-found' } };
+    const wire = readDevicesWire(body);
+    if (!wire) return { status: 422, body: { error: 'invalid' } };
+    this.#peerDevices.set(machine.id, { synced: true, origin: wire.origin });
+    this.#relayDevices(machine.id, await service.mergeShared(machine.id, wire));
+    return { status: 200, body: await service.wire() };
+  }
+
+  /** D189 · `POST /peer/v1/devices/handover`: a paired computer asks this one to expect a phone (the token's hash only). */
+  async deviceHandover(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    if (this.#closed) return { status: 503, body: { error: 'closing' } };
+    const service = this.#devices;
+    if (!service || this.#testDevicesOld) return { status: 404, body: { error: 'not-found' } };
+    return service.acceptOffer(machine.id, body);
+  }
+
+  async #offerHandover(machineId: string, offer: HandoverOffer): Promise<{ readonly ok: true; readonly origin: string } | { readonly ok: false; readonly status: number; readonly error: string; readonly message: string }> {
+    const connection = this.#connections.get(machineId);
+    const name = this.#records.get(machineId)?.name ?? machineId;
+    if (!connection || connection.state !== 'online') return { ok: false, status: 409, error: 'offline', message: `${name} cannot be reached right now.` };
+    try {
+      const answer = await runOutsideProfileScope(() => connection.request('POST', DEVICE_HANDOVER_PATH, offer, { timeoutMs: 15_000 }));
+      if (answer.status === 404 || answer.status === 403 || answer.status === 405) {
+        return { ok: false, status: 409, error: 'old-computer', message: `Update Switchboard on ${name} to switch this phone to it.` };
+      }
+      const origin = answer.status === 200 ? readDeviceOrigin((answer.body as { origin?: unknown } | null)?.origin) : null;
+      if (origin) return { ok: true, origin };
+      const refusal = (answer.body ?? {}) as { error?: unknown; message?: unknown };
+      return { ok: false, status: answer.status === 200 ? 502 : answer.status, error: typeof refusal.error === 'string' ? refusal.error : 'refused', message: typeof refusal.message === 'string' ? refusal.message : `${name} refused the switch.` };
+    } catch (error) {
+      return { ok: false, status: 502, error: 'unreachable', message: `${name} could not be reached: ${error instanceof Error ? error.message : String(error)}` };
+    }
   }
 
   /** D71 · `POST /peer/v1/sidebar`: a paired machine's sidebar records (merged only while this machine's switch for it is on). */

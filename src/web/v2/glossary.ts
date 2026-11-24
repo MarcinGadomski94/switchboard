@@ -1144,6 +1144,17 @@ export const SETTINGS_WORDS = {
   noPhones: 'No phone is paired yet.',
   phoneAccessOff: 'Phone access is off. Turn it on under Advanced › Phones: every option.',
   notificationsOnPhone: 'Notifications are set on the phone itself: open Settings › Phones there.',
+  // D189: one pairing for all your computers.
+  pairedOn: (computer: string): string => `Paired on ${computer}: it works here too`,
+  notSignedInHere: 'signs in here the first time it switches to this computer',
+  phoneReachTitle: 'Your other computers',
+  phoneReachSub: 'A phone paired with any of your computers works with all of them. It can switch to a computer whose phone access is on.',
+  reachOk: 'phones can reach it',
+  reachOff: 'phones can’t reach it now (off, or its phone access is off)',
+  reachOld: 'update Switchboard there to share phones with it',
+  phoneComputers: 'Your computers',
+  phoneComputersSub: 'This phone works with every computer paired with this one. Switch to another one here, for example when this one is off next time.',
+  switchComputer: 'Switch',
   installApp: 'Install as an app',
   // Rules
   rulesSub: 'Every agent reads these before it starts. Write them like you’d brief a new colleague.',

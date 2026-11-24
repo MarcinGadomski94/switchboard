@@ -154,6 +154,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/tutorial\/tours\/[^/]+$/],
   // This device: who is asking, its name and notifications.
   ['GET|PUT', /^\/api\/device$/],
+  // D189: the computers a phone can switch to, and a one-time handover to one of them (the phone's own sign-in there).
+  ['GET', /^\/api\/device\/computers$/],
+  ['POST', /^\/api\/device\/handover$/],
   ['PUT|DELETE', /^\/api\/device\/push$/],
   ['POST', /^\/api\/device\/push\/test$/],
   // D87: this device's open page says whether it is in front (no system notifications meanwhile).

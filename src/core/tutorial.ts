@@ -212,7 +212,7 @@ const V2_5_8 = '2.5.8';
 const V2_5_11 = '2.5.11';
 /** The version a plan's Max agents at once on the v2 project page ships in (adjust if it ships later). */
 const V2_5_13 = '2.5.13';
-/** The version D188 (the Tasks page by agent) ships in (adjust if it ships later). */
+/** The version D188 (the Tasks page by agent) and D189 (one phone pairing for all the paired computers) ship in (adjust if it ships later). */
 const V2_5_14 = '2.5.14';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
@@ -2309,6 +2309,25 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-tasks-agents'],
         v2Route: '/tasks',
         missing: 'The button shows once an agent has a task.',
+      },
+    ],
+  },
+  // D189: a phone paired on one computer works on every paired computer (docs/devices.md → One pairing for all your computers).
+  {
+    id: 'phone-everywhere',
+    decision: 'D189',
+    version: V2_5_14,
+    title: 'One phone pairing for all your computers',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'computers',
+        title: 'Switch computers on the phone',
+        what: 'A phone paired with one of your computers now works with all of them. On the phone, Settings › Phones lists your computers: Switch opens another one, signed in, for example when the one you use is off. When one can’t be reached, the phone offers the others.',
+        todo: ['On a paired phone, open Settings › Phones and look at Your computers.'],
+        anchors: ['v2-phone-computers', 'v2-phone-reach'],
+        v2Route: '/settings/phones',
+        missing: 'Pair a phone first (Settings › Phones › Pair a phone): the list shows on the phone, and which computers phones can reach shows here.',
       },
     ],
   },

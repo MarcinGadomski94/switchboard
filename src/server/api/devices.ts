@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { deviceNameFromUserAgent } from '../../core/devices.ts';
 import { DeviceError, PAIR_BODY_LIMIT, isDeviceRequest } from '../devices/service.ts';
 import { pairPage } from '../devices/pair-page.ts';
+import { handoverPage } from '../devices/handover-page.ts';
 import type { DeviceRecord } from '../db/repos/devices.ts';
 import type { ApiContext } from '../routes.ts';
 
@@ -28,6 +29,11 @@ import type { ApiContext } from '../routes.ts';
  *
  * Device listener without a credential:
  * - `GET /pair` → the pairing page; `POST /device/v1/pair` `{ code, name? }` → 201 `{ device }` + the credential cookie.
+ * - D189: `GET /handover` → the switch page; `POST /device/v1/handover` `{ token }` → 200 `{ device }` + this computer's credential cookie.
+ *
+ * D189, a paired phone only:
+ * - `GET /api/device/computers` → DeviceComputer[] (this one first);
+ * - `POST /api/device/handover` `{ machineId }` → `{ url }` (open it to switch to that computer).
  */
 export async function registerDeviceRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { devices } = context;
@@ -105,6 +111,38 @@ export async function registerDeviceRoutes(app: FastifyInstance, context: ApiCon
   app.post('/device/v1/pair', { config: { public: true }, bodyLimit: PAIR_BODY_LIMIT }, async (request, reply) => {
     if (!isDeviceRequest(request.raw)) return reply.callNotFound();
     const answer = await devices.pair(request.body, request.headers);
+    if (answer.cookie) reply.header('set-cookie', answer.cookie);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
+
+  // D189 (docs/devices.md → One pairing for all your computers): a paired phone switches computers.
+  // The computers it can switch to (a paired phone only: this computer's own UI has its paired machines in Settings).
+  app.get('/api/device/computers', async (request, reply) => {
+    const device = deviceOf(request, reply);
+    if (!device) return reply;
+    return run(reply, () => devices.computers());
+  });
+  // A one-time token for another computer (it learns the token's hash over the peer link); answers the URL to open there.
+  app.post('/api/device/handover', async (request, reply) => {
+    const device = deviceOf(request, reply);
+    if (!device) return reply;
+    return run(reply, () => devices.startHandover(device, request.body));
+  });
+  // The landing page and the redeem on the target computer (public on the device listener, like /pair).
+  app.get('/handover', { config: { public: true } }, async (request, reply) => {
+    if (!isDeviceRequest(request.raw)) return reply.callNotFound();
+    const page = handoverPage({ machineName: await devices.machineName() });
+    return reply
+      .header('cache-control', 'no-store')
+      .header('content-security-policy', page.csp)
+      .header('x-content-type-options', 'nosniff')
+      .header('referrer-policy', 'no-referrer')
+      .type('text/html; charset=utf-8')
+      .send(page.html);
+  });
+  app.post('/device/v1/handover', { config: { public: true }, bodyLimit: PAIR_BODY_LIMIT }, async (request, reply) => {
+    if (!isDeviceRequest(request.raw)) return reply.callNotFound();
+    const answer = await devices.redeemHandover(request.body, request.headers);
     if (answer.cookie) reply.header('set-cookie', answer.cookie);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });

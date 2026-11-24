@@ -33,12 +33,38 @@
     <h1 data-testid="offline-title">Switchboard isn't running on <span id="host">this address</span></h1>
     <p data-testid="offline-help">Start it with <code>npm start</code> in the repo, or turn on Settings → Start at login.</p>
     <button type="button" id="retry" data-testid="offline-retry" autofocus>Retry</button>
+    <div id="others" data-testid="offline-others" hidden>
+      <p style="margin-top: 22px">Or open Switchboard on another of your computers:</p>
+      <ul id="others-list" style="margin: 0; padding-left: 18px; line-height: 1.9"></ul>
+    </div>
   </div>
 </main>
 <script>
   // The page answers the navigation that failed, so location is the address the app was opened at.
   document.getElementById('host').textContent = location.host || 'this address';
   document.getElementById('retry').addEventListener('click', function () { location.reload(); });
+  // D189: a paired phone keeps the other computers it can switch to (Settings › Phones on the phone);
+  // they are only links to their own addresses: the phone signs in there with its own credential.
+  try {
+    var stored = JSON.parse(localStorage.getItem('sb.phone.computers') || '[]');
+    var list = document.getElementById('others-list');
+    var shown = 0;
+    for (var i = 0; i < stored.length && i < 20; i++) {
+      var c = stored[i];
+      if (!c || typeof c.name !== 'string' || typeof c.origin !== 'string' || !/^https:\/\/[^/]+$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(c.origin)) continue;
+      var item = document.createElement('li');
+      var link = document.createElement('a');
+      link.href = c.origin + '/';
+      link.textContent = c.name;
+      link.style.color = '#e8e7e3';
+      item.appendChild(link);
+      list.appendChild(item);
+      shown++;
+    }
+    if (shown > 0) document.getElementById('others').hidden = false;
+  } catch (e) {
+    // Nothing stored, or storage blocked: only Retry.
+  }
 </script>
 </body>
 </html>

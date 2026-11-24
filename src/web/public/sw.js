@@ -26,7 +26,7 @@
  */
 
 /** Bump when offline.html changes: a new version re-caches it and drops the old cache. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 /** Prefix of every cache this worker made (old versions are deleted on activate). */
 const CACHE_PREFIX = 'switchboard-offline-';

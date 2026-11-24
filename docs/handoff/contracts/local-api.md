@@ -1317,6 +1317,12 @@ Developer request D73 (`docs/decisions.md` → *Devices*, `docs/devices.md`): ph
 | GET | /pair | — | device listener only: 200 the pairing page (unpaired), 302 `/` (paired); 404 on the UI listener |
 | POST | /device/v1/pair | `{ code, name? }` | device listener only: 201 `{ device: Device }` + `Set-Cookie: __Host-sb_device=…; Path=/; Max-Age=34560000; HttpOnly; Secure; SameSite=Strict` · 400 `no-code` / `expired` / `wrong-code` / `too-many-tries` · 429 `rate-limited`; 404 on the UI listener |
 
+| GET | /api/device/computers | — | D189: 200 DeviceComputer[] `{ id, name, origin: string \| null, current, synced }` (this computer first; `origin` while phones can reach it; `synced: false` = older than 2.5.14) · 404 `not-a-device` |
+| POST | /api/device/handover | `{ machineId }` | D189: 200 `{ url: "<origin>/handover#t=<token>" }` · 404 `not-a-device` / `no-computer` · 409 `offline` / `old-computer` / `access-off` / `revoked` · 502 `unreachable` |
+| GET | /handover | — | D189, device listener only: the handover page (it reads `#t=`, POSTs it once); 404 on the UI listener |
+| POST | /device/v1/handover | `{ token }` | D189, device listener only: 200 `{ device: Device }` + `Set-Cookie: __Host-sb_device=…` (this computer's own credential) · 400 `expired` (used, unknown or expired) · 403 `revoked` / `other-login` · 429 `rate-limited` |
+
+- **D189, additive:** **Device** gains `pairedOn: { id, name } | null` (the computer it was paired on; `null` = this one) and `setUpHere` (`false` until it switched here once); **DevicesView** gains `computers?` (the paired computers phones can reach). Peer routes `POST /peer/v1/devices` and `POST /peer/v1/devices/handover`: `docs/peers.md`.
 - **DeviceAccessState** `{ enabled, port (default 13003), httpsPort (default 8443), listening: "127.0.0.1:<port>" | null, origin: "https://<machine>.<tailnet>.ts.net:8443" | null, https: "ok" | "off" | "no-tailscale" | "no-https" | "serve-failed" | "port-busy", message, actionUrl }` (`message` says what to enable; `actionUrl` a Tailscale page the CLI named, e.g. Serve's consent).
 - **Device** `{ id, name, userAgent, pairedAt, lastSeenAt, push }`: never a credential.
 - **PushEvents** `{ permission, questions, turnFinished, errors, inbox }` (booleans, all on by default).

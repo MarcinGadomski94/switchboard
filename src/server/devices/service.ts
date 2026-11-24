@@ -31,6 +31,8 @@ import {
   validPresenceClient,
 } from '../../core/devices.ts';
 import { isPort, normalizePairingCode } from '../../core/peers.ts';
+import { type DeviceComputer, type DevicesWire, DEVICES_SYNC_VERSION, HANDOVER_TTL_MS, type SharedDevice, planDevicesMerge, readDevicesWire } from '../../core/devices-sync.ts';
+import { HybridClock } from '../../core/hlc.ts';
 import { LOOPBACK_HOST, type ServerConfig } from '../config.ts';
 import type { DeviceRecord } from '../db/repos/devices.ts';
 import type { Store } from '../db/store.ts';
@@ -146,6 +148,36 @@ export interface DeviceServiceOptions {
   readonly remoteInbox?: () => readonly InboxItem[];
 }
 
+/** D189: how a phone's profile id travels (D172 link ids); set by the app once the profiles exist. */
+export interface DeviceProfileLinks {
+  /** This computer's id → its peer-link id. */
+  readonly toLink: (id: string) => string;
+  /** A paired computer's link id → this computer's id. */
+  readonly fromRemote: (machineId: string, linkId: string) => string;
+}
+
+/** D189: what the paired computers give the device service (set by `PeerService.useDevices`). */
+export interface DevicePeers {
+  /** This computer's machine id. */
+  readonly selfId: () => Promise<string>;
+  /** Asks paired computer `machineId` to expect this phone (a handover offer); answers its device origin. */
+  readonly offer: (machineId: string, offer: HandoverOffer) => Promise<{ readonly ok: true; readonly origin: string } | { readonly ok: false; readonly status: number; readonly error: string; readonly message: string }>;
+  /** The paired computers as a phone can switch to them. */
+  readonly computers: () => ReadonlyArray<{ readonly id: string; readonly name: string; readonly origin: string | null; readonly synced: boolean; readonly online: boolean }>;
+}
+
+/** D189: a handover offer (peer link): the phone's shared record and the hash of the one-time token. */
+export interface HandoverOffer {
+  readonly device: SharedDevice;
+  readonly tokenHash: string;
+  readonly expiresAt: string;
+}
+
+/** D189: a credential hash that never matches (a phone known here only through a paired computer). */
+function placeholderHash(): string {
+  return `unset:${randomBytes(18).toString('base64url')}`;
+}
+
 /** A device the guard authenticated, with the presented secret (to refresh the cookie). */
 interface Authenticated {
   readonly record: DeviceRecord;
@@ -167,8 +199,9 @@ function pathnameOf(url: string): string {
 /** `true` for a request an unpaired device may make: the pairing page and exchange, and the installable-app files. */
 function isPairingPublic(method: string, url: string): boolean {
   const pathname = pathnameOf(url);
-  if ((method === 'GET' || method === 'HEAD') && (pathname === '/pair' || APP_FILES.some((file) => file.path === pathname) || pathname.startsWith(APP_ICONS_PREFIX))) return true;
-  return method === 'POST' && pathname === '/device/v1/pair';
+  // D189: the handover page and its redeem (a phone paired on another computer signs in here with a one-time token).
+  if ((method === 'GET' || method === 'HEAD') && (pathname === '/pair' || pathname === '/handover' || APP_FILES.some((file) => file.path === pathname) || pathname.startsWith(APP_ICONS_PREFIX))) return true;
+  return method === 'POST' && (pathname === '/device/v1/pair' || pathname === '/device/v1/handover');
 }
 
 /** A browser page load (not the API, the hub or a file). */
@@ -209,11 +242,22 @@ export class DeviceService {
   readonly #deviceSockets = new Map<string, Set<Socket>>();
   readonly #seen = new Map<string, number>();
   readonly #attempts: number[] = [];
+  /** D189: the shared records' clock. */
+  readonly #clock: HybridClock;
+  /** D189: who hears of a change to share (the paired computers). */
+  readonly #shareListeners = new Set<() => void>();
+  /** D189: the paired computers (set by `PeerService.useDevices`). */
+  #peers: DevicePeers | null = null;
+  /** D189: profile ids on the wire (set by the app). */
+  #links: DeviceProfileLinks | null = null;
+  /** D189: handover offers waiting here, by the token's hash (single use, {@link HANDOVER_TTL_MS}). */
+  readonly #offers = new Map<string, { readonly deviceId: string; readonly expiresAt: number; readonly fromMachine: string }>();
 
   constructor(options: DeviceServiceOptions) {
     this.#config = options.config;
     this.#store = options.store;
     this.#now = options.now ?? Date.now;
+    this.#clock = new HybridClock(randomBytes(4).toString('hex'), this.#now);
     this.#onError = options.onError ?? ((error) => console.error('switchboard devices:', error));
     this.#machineName = options.machineName ?? (async () => 'this computer');
     this.#fetch = options.fetch;
@@ -311,7 +355,11 @@ export class DeviceService {
 
   /** Starts or stops device access to match the switch; serialized. */
   #apply(): Promise<void> {
-    const run = this.#change.catch(() => undefined).then(() => this.#applyNow());
+    // D189: the paired computers learn whether (and where) phones reach this one.
+    const run = this.#change
+      .catch(() => undefined)
+      .then(() => this.#applyNow())
+      .then(() => this.#share());
     this.#change = run.catch((error: unknown) => this.#onError(error));
     return this.#change;
   }
@@ -542,6 +590,8 @@ export class DeviceService {
   // ── devices ───────────────────────────────────────────────────────────
 
   async #toDevice(record: DeviceRecord): Promise<Device> {
+    const pairedOn = record.pairedOn ?? null;
+    const computer = pairedOn ? this.#peers?.computers().find((c) => c.id === pairedOn) : undefined;
     return {
       id: record.id,
       name: record.name,
@@ -550,6 +600,8 @@ export class DeviceService {
       lastSeenAt: record.lastSeenAt,
       push: (await this.#store.devices.push(record.id)) !== null,
       userProfileId: record.userProfileId ?? 'default',
+      pairedOn: pairedOn ? { id: pairedOn, name: computer?.name ?? pairedOn } : null,
+      setUpHere: record.setUpHere !== false,
     };
   }
 
@@ -559,14 +611,15 @@ export class DeviceService {
     if (!profile || profile.deletedAt !== null) throw new DeviceError(422, 'invalid', 'no such profile');
     const record = await this.#store.devices.setUserProfile(id, profile.id);
     if (!record) throw new DeviceError(404, 'not-found', 'no such device');
-    return this.#toDevice(record);
+    await this.#changed(id);
+    return this.#toDevice((await this.#store.devices.get(id)) ?? record);
   }
 
   /** `GET /api/devices`. */
   async view(): Promise<DevicesView> {
     const devices: Device[] = [];
     for (const record of await this.#store.devices.list()) devices.push(await this.#toDevice(record));
-    return { access: await this.accessState(), devices };
+    return { access: await this.accessState(), devices, computers: this.#peers?.computers() ?? [] };
   }
 
   /** Renames a device (`PUT /api/devices/{id}`, or the device itself). */
@@ -575,18 +628,210 @@ export class DeviceService {
     if (!clean) throw new DeviceError(422, 'invalid', 'the name must be 1–40 characters');
     const record = await this.#store.devices.rename(id, clean);
     if (!record) throw new DeviceError(404, 'not-found', 'no such device');
-    return this.#toDevice(record);
+    await this.#changed(id);
+    return this.#toDevice((await this.#store.devices.get(id)) ?? record);
   }
 
-  /** Revokes a device: its credential stops working now and its open connections (the `/hub` stream) are closed. */
+  /**
+   * Revokes a device: its credential stops working now and its open connections (the `/hub` stream)
+   * are closed. D189: the revoke is kept (a tombstone) and goes to every paired computer, where the
+   * phone stops working too.
+   */
   async revoke(id: string): Promise<void> {
     const removed = await this.#store.devices.delete(id);
     if (!removed) throw new DeviceError(404, 'not-found', 'no such device');
+    await this.#store.devices.addTombstone({ id, clock: this.#clock.next(), revokedAt: new Date(this.#now()).toISOString() });
+    this.#dropDevice(id);
+    this.#share();
+  }
+
+  /** Forgets a revoked device's live state here (its sockets closed at once). */
+  #dropDevice(id: string): void {
     this.#seen.delete(id);
     this.#presence.forget(id);
+    for (const [hash, offer] of this.#offers) if (offer.deviceId === id) this.#offers.delete(hash);
     const sockets = this.#deviceSockets.get(id);
     this.#deviceSockets.delete(id);
     for (const socket of sockets ?? []) socket.destroy();
+  }
+
+  // ── D189 · one pairing for all the paired computers ───────────────────
+
+  /** D189: the paired computers (set by `PeerService.useDevices`). */
+  usePeers(peers: DevicePeers | null): void {
+    this.#peers = peers;
+  }
+
+  /** D189: how profile ids travel (set by the app once the profiles exist). */
+  useProfileLinks(links: DeviceProfileLinks | null): void {
+    this.#links = links;
+  }
+
+  /** D189: calls `listener` after a change to share (a pairing, a rename, a profile, a revoke); answers the unsubscribe. */
+  onShare(listener: () => void): () => void {
+    this.#shareListeners.add(listener);
+    return () => this.#shareListeners.delete(listener);
+  }
+
+  #share(): void {
+    for (const listener of this.#shareListeners) listener();
+  }
+
+  /** A device's shared fields changed here: a new clock, then the paired computers hear of it. */
+  async #changed(id: string): Promise<void> {
+    await this.#store.devices.setClock(id, this.#clock.next());
+    this.#share();
+  }
+
+  async #sharedOf(record: DeviceRecord): Promise<SharedDevice> {
+    const selfId = this.#peers ? await this.#peers.selfId() : 'aaaaaaaaaaaa';
+    const profile = record.userProfileId ?? 'default';
+    return {
+      id: record.id,
+      name: record.name,
+      userAgent: record.userAgent,
+      tailscaleLogin: record.tailscaleLogin,
+      userProfileId: this.#links ? this.#links.toLink(profile) : profile,
+      pairedAt: record.pairedAt,
+      pairedOn: record.pairedOn ?? selfId,
+      clock: record.clock ?? '',
+    };
+  }
+
+  /**
+   * D189: this computer's side of the exchange: every phone it knows (no credential, no hash), every
+   * revoke, and its device origin while phones can reach it.
+   */
+  async wire(): Promise<DevicesWire> {
+    const devices: SharedDevice[] = [];
+    for (const record of await this.#store.devices.list()) devices.push(await this.#sharedOf(record));
+    const tombstones = (await this.#store.devices.tombstones()).map((t) => ({ id: t.id, clock: t.clock, revokedAt: t.revokedAt }));
+    return { v: DEVICES_SYNC_VERSION, origin: this.#https === 'ok' ? this.#origin : null, devices, tombstones };
+  }
+
+  /**
+   * D189: a paired computer's phones and revokes (`fromMachine`'s ids): a revoke always wins (the
+   * phone stops working here at once); otherwise the later clock wins. A phone new here is stored
+   * without a credential of this computer (it signs in here through a handover). Answers how many
+   * records changed here (the caller passes them on to the other paired computers).
+   */
+  async mergeShared(fromMachine: string, body: unknown): Promise<number> {
+    const wire = readDevicesWire(body);
+    if (!wire) return 0;
+    for (const record of wire.devices) this.#clock.observe(record.clock);
+    for (const tomb of wire.tombstones) this.#clock.observe(tomb.clock);
+    const devices = new Map((await this.#store.devices.list()).map((d) => [d.id, { clock: d.clock ?? '' }]));
+    const tombstones = new Set((await this.#store.devices.tombstones()).map((t) => t.id));
+    const plan = planDevicesMerge({ devices, tombstones }, wire);
+    for (const tomb of plan.revokes) {
+      await this.#store.devices.addTombstone(tomb);
+      if (await this.#store.devices.delete(tomb.id)) this.#dropDevice(tomb.id);
+    }
+    for (const device of plan.upserts) await this.#storeShared(fromMachine, device);
+    return plan.revokes.length + plan.upserts.length;
+  }
+
+  async #storeShared(fromMachine: string, device: SharedDevice): Promise<void> {
+    const selfId = this.#peers ? await this.#peers.selfId() : null;
+    await this.#store.devices.upsertShared({
+      id: device.id,
+      name: device.name,
+      userAgent: device.userAgent,
+      tailscaleLogin: device.tailscaleLogin,
+      pairedAt: device.pairedAt,
+      userProfileId: this.#links ? this.#links.fromRemote(fromMachine, device.userProfileId) : device.userProfileId,
+      clock: device.clock,
+      pairedOn: device.pairedOn === selfId ? null : device.pairedOn,
+      placeholderHash: placeholderHash(),
+    });
+  }
+
+  /** D189 · `GET /api/device/computers`: the computers this phone can switch to (this one first). */
+  async computers(): Promise<DeviceComputer[]> {
+    const selfId = this.#peers ? await this.#peers.selfId() : '';
+    const self: DeviceComputer = { id: selfId, name: await this.machineName(), origin: this.#https === 'ok' ? this.#origin : null, current: true, synced: true };
+    const others = (this.#peers?.computers() ?? []).map((c): DeviceComputer => ({ id: c.id, name: c.name, origin: c.online ? c.origin : null, current: false, synced: c.synced }));
+    return [self, ...others];
+  }
+
+  /**
+   * D189 · `POST /api/device/handover` `{ machineId }` (a paired phone): this computer mints a
+   * one-time token (32 random bytes, {@link HANDOVER_TTL_MS}), tells paired computer `machineId`
+   * over the peer link to expect this phone with that token's **hash**, and answers the URL the
+   * phone opens there (`<origin>/handover#t=<token>`: the token in the fragment, never sent in a
+   * request line, never logged). Only the phone (which asked over its own authenticated
+   * connection) and the target ever see the token; the target checks it once, then gives the phone
+   * its own credential.
+   */
+  async startHandover(device: DeviceRecord, body: unknown): Promise<{ readonly url: string }> {
+    const input = (typeof body === 'object' && body !== null && !Array.isArray(body) ? body : {}) as { machineId?: unknown };
+    const machineId = typeof input.machineId === 'string' ? input.machineId : '';
+    const target = this.#peers?.computers().find((c) => c.id === machineId);
+    if (!this.#peers || !target) throw new DeviceError(404, 'no-computer', 'That computer is not paired with this one.');
+    if (!target.online) throw new DeviceError(409, 'offline', `${target.name} cannot be reached right now.`);
+    const token = newDeviceSecret();
+    const offer: HandoverOffer = { device: await this.#sharedOf(device), tokenHash: hashDeviceSecret(token), expiresAt: new Date(this.#now() + HANDOVER_TTL_MS).toISOString() };
+    const answer = await this.#peers.offer(machineId, offer);
+    if (!answer.ok) throw new DeviceError(answer.status, answer.error, answer.message);
+    return { url: `${answer.origin}/handover#t=${token}` };
+  }
+
+  /**
+   * D189 · peer `POST /peer/v1/devices/handover` (from paired computer `fromMachine`): store the
+   * phone's record (a revoke here wins: refused), then expect it for one redeem of the token whose
+   * hash came. Refused while this computer's device access does not work (no origin to send it to).
+   */
+  async acceptOffer(fromMachine: string, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    const input = (typeof body === 'object' && body !== null ? body : {}) as { device?: unknown; tokenHash?: unknown; expiresAt?: unknown };
+    const wire = readDevicesWire({ v: DEVICES_SYNC_VERSION, origin: null, devices: [input.device], tombstones: [] });
+    const device = wire?.devices[0];
+    const tokenHash = typeof input.tokenHash === 'string' && /^[A-Za-z0-9_-]{43}$/.test(input.tokenHash) ? input.tokenHash : null;
+    const expires = typeof input.expiresAt === 'string' ? Date.parse(input.expiresAt) : Number.NaN;
+    if (!device || !tokenHash || !Number.isFinite(expires)) return { status: 422, body: { error: 'invalid', message: 'the offer must be { device, tokenHash, expiresAt }' } };
+    if (await this.#store.devices.tombstone(device.id)) return { status: 409, body: { error: 'revoked', message: 'This phone was revoked.' } };
+    if (this.#https !== 'ok' || !this.#origin) return { status: 409, body: { error: 'access-off', message: 'Phones cannot reach this computer: switch device access on here (Settings → Phones).' } };
+    const known = await this.#store.devices.get(device.id);
+    if (!known || device.clock > (known.clock ?? '')) await this.#storeShared(fromMachine, device);
+    const now = this.#now();
+    for (const [hash, offer] of this.#offers) if (offer.expiresAt <= now) this.#offers.delete(hash);
+    // Never longer than the TTL from now, whatever the sender's clock says.
+    this.#offers.set(tokenHash, { deviceId: device.id, expiresAt: Math.min(expires, now + HANDOVER_TTL_MS), fromMachine });
+    return { status: 200, body: { origin: this.#origin } };
+  }
+
+  /**
+   * D189 · `POST /device/v1/handover` `{ token }` (device listener, no credential yet): the phone
+   * redeems the token once. Checked: a waiting offer with that token's hash (constant-time lookup by
+   * hash), not expired, the phone still known here and not revoked, the same Tailscale login when one
+   * was recorded. Then this computer gives the phone **its own** credential (a new secret; only its
+   * hash is stored here) as its cookie on this origin. Rate-limited with the pairing attempts.
+   */
+  async redeemHandover(body: unknown, headers: FastifyRequest['headers']): Promise<{ readonly status: number; readonly body: unknown; readonly cookie?: string }> {
+    const now = this.#now();
+    while (this.#attempts.length > 0 && (this.#attempts[0] as number) <= now - DEVICE_PAIR_WINDOW_MS) this.#attempts.shift();
+    if (this.#attempts.length >= DEVICE_PAIR_MAX_ATTEMPTS) return { status: 429, body: { error: 'rate-limited', message: 'Too many tries. Wait a few minutes.' } };
+    this.#attempts.push(now);
+    const token = (typeof body === 'object' && body !== null ? (body as { token?: unknown }).token : undefined);
+    const gone = { status: 400, body: { error: 'expired', message: 'This link to switch computers expired or was used. Switch again from the other computer.' } };
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return gone;
+    const hash = hashDeviceSecret(token);
+    const offer = this.#offers.get(hash);
+    if (!offer) return gone;
+    // Single use: gone before anything else is checked.
+    this.#offers.delete(hash);
+    if (offer.expiresAt <= now) return gone;
+    const record = await this.#store.devices.get(offer.deviceId);
+    if (!record || (await this.#store.devices.tombstone(offer.deviceId))) return { status: 403, body: { error: 'revoked', message: 'This phone is not paired any more.' } };
+    if (record.tailscaleLogin !== null && headers['tailscale-user-login'] !== record.tailscaleLogin) return { status: 403, body: { error: 'other-login', message: 'This phone is signed in to another Tailscale account.' } };
+    const secret = newDeviceSecret();
+    const updated = (await this.#store.devices.setCredential(record.id, hashDeviceSecret(secret))) ?? record;
+    this.#markSeen(updated.id);
+    return { status: 200, body: { device: await this.#toDevice(updated) }, cookie: serializeDeviceCookie(updated.id, secret) };
+  }
+
+  /** D189, tests: how many handover offers wait here. */
+  pendingOffers(): number {
+    return this.#offers.size;
   }
 
   // ── pairing ───────────────────────────────────────────────────────────
@@ -656,8 +901,11 @@ export class DeviceService {
       userAgent,
       credentialHash: hashDeviceSecret(secret),
       tailscaleLogin: login,
+      clock: this.#clock.next(),
     });
     this.#markSeen(record.id);
+    // D189: the paired computers learn of the phone (never its credential).
+    this.#share();
     return { status: 201, body: { device: await this.#toDevice(record) }, cookie: serializeDeviceCookie(id, secret) };
   }
 

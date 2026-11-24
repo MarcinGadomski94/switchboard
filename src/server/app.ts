@@ -583,6 +583,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   // D184: its mutes and the claude.ai connectors go to every paired computer (and come from them).
   peers.useMcpSignIn(mcpSignIn);
+  // D189: the phones (never their credentials) go to every paired computer; a phone can switch between them.
+  deviceService.useProfileLinks({
+    toLink: (id) => (id === 'default' ? userProfiles.selfWireId() : id),
+    fromRemote: (machineId, linkId) => userProfiles.fromRemote(machineId, linkId),
+  });
+  peers.useDevices(deviceService);
   app.addHook('onReady', async () => {
     await mcpSignIn.start();
   });

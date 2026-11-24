@@ -12,6 +12,7 @@ import { codeTimeLeft, refusalText } from '../../views/settings/machines.ts';
 import { Button, Card, Dialog, EmptyState, Icon, Skeleton, StatusBadge, Switch, useToast } from '../components/index.ts';
 import { SETTINGS_WORDS as W } from '../glossary.ts';
 import { ClassicFrame } from './ClassicFrame.tsx';
+import { PHONE_COMPUTERS_KEY, phoneComputerRows, storedComputers } from './phone-computers.ts';
 
 function errorText(caught: unknown, fallback: string): string {
   if (caught instanceof ApiError) return refusalText(caught.body, fallback);
@@ -41,6 +42,7 @@ export function PhonesSection() {
     // A paired phone: its notifications live on the phone (the browser's push subscription).
     return (
       <div className="v2-set-stack" data-testid="v2-set-phones" data-device="">
+        <PhoneComputers />
         <Card pad className="v2-set-card">
           <ClassicFrame testId="v2-phone-self">
             <DevicesSection />
@@ -51,6 +53,62 @@ export function PhonesSection() {
     );
   }
   return <LocalPhones />;
+}
+
+/**
+ * D189: on a paired phone, the computers it can switch to (this one, and every paired computer whose
+ * phone access works). Switch asks this computer for a one-time handover and opens the other
+ * computer's address with it; the list is also kept for the offline page.
+ */
+function PhoneComputers() {
+  const list = useApi(api.deviceComputers);
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    if (!list.data) return;
+    try {
+      window.localStorage.setItem(PHONE_COMPUTERS_KEY, JSON.stringify(storedComputers(list.data)));
+    } catch {
+      // Storage blocked: the offline page just shows no other computer.
+    }
+  }, [list.data]);
+  const rows = list.data ? phoneComputerRows(list.data) : [];
+  return (
+    <Card pad className="v2-set-card" data-testid="v2-phone-computers" data-tour="v2-phone-computers">
+      <div className="v2-set-card-h">
+        <Icon name="desktop" />
+        <h3 className="v2-grow">{W.phoneComputers}</h3>
+      </div>
+      <p className="v2-muted v2-set-small">{W.phoneComputersSub}</p>
+      {!list.data && !list.error ? <Skeleton lines={2} /> : null}
+      {rows.map((row) => (
+        <div className="v2-set-row" key={row.id} data-testid="v2-phone-computer" data-machine={row.id}>
+          <span className="v2-grow">
+            <b>{row.name}</b> <span className="v2-muted">· {row.note}</span>
+          </span>
+          {row.canSwitch ? (
+            <Button
+              size="sm"
+              disabled={busy !== null}
+              data-testid="v2-phone-switch"
+              onClick={() => {
+                setBusy(row.id);
+                api.deviceHandover(row.id).then(
+                  (answer) => window.location.assign(answer.url),
+                  (caught: unknown) => {
+                    setBusy(null);
+                    toast({ text: errorText(caught, 'It could not switch.'), tone: 'error' });
+                  },
+                );
+              }}
+            >
+              {busy === row.id ? 'Switching…' : W.switchComputer}
+            </Button>
+          ) : null}
+        </div>
+      ))}
+    </Card>
+  );
 }
 
 function LocalPhones() {
@@ -76,6 +134,13 @@ function LocalPhones() {
             <div className="v2-grow">
               <h3>{device.name}</h3>
               <div className="v2-muted v2-set-small">{deviceDetail(device)}</div>
+              {/* D189: a phone paired on another computer works here too (it signs in here on its first switch). */}
+              {device.pairedOn ? (
+                <div className="v2-muted v2-set-small" data-testid="v2-phone-paired-on">
+                  {W.pairedOn(device.pairedOn.name)}
+                  {device.setUpHere === false ? ` · ${W.notSignedInHere}` : ''}
+                </div>
+              ) : null}
             </div>
             <StatusBadge status="done" label="Paired" />
           </div>
@@ -115,6 +180,20 @@ function LocalPhones() {
           {W.pairPhone}
         </Button>
       </Card>
+      {/* D189: one pairing for every paired computer: where phones can reach. */}
+      {(data.computers ?? []).length > 0 ? (
+        <Card pad className="v2-set-card" data-testid="v2-phone-reach">
+          <h3>{W.phoneReachTitle}</h3>
+          <p className="v2-muted v2-set-small">{W.phoneReachSub}</p>
+          {(data.computers ?? []).map((computer) => (
+            <div className="v2-set-row" key={computer.id} data-testid="v2-phone-reach-row" data-machine={computer.id}>
+              <span className="v2-grow">
+                <b>{computer.name}</b> <span className="v2-muted">· {!computer.synced ? W.reachOld : computer.origin && computer.online ? W.reachOk : W.reachOff}</span>
+              </span>
+            </div>
+          ))}
+        </Card>
+      ) : null}
       <InstallRow />
       <PairPhoneDialog open={pairing} ready={access.enabled && access.https === 'ok'} onClose={() => setPairing(false)} onPaired={view.reload} known={data.devices.map((d) => d.id)} reload={view.reload} />
       <Dialog

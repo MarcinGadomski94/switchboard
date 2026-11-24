@@ -68,6 +68,10 @@ export interface Device {
   readonly push: boolean;
   /** Additive (D165, `docs/profiles.md`): the profile the device works in (its lists, its notifications). */
   readonly userProfileId?: string;
+  /** Additive (D189): the computer it was paired on (`null` = this one). */
+  readonly pairedOn?: { readonly id: string; readonly name: string } | null;
+  /** Additive (D189): `true` when the phone already signed in to this computer (else: known through a paired computer, set up on its first switch here). */
+  readonly setUpHere?: boolean;
 }
 
 /** Why device access over HTTPS is not available, or `ok`. */
@@ -111,6 +115,8 @@ export interface DevicePairingCode {
 export interface DevicesView {
   readonly access: DeviceAccessState;
   readonly devices: readonly Device[];
+  /** Additive (D189): the paired computers and whether phones can reach them (their device origin; `synced` false: an older Switchboard). */
+  readonly computers?: ReadonlyArray<{ readonly id: string; readonly name: string; readonly origin: string | null; readonly synced: boolean; readonly online: boolean }>;
 }
 
 /** `GET /api/device`: who is asking. */

@@ -20,7 +20,7 @@ const ORIGIN = 'http://127.0.0.1:4870';
  * CACHE_VERSION in sw.js (installed apps re-cache the page only for a new worker),
  * then put the new version and hash here.
  */
-const OFFLINE_PAGE_PIN = { version: 1, sha256: 'beeef13b77c417b92fe37c4e0d590a992e3bde5ea1d3f6899897535eb6e544ab' };
+const OFFLINE_PAGE_PIN = { version: 2, sha256: '56e57621b1756f6bcf74b3e84f7a99b0a68355545a77ee5f5f4be279c9a6b58d' };
 
 type Listener = (event: unknown) => void;
 
@@ -121,8 +121,8 @@ describe('install', () => {
   it('caches only the offline page, fresh from the network, then takes over at once', async () => {
     const worker = await loadWorker();
     await worker.install();
-    expect(worker.added).toEqual([{ cache: 'switchboard-offline-v1', url: `${ORIGIN}/offline.html`, mode: 'reload' }]);
-    expect(worker.caches()).toEqual(['switchboard-offline-v1']);
+    expect(worker.added).toEqual([{ cache: 'switchboard-offline-v2', url: `${ORIGIN}/offline.html`, mode: 'reload' }]);
+    expect(worker.caches()).toEqual(['switchboard-offline-v2']);
     expect(worker.calls).toEqual(['skipWaiting']);
   });
 
@@ -138,7 +138,7 @@ describe('install', () => {
     for (const addRoutes of [async () => Promise.reject(new TypeError('unsupported condition')), () => { throw new TypeError('not now'); }]) {
       const worker = await loadWorker();
       await worker.install({ addRoutes });
-      expect(worker.caches()).toEqual(['switchboard-offline-v1']);
+      expect(worker.caches()).toEqual(['switchboard-offline-v2']);
       expect(worker.calls).toEqual(['skipWaiting']);
     }
   });
@@ -146,10 +146,10 @@ describe('install', () => {
 
 describe('activate', () => {
   it('deletes older offline caches only, enables navigation preload, claims the open pages', async () => {
-    const worker = await loadWorker(['switchboard-offline-v0', 'someone-else', 'switchboard-offline-v1']);
+    const worker = await loadWorker(['switchboard-offline-v1', 'someone-else', 'switchboard-offline-v2']);
     await worker.activate();
-    expect(worker.caches()).toEqual(['someone-else', 'switchboard-offline-v1']);
-    expect(worker.calls).toEqual(['delete switchboard-offline-v0', 'preload', 'claim']);
+    expect(worker.caches()).toEqual(['someone-else', 'switchboard-offline-v2']);
+    expect(worker.calls).toEqual(['delete switchboard-offline-v1', 'preload', 'claim']);
   });
 });
 

@@ -20,6 +20,19 @@ export interface DeviceRecord {
   readonly lastSeenAt: string | null;
   /** D165 (0055): the user profile the phone works in (its lists, its pushes); `'default'` for phones paired before. */
   readonly userProfileId?: string;
+  /** D189 (0063): the shared record's hybrid clock ('' before D189). */
+  readonly clock?: string;
+  /** D189: the machine id of the computer it was paired on; `null` = this one. */
+  readonly pairedOn?: string | null;
+  /** D189: `true` when the phone holds a credential of this computer (else it is known only through a paired one). */
+  readonly setUpHere?: boolean;
+}
+
+/** D189: a revoked phone (kept so the revoke reaches every paired computer). */
+export interface DeviceTombstoneRecord {
+  readonly id: string;
+  readonly clock: string;
+  readonly revokedAt: string;
 }
 
 /** A one-time pairing code (hash only). */
@@ -56,6 +69,19 @@ const DEVICES: TableSpec<DeviceRecord> = {
     pairedAt: ['paired_at', 'text'],
     lastSeenAt: ['last_seen_at', 'text'],
     userProfileId: ['user_profile_id', 'text'],
+    clock: ['clock', 'text'],
+    pairedOn: ['paired_on', 'text'],
+    setUpHere: ['set_up_here', 'bool'],
+  },
+};
+
+const TOMBSTONES: TableSpec<DeviceTombstoneRecord> = {
+  table: 'device_tombstones',
+  key: 'id',
+  fields: {
+    id: ['id', 'text'],
+    clock: ['clock', 'text'],
+    revokedAt: ['revoked_at', 'text'],
   },
 };
 
@@ -92,10 +118,12 @@ export class DeviceRepository {
   readonly #devices: Table<DeviceRecord>;
   readonly #codes: Table<DevicePairingCodeRecord>;
   readonly #push: Table<DevicePushRecord>;
+  readonly #tombstones: Table<DeviceTombstoneRecord>;
 
   constructor(ctx: RepoContext) {
     this.#ctx = ctx;
     this.#devices = new Table(ctx.db, DEVICES);
+    this.#tombstones = new Table(ctx.db, TOMBSTONES);
     this.#codes = new Table(ctx.db, CODES);
     this.#push = new Table(ctx.db, PUSH);
   }
@@ -112,8 +140,44 @@ export class DeviceRepository {
   }
 
   /** Stores a new pairing. */
-  async create(input: Pick<DeviceRecord, 'id' | 'name' | 'credentialHash'> & Partial<Pick<DeviceRecord, 'userAgent' | 'tailscaleLogin'>>): Promise<DeviceRecord> {
-    return this.#devices.insert({ ...input, userAgent: input.userAgent ?? null, tailscaleLogin: input.tailscaleLogin ?? null, pairedAt: this.#ctx.now() });
+  async create(input: Pick<DeviceRecord, 'id' | 'name' | 'credentialHash'> & Partial<Pick<DeviceRecord, 'userAgent' | 'tailscaleLogin' | 'clock'>>): Promise<DeviceRecord> {
+    return this.#devices.insert({ ...input, userAgent: input.userAgent ?? null, tailscaleLogin: input.tailscaleLogin ?? null, pairedAt: this.#ctx.now(), clock: input.clock ?? '', pairedOn: null, setUpHere: true });
+  }
+
+  /**
+   * D189: stores a phone a paired computer shared (new here: `setUpHere` false with an unusable
+   * `credentialHash` placeholder; known: its shared fields and clock, its credential kept).
+   */
+  async upsertShared(input: Pick<DeviceRecord, 'id' | 'name' | 'userAgent' | 'tailscaleLogin' | 'pairedAt' | 'userProfileId' | 'clock' | 'pairedOn'> & { readonly placeholderHash: string }): Promise<DeviceRecord> {
+    const existing = this.#devices.get(input.id);
+    const shared = { name: input.name, userAgent: input.userAgent, tailscaleLogin: input.tailscaleLogin, userProfileId: input.userProfileId ?? 'default', clock: input.clock ?? '' };
+    if (existing) return this.#devices.update(input.id, shared) ?? existing;
+    return this.#devices.insert({ id: input.id, ...shared, credentialHash: input.placeholderHash, pairedAt: input.pairedAt, lastSeenAt: null, pairedOn: input.pairedOn ?? null, setUpHere: false });
+  }
+
+  /** D189: the phone's credential of this computer (a handover set it up here). */
+  async setCredential(id: string, credentialHash: string): Promise<DeviceRecord | null> {
+    return this.#devices.update(id, { credentialHash, setUpHere: true });
+  }
+
+  /** D189: a new clock on the shared record (a rename or a profile change here). */
+  async setClock(id: string, clock: string): Promise<void> {
+    this.#devices.update(id, { clock });
+  }
+
+  /** D189: every revoked phone. */
+  async tombstones(): Promise<DeviceTombstoneRecord[]> {
+    return this.#tombstones.select('', [], 'revoked_at, id');
+  }
+
+  async tombstone(id: string): Promise<DeviceTombstoneRecord | null> {
+    return this.#tombstones.get(id);
+  }
+
+  /** D189: records a revoke (kept, so it reaches every paired computer). */
+  async addTombstone(input: DeviceTombstoneRecord): Promise<void> {
+    if (this.#tombstones.get(input.id)) return;
+    this.#tombstones.insert(input);
   }
 
   async rename(id: string, name: string): Promise<DeviceRecord | null> {
