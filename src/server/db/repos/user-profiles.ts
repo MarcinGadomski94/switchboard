@@ -28,8 +28,7 @@ export interface UserProfileRecord {
   readonly computers: readonly string[] | null;
   /** D176 (0061): the computers `computers` was decided for (others stay allowed); `null` = every computer. */
   readonly decidedFor: readonly string[] | null;
-  /** D190 (0064): the GitHub account the profile is bound to (synced with the profile); 
-ull = none. */
+  /** D190 (0064): the GitHub account the profile is bound to (synced with the profile); `null` = none. */
   readonly github: GitHubIdentity | null;
 }
 

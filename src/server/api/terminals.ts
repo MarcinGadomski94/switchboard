@@ -1,3 +1,4 @@
+import { GH_TOKEN_ENV_KEYS } from '../../core/github-binding.ts';
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import websocket from '@fastify/websocket';
@@ -121,7 +122,7 @@ export async function registerTerminalRoutes(
       const { cols, rows } = terminalSize(body['cols'], body['rows']);
       // D190: the profile's GitHub account, when it has one (the standalone terminal is the browser's profile's).
       const env = scope !== '*' ? await githubEnvOf(scope) : {};
-      const info = await terminals.create({ program, cwd, owner: scope === '*' ? null : scope, cols, rows, env });
+      const info = await terminals.create({ program, cwd, owner: scope === '*' ? null : scope, cols, rows, env, unset: env['GH_CONFIG_DIR'] ? GH_TOKEN_ENV_KEYS : [] });
       return reply.code(201).header('cache-control', 'no-store').send(info);
     } catch (error) {
       return send(reply, error);
@@ -150,7 +151,7 @@ export async function registerTerminalRoutes(
       const owner = scope === '*' ? (record.userProfileId ?? null) : scope;
       // D190: the agent's profile's GitHub account, as the agent itself has.
       const env = owner ? await githubEnvOf(owner) : {};
-      const info = await terminals.create({ program, cwd, owner, cols, rows, env, agent: { sessionId: request.params.id, closeUnattendedMs: options.agentTerminalGraceMs ?? AGENT_TERMINAL_GRACE_MS } });
+      const info = await terminals.create({ program, cwd, owner, cols, rows, env, unset: env['GH_CONFIG_DIR'] ? GH_TOKEN_ENV_KEYS : [], agent: { sessionId: request.params.id, closeUnattendedMs: options.agentTerminalGraceMs ?? AGENT_TERMINAL_GRACE_MS } });
       return reply.code(201).header('cache-control', 'no-store').send(info);
     } catch (error) {
       return send(reply, error);

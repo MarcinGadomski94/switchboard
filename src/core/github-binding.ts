@@ -2,8 +2,24 @@
  * D190 (`docs/profiles.md` → *A profile's GitHub account*): a Switchboard profile bound to a GitHub
  * account. The identity (login, name, id, the commit email) is a profile attribute synced with the
  * profile (D165); the sign-in itself is `gh`'s own, per profile and per computer, in
- * `<dataDir>/github/<profile id>/` (`GH_CONFIG_DIR`), never synced and never read by Switchboard.
+ * `<dataDir>/github/<profile id>/` (`GH_CONFIG_DIR`). The developer's ruling (2026-11-26): the
+ * sign-in is shared with the paired computers the profile may use — Switchboard reads the token
+ * (`gh auth token`) only to send it on the peer link, in memory, and never stores or logs it.
  */
+
+/**
+ * The variables that make `gh` ignore `GH_CONFIG_DIR` (a token, or another host): removed from the
+ * environment of every call and process that runs as a profile's account.
+ */
+export const GH_TOKEN_ENV_KEYS: readonly string[] = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST'];
+
+/** A copy of `env` without {@link GH_TOKEN_ENV_KEYS} (compared case-insensitively: Windows' names are). */
+export function withoutGhTokens<T extends Record<string, string | undefined>>(env: T): T {
+  const drop = new Set(GH_TOKEN_ENV_KEYS);
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) if (!drop.has(key.toUpperCase())) out[key] = value;
+  return out as T;
+}
 
 /** A profile's GitHub account, as `gh api user` named it at sign-in (plus an optional commit email). */
 export interface GitHubIdentity {

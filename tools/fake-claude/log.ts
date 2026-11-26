@@ -59,7 +59,9 @@ export class Logger {
       if (value !== undefined && (key === 'CLAUDE_CONFIG_DIR' || key.startsWith('FAKE_CLAUDE_') || LOGGED_KEYS.has(key))) logged[key] = value;
     }
     const claudeEnvKeys = Object.keys(env).filter((key) => key.startsWith('CLAUDE')).sort();
-    return this.append({ kind: 'argv', cwd, argv, env: logged, claudeEnvKeys });
+    // D190: the names (only) of gh's token variables it got (a bound profile's agent gets none).
+    const ghTokenKeys = Object.keys(env).filter((key) => /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_HOST)$/i.test(key)).sort();
+    return this.append({ kind: 'argv', cwd, argv, env: logged, claudeEnvKeys, ghTokenKeys });
   }
 
   /** Logs one raw stdin line (without its newline). */

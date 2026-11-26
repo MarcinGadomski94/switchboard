@@ -3,15 +3,17 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { GitHubBindingView } from '../../../src/core/github-binding.ts';
 import type { UserProfilesView } from '../../../src/core/user-profiles.ts';
+import { TOKEN_FILE } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, startPeerNode, waitFor } from '../../helpers/peers.ts';
 
 /**
  * D190 with a real Switchboard process and tools/fake-gh (`docs/profiles.md` → *A profile's GitHub
  * account*): Connect GitHub runs gh's device-code sign-in in the profile's own folder (the code shown,
- * Cancel), the profile's agents then get its gh folder, commit author and credential helper (an
- * agent started before it did not), Switchboard's own gh calls in the agent's folder use the
- * profile's folder, and Disconnect removes the sign-in.
+ * Cancel), the profile's agents then get its gh folder, commit author and credential helper and
+ * none of gh's token variables (another profile's agent keeps the computer's), Switchboard's own gh
+ * calls for an agent use that agent's profile only (another profile's agent in the same repo: the
+ * computer's gh), and Disconnect removes the sign-in.
  */
 
 let tmp: string;
@@ -29,6 +31,20 @@ afterEach(async () => {
 interface LogLine {
   readonly kind: string;
   readonly env?: Record<string, string>;
+  readonly ghTokenKeys?: readonly string[];
+}
+
+/** A browser on `n` switched to profile `id` (no password): calls with its cookie. */
+async function browserIn(n: PeerNode, id: string): Promise<(method: string, route: string, body?: unknown) => Promise<{ status: number; body: any }>> {
+  const base = `sb_token=${(await readFile(path.join(n.dataDir, TOKEN_FILE), 'utf8')).trim()}`;
+  const switched = await fetch(`${n.baseUrl}/api/user-profiles/switch`, { method: 'POST', headers: { cookie: base, 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+  await switched.text();
+  const cookie = `${base}; ${(switched.headers.get('set-cookie') ?? '').split(';')[0]}`;
+  return async (method, route, body) => {
+    const response = await fetch(`${n.baseUrl}${route}`, { method, headers: { cookie, accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : null };
+  };
 }
 
 async function lines<T>(file: string): Promise<T[]> {
@@ -51,21 +67,23 @@ async function startAgent(n: PeerNode, name: string): Promise<string> {
 }
 
 describe('D190 · a profile bound to a GitHub account', () => {
-  it('connects with the device code, gives its agents the account (not before), runs Switchboard’s gh in the agent’s folder as it, and disconnects', async () => {
+  it('connects with the device code, gives its agents the account (never gh’s token variables), runs Switchboard’s gh for an agent as its own profile only, and disconnects', async () => {
     const claudeLog = path.join(tmp, 'claude.log');
     const ghLog = path.join(tmp, 'gh.log');
-    node = await startPeerNode(tmp, 'a', { repo: true, env: { FAKE_CLAUDE_LOG: claudeLog, FAKE_GH_LOG: ghLog, FAKE_GH_LOGIN_DELAY_MS: '600', FAKE_GH_DEVICE_CODE: 'WXYZ-9876' } });
+    node = await startPeerNode(tmp, 'a', { repo: true, env: { FAKE_CLAUDE_LOG: claudeLog, FAKE_GH_LOG: ghLog, FAKE_GH_LOGIN_DELAY_MS: '600', FAKE_GH_DEVICE_CODE: 'WXYZ-9876', GH_TOKEN: 'ghp_switchboardOwnToken0123456789' } });
     const n = node;
-    const profile = ((await n.call('GET', '/api/user-profiles')).body as UserProfilesView).profiles.find((p) => p.isDefault);
-    expect(profile).toBeDefined();
-    const id = profile?.id as string;
+    // Profile X gets the account; Default stays unbound.
+    const x = (await n.call('POST', '/api/user-profiles', { name: 'X' })).body as { id: string };
+    const id = x.id;
     const dir = path.join(n.dataDir, 'github', id);
+    const inX = await browserIn(n, id);
 
-    // Unbound: an agent gets none of it.
+    // Default (unbound): its agent gets none of it and keeps the computer's own gh variables.
     const first = await startAgent(n, 'before');
     const before = await waitFor('the first agent spawned', async () => spawnOf(claudeLog, first), 30_000);
     expect(before.env?.['GH_CONFIG_DIR']).toBeUndefined();
     expect(before.env?.['GIT_CONFIG_COUNT']).toBeUndefined();
+    expect(before.ghTokenKeys).toEqual(['GH_TOKEN']);
 
     // Connect: gh's code shows, then the account.
     const started = await n.call('POST', `/api/user-profiles/${id}/github/connect`, { email: 'octo@example.com' });
@@ -92,8 +110,10 @@ describe('D190 · a profile bound to a GitHub account', () => {
     // The profile list carries the binding (synced with the profile).
     expect(((await n.call('GET', '/api/user-profiles')).body as UserProfilesView).profiles.find((p) => p.id === id)?.github?.login).toBe('octo-fake');
 
-    // Bound: the next agent runs as the account.
-    const agent = await startAgent(n, 'after');
+    // Bound: X's agent runs as the account, without gh's token variables.
+    const created = await inX('POST', '/api/sessions', { name: 'after', task: 'Say OK.', folder: n.folderId, worktrees: false, ultracode: false });
+    expect(created.status, JSON.stringify(created.body)).toBeLessThan(300);
+    const agent = (created.body as { id: string }).id;
     const after = await waitFor('the second agent spawned', async () => spawnOf(claudeLog, agent), 30_000);
     expect(after.env).toMatchObject({
       GH_CONFIG_DIR: dir,
@@ -107,13 +127,20 @@ describe('D190 · a profile bound to a GitHub account', () => {
       GIT_CONFIG_KEY_1: 'credential.https://github.com.helper',
     });
     expect(after.env?.['GIT_CONFIG_VALUE_1']).toMatch(/^!.* auth git-credential$/);
+    expect(after.ghTokenKeys).toEqual([]);
 
-    // Switchboard's own gh call in that agent's folder (Import issues' repos: gh repo view) uses the profile's folder.
-    const sources = await n.call('GET', `/api/sessions/${agent}/todos/import/sources`);
+    // Switchboard's own gh call for an agent (Import issues' repos: gh repo view) uses that agent's profile only:
+    // X's agent → X's folder; Default's agent in the same repo → the computer's gh (no folder).
+    const repoViews = async () => (await lines<{ argv: string[]; ghConfigDir?: string }>(ghLog)).filter((line) => line.argv[0] === 'repo' && line.argv[1] === 'view');
+    const sources = await inX('GET', `/api/sessions/${agent}/todos/import/sources`);
     expect(sources.status, JSON.stringify(sources.body)).toBe(200);
-    const repoView = (await lines<{ argv: string[]; ghConfigDir: string | null }>(ghLog)).filter((line) => line.argv[0] === 'repo' && line.argv[1] === 'view');
-    expect(repoView.length).toBeGreaterThan(0);
-    expect(repoView.every((line) => line.ghConfigDir === dir)).toBe(true);
+    const forX = await repoViews();
+    expect(forX.length).toBeGreaterThan(0);
+    expect(forX.every((line) => line.ghConfigDir === dir)).toBe(true);
+    expect((await n.call('GET', `/api/sessions/${first}/todos/import/sources`)).status).toBe(200);
+    const forDefault = (await repoViews()).slice(forX.length);
+    expect(forDefault.length).toBeGreaterThan(0);
+    expect(forDefault.every((line) => line.ghConfigDir === undefined)).toBe(true);
 
     // The commit email changes; an invalid one is refused.
     expect((await n.call('PUT', `/api/user-profiles/${id}/github/email`, { email: 'not an email' })).status).toBe(422);

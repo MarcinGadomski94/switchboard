@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext, resolveContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
+import { withoutGhTokens } from '../../core/github-binding.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, SessionFreshContinue, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { BACKGROUND_SHELL_WAIT_MS, BACKGROUND_WAIT_MS, isShellTask } from '../../core/derive/background.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
@@ -783,13 +784,22 @@ export class SessionSupervisor {
     this.#agentMcp = launch;
   }
 
-  /** D190: the environment of a session's agent from its profile's GitHub binding (gh as that account, the commit author, the push helper); 
-ull = none. */
+  /** D190: the environment of a session's agent from its profile's GitHub binding (gh as that account, the commit author, the push helper); `null` = none. */
   #githubEnv: ((session: SessionRecord) => Promise<Record<string, string>>) | null = null;
 
-  /** D190: every process started from now on gets its profile's GitHub binding (uildApp sets it). A failure is reported and the process starts without it. */
+  /** D190: every process started from now on gets its profile's GitHub binding (buildApp sets it). A failure is reported and the process starts without it. */
   useGitHubEnv(env: ((session: SessionRecord) => Promise<Record<string, string>>) | null): void {
     this.#githubEnv = env;
+  }
+
+  /**
+   * The inherited environment of an agent's process: with a GitHub binding (D190), gh's token / host
+   * variables (`GH_TOKEN`, `GITHUB_TOKEN`, …) are removed from it, so the profile's folder decides and
+   * Switchboard's own token never reaches the agent as the profile's.
+   */
+  #baseEnvFor(github: Record<string, string>): NodeJS.ProcessEnv {
+    const base = childEnv(this.#env);
+    return github['GH_CONFIG_DIR'] ? withoutGhTokens(base) : base;
   }
 
   async #githubEnvOf(session: SessionRecord): Promise<Record<string, string>> {
@@ -2680,7 +2690,7 @@ ull = none. */
     });
     const github = await this.#githubEnvOf(session);
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries({ ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...github, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id })) {
+    for (const [key, value] of Object.entries({ ...this.#baseEnvFor(github), ...AGENT_BUILD_ENV, ...profileEnv, ...github, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id })) {
       if (typeof value === 'string') env[key] = value;
     }
     return { command: this.#command, args, env, cwd };
@@ -3463,7 +3473,7 @@ ull = none. */
       permissionMode,
       cwd,
       // D127: the build defaults (no lingering .NET build servers) and the session's marker, inherited by everything its agent starts.
-      env: { ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...github, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id },
+      env: { ...this.#baseEnvFor(github), ...AGENT_BUILD_ENV, ...profileEnv, ...github, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id },
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       // D64: read now, so a change applies to every session started or resumed afterwards.

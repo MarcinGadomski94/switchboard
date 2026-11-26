@@ -35,7 +35,7 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
       // D109: the items' PRs are read through the shared PR watcher.
       // D130: a Start's runs' subfolder syncs like a manual move (D71).
       sidebarSynced: (changes) => context.peers.sidebarChanged(changes),
-      git: new PlanGit({ gh: context.config.ghCommand, prs: (repoPath, branch) => context.ci.read(repoPath, branch) }),
+      git: new PlanGit({ gh: context.config.ghCommand, prs: (repoPath, branch, owner) => context.ci.read(repoPath, branch, repoPath, owner) }),
       // D115 follow-ups: test servers shorten the "not picked in time" wait (`SWITCHBOARD_PLAN_PICK_REPOS_MS`, docs/configuration.md).
       ...(pickReposTimeoutFromEnv() !== null ? { pickReposTimeoutMs: pickReposTimeoutFromEnv() as number } : {}),
       // D120: test servers shorten the grace period before an item shows stopped (`SWITCHBOARD_PLAN_STOPPED_GRACE_MS`, docs/configuration.md).

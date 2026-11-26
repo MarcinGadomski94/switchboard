@@ -44,7 +44,7 @@ import type { WorktreeParentFields, WorktreePatch, WorktreeRecord } from '../db/
 import type { Store } from '../db/store.ts';
 import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
-import { ghEnvFor } from '../github/gh-env.ts';
+import { type GhOwner, ghCallEnv, ghEnvFor } from '../github/gh-env.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { SessionRepos, readOnlyInside, realOrNull, topOfDir } from './session-repos.ts';
@@ -131,8 +131,8 @@ export interface WorktreeManagerOptions {
   readonly store: Store;
   /** `SWITCHBOARD_GH_BIN` argv prefix. */
   readonly ghCommand: readonly string[];
-  /** D190: extra environment of a gh call in folder `cwd` (the GitHub binding of the profile working there). */
-  readonly ghEnv?: (cwd: string) => Promise<Record<string, string>>;
+  /** D190: the gh environment of agent `sessionId`'s profile (default: the app's resolver, `github/gh-env.ts`). */
+  readonly ghEnv?: (sessionId: string) => Promise<Record<string, string>>;
   /** git argv prefix (default `["git"]`; tests wrap it to log every call). */
   readonly gitCommand?: readonly string[];
   /** Base environment of git / gh (default `process.env`). */
@@ -388,7 +388,7 @@ export interface WorksInFound {
 export class WorktreeManager implements DiffProvider {
   readonly #store: Store;
   readonly #gh: readonly string[];
-  readonly #ghEnv: ((cwd: string) => Promise<Record<string, string>>) | null;
+  readonly #ghEnv: ((sessionId: string) => Promise<Record<string, string>>) | null;
   readonly #git: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
   readonly #sessions: SessionControl | null;
@@ -682,7 +682,8 @@ export class WorktreeManager implements DiffProvider {
     let parentStatus: ParentStatus | null = null;
     let parentFields: Partial<WorktreeParentFields> = {};
     if (resolved.parent !== null) {
-      parentStatus = await this.#parentStatus(repoPath, resolved.parent);
+      // The agent does not exist yet: the computer's gh.
+      parentStatus = await this.#parentStatus(repoPath, resolved.parent, null);
       const cutOid = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${resolved.parent}^{commit}`]);
       parentFields = {
         parentBranch: resolved.parent,
@@ -799,7 +800,7 @@ export class WorktreeManager implements DiffProvider {
     resolved = resolveRepoBase(branching, solution, { parentMatches: matches, epicOnOrigin: epic?.exists === true, defaultBranch: epicBranch === null ? base : null });
     if (parent) {
       const found = resolved.ok ? resolved.parent : null;
-      const status = found !== null ? await this.#parentStatus(repoPath, found) : null;
+      const status = found !== null ? await this.#parentStatus(repoPath, found, null) : null;
       parentRow = {
         typed: parentText(parent),
         branch: found,
@@ -831,8 +832,8 @@ export class WorktreeManager implements DiffProvider {
   }
 
   /** D47: `gh pr view <branch> --json number,state,url,baseRefName,headRefOid` in `cwd`: its PR, `none`, or `unknown` (gh failed). */
-  async #parentStatus(cwd: string, branch: string): Promise<ParentStatus> {
-    const result = await this.#runGh(cwd, ['pr', 'view', branch, '--json', PARENT_PR_FIELDS]);
+  async #parentStatus(cwd: string, branch: string, owner: GhOwner): Promise<ParentStatus> {
+    const result = await this.#runGh(cwd, ['pr', 'view', branch, '--json', PARENT_PR_FIELDS], owner);
     if (succeeded(result)) {
       const pr = parseParentPullRequest(result.stdout);
       return pr ? { kind: 'pr', pr } : { kind: 'unknown', error: `gh pr view printed an unexpected shape: ${result.stdout.slice(0, 200)}` };
@@ -1326,7 +1327,7 @@ export class WorktreeManager implements DiffProvider {
 
   async #viewPullRequest(record: WorktreeRecord, selector: string): Promise<{ info: PullRequestInfo | null; none: boolean; error: string | null }> {
     const cwd = (await isDirectory(record.path)) ? record.path : record.repoPath;
-    const result = await this.#runGh(cwd, ['pr', 'view', selector, '--json', PR_VIEW_FIELDS]);
+    const result = await this.#runGh(cwd, ['pr', 'view', selector, '--json', PR_VIEW_FIELDS], record.sessionId);
     if (succeeded(result)) {
       const info = parsePullRequest(result.stdout);
       return info ? { info, none: false, error: null } : { info: null, none: false, error: `gh pr view printed an unexpected shape: ${result.stdout.slice(0, 200)}` };
@@ -1380,7 +1381,7 @@ export class WorktreeManager implements DiffProvider {
     const parent = record.parentBranch;
     if (parent === null) return;
     const cwd = (await isDirectory(record.path)) ? record.path : record.repoPath;
-    const status = await this.#parentStatus(cwd, parent);
+    const status = await this.#parentStatus(cwd, parent, record.sessionId);
     if (status.kind !== 'pr') {
       if (status.kind === 'unknown') this.#onError(new Error(`parent ${parent} of ${record.branch}: ${status.error}`));
       return;
@@ -1919,11 +1920,11 @@ export class WorktreeManager implements DiffProvider {
     return this.#runGit(cwd, ['--no-optional-locks', '-c', 'core.fsmonitor=false', ...args], this.#diffTimeout);
   }
 
-  async #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
-    const bound = this.#ghEnv ? await this.#ghEnv(cwd).catch(() => ({})) : await ghEnvFor(cwd);
+  async #runGh(cwd: string, args: readonly string[], owner: GhOwner): Promise<RunResult> {
+    const bound = await ghEnvFor(owner, this.#ghEnv);
     return runCommand(this.#gh, args, {
       cwd,
-      env: { ...this.#env, ...bound, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+      env: ghCallEnv(this.#env, bound, { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }),
       timeoutMs: this.#ghTimeout,
     });
   }

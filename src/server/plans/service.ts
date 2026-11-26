@@ -2716,7 +2716,7 @@ export class PlanService {
     }
     const out: PlanRepoState[] = [];
     for (const record of byRepo.values()) {
-      out.push(await this.#git.inspect({ repo: record.repo, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch, cut: item.cut[record.repo] ?? null }, { conflicts }));
+      out.push(await this.#git.inspect({ repo: record.repo, repoPath: record.repoPath, branch: record.branch, target: plan.targetBranch, cut: item.cut[record.repo] ?? null, owner: item.runSessionId ?? null }, { conflicts }));
     }
     // D121 / D148: the repos it was cut in that no worktree record covers (its run session, and with it its records, is gone), by name.
     const missing = Object.keys(item.cut).filter((name) => !byRepo.has(name));
@@ -2724,7 +2724,7 @@ export class PlanService {
     const resolved = await this.#env.repos(plan.sourceSessionId, missing).catch(() => null);
     for (const repo of resolved?.repos ?? []) {
       if (!missing.includes(repo.name)) continue;
-      out.push(await this.#git.inspect({ repo: repo.name, repoPath: repo.repoPath, branch: item.branch, target: plan.targetBranch, cut: item.cut[repo.name] ?? null }, { conflicts }));
+      out.push(await this.#git.inspect({ repo: repo.name, repoPath: repo.repoPath, branch: item.branch, target: plan.targetBranch, cut: item.cut[repo.name] ?? null, owner: item.runSessionId ?? null }, { conflicts }));
     }
     return out;
   }

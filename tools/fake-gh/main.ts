@@ -354,10 +354,15 @@ function readStdin(): Promise<string> {
  *   `auth git-credential get` → `username=<login>` + `password=<token>`.
  */
 async function configAuth(dir: string, command: string | undefined, args: readonly string[]): Promise<never> {
+  // As gh: a token in the environment wins over the folder's sign-in (D190 removes these variables).
+  const envToken = process.env['GH_TOKEN'] ?? process.env['GITHUB_TOKEN'];
+  if (envToken && (command === 'token' || command === 'status')) return finish(0, command === 'token' ? `${envToken}\n` : 'github.com\n  ✓ Logged in to github.com account env-token (GH_TOKEN)\n');
   const auth = await readAuth(dir);
   if (command === 'login') {
     if (args.includes('--with-token')) {
       const token = (await readStdin()).trim();
+      // D190 tests: a slow import (a Disconnect can come in meanwhile).
+      await new Promise((resolve) => setTimeout(resolve, Number(process.env['FAKE_GH_WITH_TOKEN_DELAY_MS'] ?? 0)));
       const stdinLog = process.env['FAKE_GH_STDIN_LOG'];
       if (stdinLog) await appendFile(stdinLog, `${JSON.stringify({ dir, token })}\n`);
       if (!/^[A-Za-z0-9_]{10,}$/.test(token)) return finish(1, '', 'error validating token: HTTP 401: Bad credentials\n');

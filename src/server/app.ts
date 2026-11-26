@@ -587,9 +587,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D184: its mutes and the claude.ai connectors go to every paired computer (and come from them).
   peers.useMcpSignIn(mcpSignIn);
   // D190: a profile bound to a GitHub account: its agents (and Switchboard's gh calls for them) run as it; the sign-in syncs to the computers the profile may use.
-  const github = new GitHubBindings({ store: options.store, profiles: userProfiles, dataDir: config.dataDir, gh: config.ghCommand, onError: (error) => app.log.warn(error instanceof Error ? error.message : String(error)) });
+  const github = new GitHubBindings({ store: options.store, profiles: userProfiles, bus, dataDir: config.dataDir, gh: config.ghCommand, onError: (error) => app.log.warn(error instanceof Error ? error.message : String(error)) });
   supervisor.useGitHubEnv((session) => github.envForSession(session));
-  const previousGhEnv = useGhEnv((cwd) => github.ghEnvForPath(cwd));
+  const previousGhEnv = useGhEnv((sessionId) => github.ghEnvForSession(sessionId));
   peers.useGitHub(github);
   github.useUnsynced(() => peers.githubUnsynced());
   registerGitHubBindingRoutes(app, github);

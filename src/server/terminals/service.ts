@@ -265,6 +265,8 @@ export class TerminalService {
     readonly cols: number;
     readonly rows: number;
     readonly env?: Readonly<Record<string, string>>;
+    /** D190: variables removed from the inherited environment (gh's token variables, for a profile bound to GitHub). */
+    readonly unset?: readonly string[];
     /** D171: called once when the program ends (it exited, or the terminal was closed / swept / stopped). */
     readonly onEnd?: (why: 'exited' | 'closed' | 'idle' | 'stopping') => void;
     /** D182: an agent's terminal: not listed, and closed this long after its last client (also if none ever attaches). */
@@ -280,7 +282,7 @@ export class TerminalService {
     }
     let pty: PtyProcess;
     try {
-      pty = spawn(input.program.file, input.program.args, { cols: input.cols, rows: input.rows, cwd: input.cwd, env: { ...terminalEnv(this.env), ...(input.env ?? {}) }, name: 'xterm-256color' });
+      pty = spawn(input.program.file, input.program.args, { cols: input.cols, rows: input.rows, cwd: input.cwd, env: { ...withoutKeys(terminalEnv(this.env), input.unset ?? []), ...(input.env ?? {}) }, name: 'xterm-256color' });
     } catch (error) {
       throw new TerminalError(503, 'unavailable', `${input.program.title} could not start: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -455,4 +457,13 @@ export class TerminalService {
     this.#sweep = null;
     for (const terminal of [...this.#terminals.values()]) this.#end(terminal, 'stopping');
   }
+}
+
+/** A copy of `env` without `keys` (compared case-insensitively: Windows' names are). */
+function withoutKeys(env: Record<string, string>, keys: readonly string[]): Record<string, string> {
+  if (keys.length === 0) return env;
+  const drop = new Set(keys.map((key) => key.toUpperCase()));
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) if (!drop.has(key.toUpperCase())) out[key] = value;
+  return out;
 }

@@ -71,8 +71,7 @@ export interface UserProfileWire {
   readonly computers?: readonly string[] | null;
   /** D176: the computers `computers` was decided for (others stay allowed); `null` = every computer; absent = an older computer (the merge keeps what is here while the list is the same). */
   readonly decidedFor?: readonly string[] | null;
-  /** D190: the GitHub account the profile is bound to; 
-ull = none; absent = an older computer (the merge keeps what is here). */
+  /** D190: the GitHub account the profile is bound to; `null` = none; absent = an older computer (the merge keeps what is here). */
   readonly github?: GitHubIdentity | null;
 }
 
@@ -1063,7 +1062,7 @@ export class UserProfileService {
     const admin = a.admin || b.admin;
     const { computers, decidedFor } = mergedAccess(a, b);
     if (admin && keepPassword.passwordHash === null) throw new UserProfileError(409, 'needs-password', 'The merged profile is an admin, so it needs a password: keep the password of the one that has one.');
-    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, decidedFor, github: survivor.github ?? gone.github ?? null, clock: this.#clock() })) ?? survivor;
+    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, decidedFor, github: survivor.github ?? null, clock: this.#clock() })) ?? survivor;
     const tomb = (await this.#o.store.userProfiles.update(gone.id, { deletedAt: new Date(this.#now()).toISOString(), passwordHash: null, mergedInto: this.#toLink(survivor.id), clock: this.#clock() })) ?? gone;
     this.#invalidate();
     await this.#records();

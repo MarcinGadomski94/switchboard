@@ -1,7 +1,7 @@
 import { type PlanChecks, checksFromRollup } from '../../core/plans.ts';
 import type { PrViewResult } from '../ci/gh.ts';
 import { type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
-import { ghEnvFor } from '../github/gh-env.ts';
+import { type GhOwner, ghCallEnv, ghEnvFor } from '../github/gh-env.ts';
 
 /** What the scheduler learns about one repo of a running item (`docs/plans.md` → *When an item is done*). */
 export interface PlanRepoState {
@@ -39,6 +39,8 @@ export interface PlanRepoInput {
   readonly target: string;
   /** The target's tip the item's worktree was cut from; `null` = not known. */
   readonly cut: string | null;
+  /** D190: the agent the item runs in (its session id): gh reads its PR as that agent's profile's GitHub account; `null` = the computer's gh. */
+  readonly owner?: string | null;
 }
 
 /**
@@ -65,15 +67,15 @@ export interface PlanGitOptions {
   readonly git?: readonly string[];
   readonly gh: readonly string[];
   readonly env?: NodeJS.ProcessEnv;
-  /** D190: extra environment of a gh call in folder cwd (the GitHub binding of the profile working there). */
-  readonly ghEnv?: (cwd: string) => Promise<Record<string, string>>;
+  /** D190: the gh environment of agent `sessionId`'s profile (default: the app's resolver, `github/gh-env.ts`). */
+  readonly ghEnv?: (sessionId: string) => Promise<Record<string, string>>;
   readonly timeoutMs?: number;
   /**
    * D109: the shared PR watcher's reading (`PrWatcher.read`): an item's PR, its checks and
    * mergeable state come from the one reading the watcher keeps, instead of a gh call of Plans'
    * own. Absent = Plans asks gh itself (tests).
    */
-  readonly prs?: (repoPath: string, branch: string) => Promise<PrViewResult>;
+  readonly prs?: (repoPath: string, branch: string, owner: string | null) => Promise<PrViewResult>;
 }
 
 /** The real {@link PlanGitPort}: `git` and `gh` as child processes (`shell: false`), never pushing. */
@@ -81,7 +83,7 @@ export class PlanGit implements PlanGitPort {
   readonly #git: readonly string[];
   readonly #gh: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
-  readonly #ghEnv: ((cwd: string) => Promise<Record<string, string>>) | null;
+  readonly #ghEnv: ((sessionId: string) => Promise<Record<string, string>>) | null;
   readonly #timeout: number;
   readonly #prs: PlanGitOptions['prs'] | null;
 
@@ -116,7 +118,8 @@ export class PlanGit implements PlanGitPort {
     const protectedBranches: string[] = [];
     if (await this.#hasOrigin(repoPath)) {
       // Best effort: gh answers the branch's protection; a failure (no access, no gh) is not a refusal.
-      const answer = await this.#runGh(repoPath, ['api', `repos/{owner}/{repo}/branches/${target}`, '--jq', '.protected']);
+      // A plan's target, for no agent: the computer's gh.
+      const answer = await this.#runGh(repoPath, ['api', `repos/{owner}/{repo}/branches/${target}`, '--jq', '.protected'], null);
       if (succeeded(answer) && answer.stdout.trim() === 'true') protectedBranches.push(target);
     }
     return { defaultBranches: defaults, protectedBranches };
@@ -124,13 +127,14 @@ export class PlanGit implements PlanGitPort {
 
   async inspect(input: PlanRepoInput, options: { readonly conflicts?: boolean } = {}): Promise<PlanRepoState> {
     const { repoPath, branch, target, cut } = input;
+    const owner = input.owner ?? null;
     const tip = await this.tip(repoPath, `refs/heads/${branch}`);
     const hasOrigin = await this.#hasOrigin(repoPath);
     let pr: PlanRepoState['pr'] = null;
     let ghAvailable = false;
     if (hasOrigin && this.#prs) {
       // D109: through the shared PR watcher's reading.
-      const answer = await this.#prs(repoPath, branch);
+      const answer = await this.#prs(repoPath, branch, owner);
       if (answer.kind === 'pr') {
         ghAvailable = true;
         pr = { url: answer.pr.url, state: answer.pr.state, baseRefName: answer.pr.baseRefName, checks: answer.pr.checks, mergeable: answer.pr.mergeable, headRefOid: answer.pr.headRefOid };
@@ -138,7 +142,7 @@ export class PlanGit implements PlanGitPort {
         ghAvailable = true;
       }
     } else if (hasOrigin) {
-      const answer = await this.#runGh(repoPath, ['pr', 'view', branch, '--json', 'state,url,baseRefName,mergeable,statusCheckRollup,headRefOid']);
+      const answer = await this.#runGh(repoPath, ['pr', 'view', branch, '--json', 'state,url,baseRefName,mergeable,statusCheckRollup,headRefOid'], owner);
       if (succeeded(answer)) {
         ghAvailable = true;
         pr = parsePr(answer);
@@ -227,9 +231,9 @@ export class PlanGit implements PlanGitPort {
     return runCommand(this.#git, args, { cwd, env: { ...this.#env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' }, timeoutMs: this.#timeout });
   }
 
-  async #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
-    const bound = this.#ghEnv ? await this.#ghEnv(cwd).catch(() => ({})) : await ghEnvFor(cwd);
-    return runCommand(this.#gh, args, { cwd, env: { ...this.#env, ...bound, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }, timeoutMs: this.#timeout });
+  async #runGh(cwd: string, args: readonly string[], owner: GhOwner): Promise<RunResult> {
+    const bound = await ghEnvFor(owner, this.#ghEnv);
+    return runCommand(this.#gh, args, { cwd, env: ghCallEnv(this.#env, bound, { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }), timeoutMs: this.#timeout });
   }
 }
 

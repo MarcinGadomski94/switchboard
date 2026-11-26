@@ -100,7 +100,7 @@ export class TodoImportService {
     await this.#session(sessionId);
     const repos = new Set<string>();
     for (const dir of await this.#sessionDirs(sessionId)) {
-      const name = await this.#gh.repoName(dir);
+      const name = await this.#gh.repoName(dir, sessionId);
       if (name) repos.add(name);
     }
     const jira = jiraSources.get(this.#store);
@@ -115,7 +115,7 @@ export class TodoImportService {
   async preview(sessionId: string, body: unknown): Promise<IssueImportPreview> {
     await this.#session(sessionId);
     const query = this.#query(body);
-    const { issues, truncated } = await this.#fetch(query);
+    const { issues, truncated } = await this.#fetch(query, sessionId);
     const known = await this.#store.todoImports.keys(sessionId, query.source);
     return { issues: issues.map((issue) => ({ ...issue, imported: known.has(issue.key) })), truncated };
   }
@@ -132,7 +132,7 @@ export class TodoImportService {
     if (keys === null || keys.length === 0) throw new TodoImportError(422, 'invalid', 'tick at least one issue to import', 'keys');
     if (keys.length > ISSUE_IMPORT_MAX) throw new TodoImportError(422, 'invalid', `import at most ${ISSUE_IMPORT_MAX} issues at once`, 'keys');
     const wanted = new Set(keys);
-    const { issues } = await this.#fetch(query);
+    const { issues } = await this.#fetch(query, sessionId);
     for (const issue of issues) {
       if (!wanted.has(issue.key)) continue;
       // Claimed first, so two imports at once never add the same issue twice.
@@ -155,9 +155,9 @@ export class TodoImportService {
     return parsed.value;
   }
 
-  async #fetch(query: IssueImportQuery): Promise<{ readonly issues: Array<Omit<ImportableIssue, 'imported'>>; readonly truncated: boolean }> {
+  async #fetch(query: IssueImportQuery, sessionId: string): Promise<{ readonly issues: Array<Omit<ImportableIssue, 'imported'>>; readonly truncated: boolean }> {
     if (query.source === 'github') {
-      const answer = await this.#gh.listIssues(this.#cwd, { repo: query.repo, label: query.label, mine: query.mine });
+      const answer = await this.#gh.listIssues(this.#cwd, { repo: query.repo, label: query.label, mine: query.mine }, sessionId);
       if (!answer.ok) throw new TodoImportError(502, 'source-failed', answer.message);
       return {
         issues: answer.issues.slice(0, ISSUE_IMPORT_MAX).map((issue) => ({ key: `${query.repo}#${issue.number}`, title: issue.title, url: issue.url, body: issue.body, labels: issue.labels })),

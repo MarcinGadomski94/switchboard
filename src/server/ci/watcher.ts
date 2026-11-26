@@ -260,11 +260,12 @@ export class PrWatcher {
    * The PR of `branch` in the repository at `repoPath`, through the shared reading (fresh for
    * {@link PR_READ_TTL_MS}): Plans' scheduler reads its items' checks here.
    */
-  async read(repoPath: string, branch: string, cwd: string = repoPath): Promise<PrViewResult> {
-    const key = `${repoPath}\0${branch}`;
+  async read(repoPath: string, branch: string, cwd: string = repoPath, owner: string | null = null): Promise<PrViewResult> {
+    // D190: per agent too (another profile's agent reads as its own GitHub account).
+    const key = `${repoPath}\0${branch}\0${owner ?? ''}`;
     const cached = this.#cache.get(key);
     if (cached && this.#now() - cached.at < PR_READ_TTL_MS) return cached.result;
-    const result = await this.#gh.viewPr(cwd, branch);
+    const result = await this.#gh.viewPr(cwd, branch, owner);
     if (result.kind !== 'error') this.#cache.set(key, { at: this.#now(), result });
     return result;
   }
@@ -299,7 +300,7 @@ export class PrWatcher {
     if (!worktree || worktree.removedAt !== null) return;
     const cwd = (await isDirectory(worktree.path)) ? worktree.path : worktree.repoPath;
     const settings = await ciSettingsOf(this.#store.settings);
-    const result = await this.#gh.viewPr(cwd, worktree.branch);
+    const result = await this.#gh.viewPr(cwd, worktree.branch, worktree.sessionId);
     const now = this.#now();
     this.#tried.set(worktreeId, now);
     const previous = await this.#store.prWatch.get(worktreeId);
@@ -355,7 +356,7 @@ export class PrWatcher {
     if (!session || session.closedAt !== null) return row;
     const names = pr.failing.length > 0 ? pr.failing.map((check) => check.name) : (pr.checks.summary ?? 'failed').replace(/^failed: /, '').split(', ');
     const withLog = pr.failing.find((check) => check.runId !== null);
-    const log = withLog?.runId ? await this.#gh.failedLog(cwd, withLog.runId, withLog.jobId) : null;
+    const log = withLog?.runId ? await this.#gh.failedLog(cwd, withLog.runId, withLog.jobId, worktree.sessionId) : null;
     const excerpt = log ? trimLogTail(log, settings['ci.logTailLines']) || null : null;
     const signature = failureSignature(names, excerpt);
     const max = settings['ci.maxAttempts'];
@@ -420,7 +421,7 @@ export class PrWatcher {
     const worktree = await this.#store.worktrees.get(worktreeId);
     if (!worktree || worktree.removedAt !== null) return 'the worktree is no longer registered';
     const cwd = (await isDirectory(worktree.path)) ? worktree.path : worktree.repoPath;
-    const current = await this.#gh.viewPr(cwd, worktree.branch);
+    const current = await this.#gh.viewPr(cwd, worktree.branch, worktree.sessionId);
     if (current.kind === 'none') return `${worktree.branch} has no pull request any more`;
     if (current.kind === 'error') return current.message;
     if (!prReadyToMerge(current.pr)) {
@@ -429,8 +430,8 @@ export class PrWatcher {
     }
     const settings = await ciSettingsOf(this.#store.settings);
     const configured = settings['ci.mergeMethod'];
-    const method: GhMergeMethod = configured === 'repo' ? ((await this.#gh.defaultMergeMethod(cwd)) ?? 'squash') : configured;
-    const merged = await this.#gh.mergePr(cwd, current.pr.number, method);
+    const method: GhMergeMethod = configured === 'repo' ? ((await this.#gh.defaultMergeMethod(cwd, worktree.sessionId)) ?? 'squash') : configured;
+    const merged = await this.#gh.mergePr(cwd, current.pr.number, method, worktree.sessionId);
     if (!merged.ok) return `gh pr merge failed: ${merged.message}`;
     await this.#notices.closeCiNotices(worktreeId, 'merge-pr', ['ci-ready']);
     this.#cache.delete(`${worktree.repoPath}\0${worktree.branch}`);
