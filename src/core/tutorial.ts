@@ -2365,6 +2365,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Open Settings › Advanced › Clean-up and press Find leftovers now.'],
         anchors: ['v2-stray-worktrees'],
         v2Route: '/settings/advanced/cleanup',
+        missing: 'Open Settings › Advanced › Clean-up: the card is there on a computer.',
       },
     ],
   },
