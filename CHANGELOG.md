@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.15 (2026-11-26)
+
+### Profiles
+- **A GitHub account per profile:** Settings › Profiles › **Connect GitHub** signs a profile in to GitHub (a code to enter on github.com). The profile's agents, their terminals and Switchboard's PR checks and merges for them then use that account: `gh`, commits (its name and email) and HTTPS pushes. The sign-in syncs to the paired computers the profile may use; Disconnect anywhere signs it out everywhere. Your computer's own `gh` sign-in is never touched. Needs `gh` 2.40 or later. Database migration. See `docs/profiles.md` (D190).
+
+### Clean-up
+- **Stray worktrees and leftovers:** once no agent has run for 30 minutes, Needs you suggests cleaning up worktrees no open agent uses (Claude Code's helper worktrees under `.claude/worktrees` too), stale worktree records, leftover agent branches and old temporary folders. Settings › Advanced › Clean-up lists them with their size and whether they hold work found nowhere else; only safe ones are ticked, and a deleted branch can be restored for 7 days. See `docs/worktrees.md` (D191).
 ## 2.5.14 (2026-11-24)
 
 ### Phones
