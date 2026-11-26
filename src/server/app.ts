@@ -92,8 +92,9 @@ import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supe
 import type { UsageMeter } from './usage/meter.ts';
 import { registerWeb } from './web.ts';
 import { DeviceService } from './devices/service.ts';
-import { WorktreeAdoption } from './worktrees/adopt.ts';
-import { wireAutoClean } from './worktrees/auto-clean-wire.ts';
+import { WorktreeAdoption, scannedRepos } from './worktrees/adopt.ts';
+import { agentWorking, wireAutoClean } from './worktrees/auto-clean-wire.ts';
+import { StrayService } from './cleanup/strays.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
 // Plans (D99) hook (docs/plans-removal.md).
 import { installPlans, planServiceOf } from './plans/install.ts';
@@ -868,15 +869,27 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     systemItems,
     trackedProcesses: async (sessionId) => (await processes.forSession(sessionId)).processes.map((proc) => proc.name),
   });
+  // D191: stray worktrees and leftovers, suggested for a clean-up once no agent has worked for a while.
+  const strays = new StrayService({
+    store: options.store,
+    dataDir: config.dataDir,
+    isWorking: (sessionId) => agentWorking(supervisor, sessionId),
+    repos: scannedRepos,
+    notice: { raise: (input) => systemItems.strayNotice(input), resolve: () => systemItems.strayResolved() },
+  });
   app.addHook('onReady', async () => {
     if (!config.demo) autoClean.start();
+    if (!config.demo) strays.start();
+  });
+  app.addHook('preClose', async () => {
+    await strays.stop();
   });
   app.addHook('preClose', async () => {
     stopAutoClean();
     await autoClean.stop();
     await agentMade.close();
   });
-  const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, review, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean };
+  const apiContext: ApiContext = { userProfiles, ...(accountHint ? { accountHint } : {}), ci, config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, mcpSignIn, review, clis, accounts, accountChoice, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, moves, todos, devices: deviceService, checkpoints, tutorial, drafts, loops: loopService, search, insights, usage, processes, cleanup, archive, autoClean, strays };
   apiContextRef = apiContext;
   await registerApiRoutes(app, apiContext);
   // D170 (docs/terminals.md): terminals on this computer (and, through the peer link, on a paired one).

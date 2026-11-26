@@ -1500,6 +1500,9 @@ Developer ruling D84 (`docs/decisions.md`, `docs/cleanup.md`): Settings → Clea
 | PUT | /api/cleanup/settings | `{ closedSessionDays }` (whole number 1–3650) | 200 `{ closedSessionDays }` · 422 `invalid` |
 | POST | /api/cleanup/runs | `{ items: [{ id, fingerprint, confirm? }] }` (≥ 1, distinct ids; `confirm` = `uncommitted` \| `unmerged` \| `remote`) | 202 CleanupRun · 422 `invalid` · 422 `confirmation-required` (`items`: the ids that need one; nothing runs) · 409 `busy` |
 | GET | /api/cleanup/runs/{runId} | — | 200 CleanupRun · 404 `not-found` |
+| GET | /api/cleanup/strays | — | 200 `{ scan: StrayScan, restorable: StrayRestorable[] }` (D191; read-only) |
+| POST | /api/cleanup/strays/clean | `{ ids: string[] (1–1000), force?: boolean }` | 200 StrayCleanResult `{ outcomes: [{ id, result: removed \| skipped \| failed, message }], freedBytes, restorable }` · 422 `invalid` · 409 `busy` |
+| POST | /api/cleanup/strays/restore | `{ repo, branch, sha }` | 200 `{ restorable }` · 404 `not-found` (not a branch it deleted, or older than 7 days) · 409 `failed` · 422 `invalid` |
 
 `CleanupItem`: `{ id, group: worktrees | localBranches | remoteBranches | sessions | data, title, subtitle, reasons: CleanupReason[], sizeBytes: number | null, sizeCapped, lastChangeAt: string | null, removes: string[], keeps: string[], warnings: [{ kind: CleanupConfirm, message, files: string[] }], confirm: CleanupConfirm | null, selected, fingerprint }`. `CleanupRun`: `{ id, startedAt, finishedAt: string | null, items: [{ id, group, title, status: pending | running | done | failed, error: string | null, sizeBytes: number | null }], summary: { done, failed, freedBytes } }`. A run re-scans; an item no longer listed or whose fingerprint changed fails alone ("changed since the preview: scan again"); every other item still runs.
 

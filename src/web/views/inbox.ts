@@ -95,6 +95,9 @@ export const OPEN_MEMORY = 'open-memory';
 /** D154: a failed move's Try again: the take-over dialog of the same agent and computer opens (a link: the item stays). */
 export const MOVE_TRY_AGAIN = 'move-try-again';
 
+/** D191: the stray worktrees notice's Review: the clean-up page (the item stays until cleaned or dismissed). */
+export const OPEN_LEFTOVERS = 'open-leftovers';
+
 /** D109: the PR watcher's items' links: Open session (the item's session) and Open PR (the PR on GitHub). */
 export const OPEN_SESSION_ACTION = 'open-session';
 export const OPEN_PR_ACTION = 'open-pr';
@@ -103,6 +106,7 @@ export const OPEN_PR_ACTION = 'open-pr';
 export function openRoute(item: InboxItem, actionId: string): string | null {
   if (item.kind !== 'system') return null;
   if (actionId === OPEN_PLAN || actionId === OPEN_MEMORY) return item.route ?? null;
+  if (actionId === OPEN_LEFTOVERS) return '/settings/cleanup';
   if (actionId === OPEN_SESSION_ACTION && item.sessionId) return `/sessions/${encodeURIComponent(item.sessionId)}`;
   // D142: "Add it there": Settings → Accounts with the item's machine picked and the Add form prefilled.
   if (actionId === ADD_ACCOUNT_ACTION && item.addAccount) return addAccountPath('classic', item.machine?.id ?? null, item.addAccount);

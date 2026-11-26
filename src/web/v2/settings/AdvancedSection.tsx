@@ -24,6 +24,7 @@ import { V2ToursSection } from '../tour/ToursSection.tsx';
 import { ClassicFrame, useClassicModals } from './ClassicFrame.tsx';
 import { ConnectorsCard } from './ConnectorsCard.tsx';
 import { type AdvancedKind, type AdvancedPage, advancedGroups, resolveAdvanced } from './settings-map.ts';
+import { StrayWorktreesCard } from './StrayWorktreesCard.tsx';
 import { useKnownSettings } from './sections.tsx';
 
 /**
@@ -163,7 +164,13 @@ function AdvancedBody({ kind }: { readonly kind: AdvancedKind }) {
       // Lane X · tour: the v2 tours, replayed with highlighting in v2 (the classic ones stay in Classic).
       return <V2ToursSection />;
     case 'cleanup':
-      return <CleanupSection />;
+      // D191: stray worktrees and leftovers, above the data folder's clean-up.
+      return (
+        <>
+          <StrayWorktreesCard />
+          <CleanupSection />
+        </>
+      );
     case 'setup':
       return <SetupWizardPage />;
     case 'login':

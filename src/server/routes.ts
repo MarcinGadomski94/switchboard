@@ -59,6 +59,10 @@ import type { TodoService } from './todos/service.ts';
 import { registerTodoRoutes } from './api/todos.ts';
 import { registerDeviceRoutes } from './api/devices.ts';
 import { registerCleanupRoutes } from './api/cleanup.ts';
+import { registerStrayRoutes } from './api/strays.ts';
+import { StrayService } from './cleanup/strays.ts';
+import { agentWorking } from './worktrees/auto-clean-wire.ts';
+import { scannedRepos } from './worktrees/adopt.ts';
 import type { CleanupService } from './cleanup/service.ts';
 import type { ArchiveService } from './sessions/archive.ts';
 import type { AutoCleanService } from './worktrees/auto-clean.ts';
@@ -172,6 +176,8 @@ export interface ApiContext {
   readonly archive?: ArchiveService;
   /** D145: the automatic clean-up of merged worktrees (docs/cleanup.md → Automatic clean-up of merged worktrees). */
   readonly autoClean?: AutoCleanService;
+  /** D191: stray worktrees and leftovers (docs/worktrees.md → Stray worktrees); its routes make their own when absent. */
+  readonly strays?: StrayService;
 }
 
 /**
@@ -216,6 +222,8 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerMcpRoutes(app, context);
   await registerDeviceRoutes(app, context);
   await registerCleanupRoutes(app, context, context.cleanup);
+  // D191: stray worktrees and leftovers (docs/worktrees.md → Stray worktrees).
+  await registerStrayRoutes(app, context.strays ?? new StrayService({ store: context.store, dataDir: context.config.dataDir, isWorking: (sessionId) => agentWorking(context.supervisor, sessionId), repos: scannedRepos }));
   await registerTutorialRoutes(app, context);
   await registerDraftRoutes(app, context);
   await registerLoopRoutes(app, context);

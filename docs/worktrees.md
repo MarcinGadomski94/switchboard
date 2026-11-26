@@ -98,6 +98,17 @@ Whenever the developer creates a worktree (a new session with Worktree on, in a 
 ## Created branches (D84)
 Whenever the manager runs `git worktree add -b` itself (a session's `session/{name}`, a new D40 task branch, a new local branch tracking `origin/<task>`), it records `{ repoPath, branch, kind: new | tracking }` in the settings value `cleanup.createdBranches` (`src/server/cleanup/created-branches.ts`). A reused local branch is not recorded. Clean-up (`docs/cleanup.md`) uses the record to tell Switchboard's branches from the developer's.
 
+## Stray worktrees (D191)
+`StrayService` (`src/server/cleanup/strays.ts`, types `src/core/strays.ts`) finds what no open agent uses in the repositories Switchboard knows on this computer: folders of kind repo, the workspaces' repositories, and the repositories of its worktree rows (each resolved to its main checkout through `git rev-parse --git-common-dir`).
+- **Worktrees:** `git worktree list --porcelain`, skipping the main checkout. One is **in use** when an open session's row is on it, an open session's folder is inside it, or (a Claude Code helper worktree, `.claude/worktrees/…`) an agent is working in its repository. Kinds: `claude-subagent`, `switchboard` (a row), `other`. Each item: size (a walk capped at 50 000 entries: `bytesCapped`), uncommitted changes (`git status --porcelain`, a count, capped at 1 000), commits only there (`git rev-list --count refs/heads/<b> --not --exclude=<b> --branches --remotes`), last change.
+- **Stale records:** a `prunable` worktree → `git worktree prune`.
+- **Leftover branches:** `worktree-agent-…` and removed rows' branches (their session not open) that no worktree has checked out.
+- **Temp folders:** `<data>/tmp/<kind>/<entry>` older than a day.
+
+Safe = nothing found nowhere else (`straySafe`); risky ones need `force` (the dialog's second confirmation). A removed helper worktree's own `worktree-agent-…` branch is deleted with it when nothing on it is unique; deleted branches are recorded (`cleanup.strays.restorable`) and restorable for 7 days. A leftover branch with commits only on it is never deleted.
+
+**The idle notice:** a one-minute tick; once no open session's agent works for 30 minutes and the last check is a day old (`cleanup.strays.lastCheck`), it scans: nothing → any open notice closes; else a system item (`stray-worktrees`, Review = `open-leftovers` → `/settings/advanced/cleanup`), deduped on the items' ids; Dismiss keeps it away for a week. A clean that leaves nothing closes it.
+
 ## Remove (gap #3)
 `remove(worktreeId)` (the Inbox "Remove worktree" action, M3.3):
 - **uncommitted** = any line of `git status --porcelain --untracked-files=all` in the worktree (modified, staged or untracked) → refused, `409 uncommitted`;

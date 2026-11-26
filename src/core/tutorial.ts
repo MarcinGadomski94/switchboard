@@ -2350,6 +2350,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // D191: stray worktrees and leftovers, suggested once no agent runs (docs/worktrees.md → Stray worktrees).
+  {
+    id: 'stray-worktrees',
+    decision: 'D191',
+    version: V2_5_15,
+    title: 'Clean up stray worktrees',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'find',
+        title: 'Find leftovers',
+        what: 'Worktrees no open agent uses (Claude Code’s helper worktrees under .claude too), stale worktree records, leftover agent branches and old temporary folders. Once no agent has run for 30 minutes, Switchboard suggests a clean-up in Needs you. Safe ones are ticked; ones with work found nowhere else are not, and a deleted branch can be restored for 7 days.',
+        todo: ['Open Settings › Advanced › Clean-up and press Find leftovers now.'],
+        anchors: ['v2-stray-worktrees'],
+        v2Route: '/settings/advanced/cleanup',
+      },
+    ],
+  },
 ];
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */
 export function isTourId(id: string, registry: readonly WhatsNewFeature[] = WHATS_NEW): boolean {

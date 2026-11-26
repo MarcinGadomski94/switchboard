@@ -140,3 +140,6 @@ Developer request 2026-10-28 (`docs/decisions.md` → D145): agents clean up aft
 **Paired computers:** each computer cleans its own worktrees with its own settings.
 
 Tests: `tests/core/auto-clean.test.ts`, `tests/server/worktrees/auto-clean.test.ts` (temp repos with a bare origin: every condition, squash merge, protected / default / `feature/*` branches, a refusing remote, the setting off, never `--force` / `-D`), `tests/server/worktrees/agent-made.test.ts`, `tests/server/worktrees/auto-clean-turn.test.ts` (fake-claude's `EnterWorktree` turn end to end), `tests/e2e/auto-clean.spec.ts` (the switch in both themes, the v2 chat divider).
+
+## Stray worktrees and leftovers (D191)
+The same page (Settings › Advanced › Clean-up) has a card above the list: **Find leftovers now** finds the worktrees no open agent uses in every repository Switchboard knows on this computer (Claude Code's helper worktrees under `.claude/worktrees` too, not only Switchboard's), stale worktree records, leftover agent branches and old temp folders, and after 30 idle minutes (at most once a day) Switchboard suggests it in Needs you. Unlike D84's list it is not limited to what Switchboard created; risky items are never ticked by default, and the dry run is the scan itself. Details: `docs/worktrees.md` → *Stray worktrees (D191)*.

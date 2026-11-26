@@ -503,6 +503,7 @@ export const SERVER_ACTION_LABELS: Readonly<Record<string, string>> = {
   'plan-merge': 'Combine',
   'merge-pr': 'Combine',
   'open-plan': 'Open project',
+  'open-leftovers': 'Review',
   'open-session': 'Open chat',
   'open-pr': 'Open change request',
   'try-again': 'Try again',
@@ -2509,6 +2510,30 @@ export const BRING_IN_WORDS = {
   refusedTitle: 'It couldn’t be brought in',
   openIt: 'Open it',
   brought: (name: string): string => `Brought in “${name}”.`,
+} as const;
+
+/** D191 (`docs/worktrees.md` → *Stray worktrees*): Settings › Advanced › Clean-up's stray worktrees card. */
+export const STRAY_WORDS = {
+  title: 'Stray worktrees and leftovers',
+  sub: 'Worktrees no open agent uses (Claude Code’s helper worktrees under .claude too), stale worktree records, leftover agent branches and old temporary folders, in the repositories Switchboard knows on this computer. Switchboard also suggests this once no agent has run for 30 minutes.',
+  find: 'Find leftovers now',
+  finding: 'Looking…',
+  none: 'Nothing stray found.',
+  found: (count: number, size: string) => `${count} found${size ? ` · ${size}` : ''}`,
+  inUse: (count: number) => `${count} left alone: an open agent uses them`,
+  uncommitted: (count: number) => `${count} uncommitted change${count === 1 ? '' : 's'}`,
+  uniqueCommits: (count: number) => `${count} commit${count === 1 ? '' : 's'} only here`,
+  unknownCommits: 'commits not known',
+  risky: 'Has work found nowhere else: not ticked. Tick it only if you no longer need it.',
+  clean: (count: number) => `Clean ${count}`,
+  cleaning: 'Cleaning…',
+  confirmRisky: (count: number) => `${count} ticked item${count === 1 ? ' has' : 's have'} work found nowhere else (uncommitted changes or commits only there). Clean ${count === 1 ? 'it' : 'them'} anyway?`,
+  result: (removed: number, skipped: number, failed: number, size: string) => `Removed ${removed}${size ? ` (${size} freed)` : ''}${skipped ? ` · skipped ${skipped}` : ''}${failed ? ` · failed ${failed}` : ''}.`,
+  restorableTitle: 'Deleted branches (restorable for 7 days)',
+  restore: 'Restore',
+  restored: (branch: string) => `${branch} restored.`,
+  errors: 'Could not read:',
+  temp: 'Switchboard’s data folder',
 } as const;
 
 /** D183 (`docs/mcp.md` → *Don't ask again*): an MCP server's sign-in, muted or asked for; the claude.ai connectors in Settings. */

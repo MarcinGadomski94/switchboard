@@ -61,7 +61,7 @@ export interface CardButton {
 }
 
 /** The server action ids that only open something (the item stays open). */
-const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION, 'move-try-again', 'open-changes']);
+const LINK_ACTIONS = new Set(['open-session', 'open-plan', 'open-pr', 'open-memory', ADD_ACCOUNT_ACTION, 'move-try-again', 'open-changes', 'open-leftovers']);
 
 /** `true` for an action id that only opens something. */
 export function isLinkAction(id: string): boolean {
@@ -74,7 +74,8 @@ export function openTargetOf(item: NeedsItem, actionId: string): OpenTarget | nu
   // D166: a To review card's Open changes: the agent's Changes tab (the item stays until Mark reviewed).
   if (actionId === 'open-changes') return item.agent?.sessionId ? { type: 'agent', sessionId: item.agent.sessionId, tab: 'changes' } : null;
   if (actionId === 'open-pr') return item.url && /^https:\/\//.test(item.url) ? { type: 'url', url: item.url } : null;
-  if (actionId === 'open-plan' || actionId === 'open-memory') return item.route ? { type: 'path', path: item.route } : null;
+  // D191: the stray worktrees notice's Review opens Settings › Advanced › Clean-up.
+  if (actionId === 'open-plan' || actionId === 'open-memory' || actionId === 'open-leftovers') return item.route ? { type: 'path', path: item.route } : null;
   // D142: "Add it there": Advanced › Accounts: every option, with the item's computer picked and the Add form prefilled.
   if (actionId === ADD_ACCOUNT_ACTION) return item.inbox?.addAccount ? { type: 'path', path: addAccountPath('v2', item.computer?.id ?? null, item.inbox.addAccount) } : null;
   // D154: a failed move's Try again opens the move dialog (the item stays until a later move succeeds, or Dismiss).

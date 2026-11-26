@@ -5,6 +5,7 @@ import type { InstallKind } from '../../core/updates.ts';
 import { ACCOUNT_HINT, ADD_ACCOUNT_ACTION, type AddAccountTarget } from '../../core/account-hint.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import { type MergeKind, type ParentMerged, parentMergedMessage, parentMergedTitle, rebaseCommand } from '../../core/stacking.ts';
+import { STRAY_SNOOZE_MS, strayNoticeTitle } from '../../core/strays.ts';
 import type { ScheduleRecord, ScheduleRunRecord } from '../db/repos/schedules.ts';
 import type { SystemItemCreate, SystemItemRecord } from '../db/repos/system-items.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
@@ -151,6 +152,15 @@ export const ACCOUNT_HINT_ACTIONS: readonly InboxAction[] = [
 ];
 
 /** Kind of the item a failed scheduled run raises. */
+/** D191: stray worktrees and leftovers to review once no agent works (`docs/worktrees.md` → *Stray worktrees*). */
+export const STRAY_WORKTREES = 'stray-worktrees';
+/** D191: **Review**: a link to Settings › Advanced › Clean-up (`payload.route`). */
+export const STRAY_REVIEW = 'open-leftovers';
+export const STRAY_WORKTREES_ROUTE = '/settings/advanced/cleanup';
+export const STRAY_WORKTREES_ACTIONS: readonly InboxAction[] = [
+  { id: STRAY_REVIEW, label: 'Review' },
+  { id: 'dismiss', label: 'Dismiss' },
+];
 export const SCHEDULE_RUN_FAILED = 'schedule-run-failed';
 /** Kind of the item a removable worktree raises. */
 export const WORKTREE_REMOVABLE = 'worktree-removable';
@@ -673,6 +683,56 @@ export class SystemItemService {
     );
     if (created) await this.#publishInbox();
     return created;
+  }
+
+  /**
+   * D191 (`docs/worktrees.md` → *Stray worktrees*): "N stray worktrees and leftovers (X GB)" with
+   * **Review** (a link: Settings › Advanced › Clean-up) and **Dismiss**. Once per set of items
+   * (`fingerprint`: open or closed, so a dismissed set never comes back); a dismissed notice
+   * snoozes the next one for {@link STRAY_SNOOZE_MS}; an open notice of another set is replaced.
+   * Not tied to a session (every profile sees it, D178's rule for items of no agent).
+   * @returns the new item, or `null`.
+   */
+  async strayNotice(input: { readonly count: number; readonly bytes: number; readonly fingerprint: string }): Promise<SystemItemRecord | null> {
+    const all = (await this.#store.systemItems.list()).filter((item) => item.kind === STRAY_WORKTREES);
+    const open = all.filter((item) => item.state === 'open');
+    if (open.some((item) => isPayload(item.payload) && item.payload['dedupe'] === input.fingerprint)) return null;
+    const snoozed = all.some((item) => item.state !== 'open' && item.closedAction === 'dismiss' && item.closedAt !== null && Date.now() - Date.parse(item.closedAt) < STRAY_SNOOZE_MS);
+    if (snoozed) return null;
+    let changed = false;
+    for (const item of open) {
+      await this.#store.systemItems.close(item.id, 'superseded').catch(() => undefined);
+      changed = true;
+    }
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: STRAY_WORKTREES,
+        source: 'worktrees',
+        status: 'idle',
+        title: strayNoticeTitle(input.count, input.bytes),
+        detail: 'No agent is working now. These worktrees, branches and temporary folders are not used by any open agent: review them and clean what you no longer need (work found nowhere else is never ticked for you).',
+        branches: [],
+        actions: STRAY_WORKTREES_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+        sessionId: null,
+        payload: { dedupe: input.fingerprint, route: STRAY_WORKTREES_ROUTE },
+      },
+      'dedupe',
+      input.fingerprint,
+    );
+    if (created) changed = true;
+    if (changed) await this.#publishInbox();
+    return created;
+  }
+
+  /** D191: nothing stray is left: an open notice closes (`resolved`). */
+  async strayResolved(): Promise<void> {
+    let changed = false;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== STRAY_WORKTREES) continue;
+      await this.#store.systemItems.close(item.id, 'resolved').catch(() => undefined);
+      changed = true;
+    }
+    if (changed) await this.#publishInbox();
   }
 
   /**
@@ -1282,6 +1342,8 @@ export class SystemItemService {
   }
 
   async #perform(item: SystemItemRecord, action: string): Promise<void> {
+    // D191: Review is a link (Settings › Advanced › Clean-up).
+    if (item.kind === STRAY_WORKTREES && action === STRAY_REVIEW) throw new SystemItemError('refused', 'Review is a link: open Settings › Advanced › Clean-up');
     // D166: Open changes is a link (the agent's Changes tab); Mark reviewed clears the agent's pending review.
     if (item.kind === REVIEW && action === REVIEW_OPEN_CHANGES) throw new SystemItemError('refused', 'Open changes is a link: open the agent’s Changes');
     if (item.kind === REVIEW && action === REVIEW_MARK) {

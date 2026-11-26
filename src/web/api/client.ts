@@ -1,3 +1,4 @@
+import type { StrayCleanRequest, StrayCleanResult, StrayRestorable, StrayRestoreRequest, StrayScan } from '../../core/strays.ts';
 import type { SessionWorksIn, WorkspaceFileChoice } from '../../core/workspace-move.ts';
 import type { AgentDirListing, AgentFileList, AgentFileMeta, AgentFileOpenHow, AgentFileRoots, AgentFileText, AgentPageInfo } from '../../core/agent-files.ts';
 import type { TurnChanges } from '../../core/turn-changes.ts';
@@ -685,6 +686,12 @@ export const api = {
   /** D84: removes the ticked items (202; poll {@link cleanupRun}); 422 `confirmation-required`, 409 `busy`. */
   startCleanup: (body: CleanupRunRequest) => request<CleanupRun>('POST', '/api/cleanup/runs', body),
   cleanupRun: (id: string) => request<CleanupRun>('GET', `/api/cleanup/runs/${enc(id)}`),
+  /** D191: stray worktrees and leftovers (read-only scan) and the branches still restorable. */
+  strayScan: () => request<{ readonly scan: StrayScan; readonly restorable: readonly StrayRestorable[] }>('GET', '/api/cleanup/strays'),
+  /** D191: cleans the ticked items (`force` = risky ones too, confirmed); 409 `busy`. */
+  cleanStrays: (body: StrayCleanRequest) => request<StrayCleanResult>('POST', '/api/cleanup/strays/clean', body),
+  /** D191: puts a deleted branch back at its tip. */
+  restoreStray: (body: StrayRestoreRequest) => request<{ readonly restorable: readonly StrayRestorable[] }>('POST', '/api/cleanup/strays/restore', body),
   /** D85: the tutorial's state on this machine (docs/tutorial.md). */
   tutorial: () => request<TutorialState>('GET', '/api/tutorial'),
   /** D85: a tour (`main` or a What's-new feature id) was finished or skipped. */
