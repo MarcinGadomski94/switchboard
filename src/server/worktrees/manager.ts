@@ -44,6 +44,7 @@ import type { WorktreeParentFields, WorktreePatch, WorktreeRecord } from '../db/
 import type { Store } from '../db/store.ts';
 import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
+import { ghEnvFor } from '../github/gh-env.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { SessionRepos, readOnlyInside, realOrNull, topOfDir } from './session-repos.ts';
@@ -130,6 +131,8 @@ export interface WorktreeManagerOptions {
   readonly store: Store;
   /** `SWITCHBOARD_GH_BIN` argv prefix. */
   readonly ghCommand: readonly string[];
+  /** D190: extra environment of a gh call in folder `cwd` (the GitHub binding of the profile working there). */
+  readonly ghEnv?: (cwd: string) => Promise<Record<string, string>>;
   /** git argv prefix (default `["git"]`; tests wrap it to log every call). */
   readonly gitCommand?: readonly string[];
   /** Base environment of git / gh (default `process.env`). */
@@ -385,6 +388,7 @@ export interface WorksInFound {
 export class WorktreeManager implements DiffProvider {
   readonly #store: Store;
   readonly #gh: readonly string[];
+  readonly #ghEnv: ((cwd: string) => Promise<Record<string, string>>) | null;
   readonly #git: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
   readonly #sessions: SessionControl | null;
@@ -418,6 +422,7 @@ export class WorktreeManager implements DiffProvider {
   constructor(options: WorktreeManagerOptions) {
     this.#store = options.store;
     this.#gh = options.ghCommand;
+    this.#ghEnv = options.ghEnv ?? null;
     this.#git = options.gitCommand ?? ['git'];
     this.#env = options.env ?? process.env;
     this.#sessions = options.sessions ?? null;
@@ -1914,10 +1919,11 @@ export class WorktreeManager implements DiffProvider {
     return this.#runGit(cwd, ['--no-optional-locks', '-c', 'core.fsmonitor=false', ...args], this.#diffTimeout);
   }
 
-  #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
+  async #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
+    const bound = this.#ghEnv ? await this.#ghEnv(cwd).catch(() => ({})) : await ghEnvFor(cwd);
     return runCommand(this.#gh, args, {
       cwd,
-      env: { ...this.#env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+      env: { ...this.#env, ...bound, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
       timeoutMs: this.#ghTimeout,
     });
   }

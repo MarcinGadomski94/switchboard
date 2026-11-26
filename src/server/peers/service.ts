@@ -57,6 +57,7 @@ import { memoryPeerChanged } from '../memory/hooks.ts';
 import type { UserProfileRecord } from '../db/repos/user-profiles.ts';
 import { type McpSyncComputer, mcpSignInServerOf, readMcpSignInWire } from '../../core/mcp-sign-in.ts';
 import type { McpSignInService } from '../mcp/sign-in.ts';
+import { type GitHubBindings, readGitHubSignIns } from '../github/bindings.ts';
 import type { DeviceService, HandoverOffer } from '../devices/service.ts';
 import type { UserProfileService, UserProfileWire } from '../user-profiles/service.ts';
 import { runOutsideProfileScope } from '../user-profiles/context.ts';
@@ -88,6 +89,8 @@ export const USER_PROFILES_SYNC_PATH = '/peer/v1/user-profiles';
 
 /** D184: the MCP sign-in exchange (`docs/mcp.md` → *Synced with paired computers (D184)*): the mutes and the claude.ai connectors. */
 export const MCP_SIGN_IN_SYNC_PATH = '/peer/v1/mcp-sign-in';
+/** D190: the route of a profile's shared GitHub sign-in (the only one that carries a token). */
+export const GITHUB_SYNC_PATH = '/peer/v1/github';
 /** D189: the phones exchange, and a phone's handover offer. */
 export const DEVICES_SYNC_PATH = '/peer/v1/devices';
 export const DEVICE_HANDOVER_PATH = '/peer/v1/devices/handover';
@@ -1168,6 +1171,8 @@ export class PeerService implements PeerHandlers {
       void this.#exchangeMcp(id);
       // D189: and the phones.
       void this.#exchangeDevices(id);
+      // D190: and the profiles' GitHub sign-ins.
+      void this.#exchangeGitHub(id);
     }
     else if (state === 'offline' || state === 'auth-failed') this.#sidebar.disconnected(id);
   }
@@ -1853,6 +1858,73 @@ export class PeerService implements PeerHandlers {
     this.#peerMcp.set(machine.id, { synced: true, connectors: wire.connectors });
     this.#relayMcp(machine.id, (await service.merge(wire.mutes)).length);
     return { status: 200, body: service.wire() };
+  }
+
+  // ── D190 · a profile's GitHub sign-in, shared with the paired computers the profile may use (docs/profiles.md) ──
+
+  #github: GitHubBindings | null = null;
+  #githubOff: (() => void) | null = null;
+  /** D190: the paired computers that answered without the route (older than 2.5.15: "Connect GitHub on <computer>"). */
+  readonly #peerGitHubOld = new Set<string>();
+  /** D190, tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): act as a computer older than 2.5.15 (no GitHub exchange either way). */
+  #testGitHubOld = false;
+
+  testGitHubOld(on: boolean): void {
+    this.#testGitHubOld = on;
+  }
+
+  /** D190: the GitHub bindings (set by the app): a sign-in or a sign-out here goes to every paired computer at once. */
+  useGitHub(service: GitHubBindings | null): void {
+    this.#githubOff?.();
+    this.#githubOff = null;
+    this.#github = service;
+    if (!service) return;
+    this.#githubOff = service.onChange(() => {
+      for (const id of this.#records.keys()) void this.#exchangeGitHub(id);
+    });
+  }
+
+  /** D190: the paired computers that do not take a shared GitHub sign-in (older ones), by name. */
+  githubUnsynced(): string[] {
+    return [...this.#peerGitHubOld].map((id) => this.#records.get(id)?.name ?? id);
+  }
+
+  #exchangeGitHub(machineId: string, except: string | null = null): Promise<void> {
+    if (machineId === except) return Promise.resolve();
+    return runOutsideProfileScope(() => this.#exchangeGitHubNow(machineId));
+  }
+
+  async #exchangeGitHubNow(machineId: string): Promise<void> {
+    const service = this.#github;
+    const connection = this.#connections.get(machineId);
+    if (!service || !connection || connection.state !== 'online' || this.#testGitHubOld) return;
+    try {
+      // The tokens are read now, kept in memory for this request only, and sent only on this route.
+      const answer = await connection.request('POST', GITHUB_SYNC_PATH, await service.wire(machineId), { timeoutMs: 60_000 });
+      if (answer.status === 404 || answer.status === 403 || answer.status === 405) {
+        this.#peerGitHubOld.add(machineId);
+        return;
+      }
+      this.#peerGitHubOld.delete(machineId);
+      const signIns = answer.status === 200 ? readGitHubSignIns(answer.body) : null;
+      if (!signIns) return;
+      if ((await service.merge(machineId, signIns)) > 0) for (const id of this.#records.keys()) void this.#exchangeGitHub(id, machineId);
+    } catch (error) {
+      // Never the request body: it may carry a token.
+      this.#log('warn', `GitHub sign-in sync with ${machineId}: ${error instanceof Error ? error.message.slice(0, 200) : 'failed'}`);
+    }
+  }
+
+  /** D190 · `POST /peer/v1/github`: a paired computer's sign-ins (merged); answers this computer's for the caller. */
+  async githubSync(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    if (this.#closed) return { status: 503, body: { error: 'closing' } };
+    const service = this.#github;
+    if (!service || this.#testGitHubOld) return { status: 404, body: { error: 'not-found' } };
+    const signIns = readGitHubSignIns(body);
+    if (!signIns) return { status: 422, body: { error: 'invalid' } };
+    this.#peerGitHubOld.delete(machine.id);
+    if ((await service.merge(machine.id, signIns)) > 0) for (const id of this.#records.keys()) void this.#exchangeGitHub(id, machine.id);
+    return { status: 200, body: await service.wire(machine.id) };
   }
 
   // ── D189 · phones paired on one computer work on every paired computer (docs/devices.md) ──

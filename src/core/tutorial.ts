@@ -214,6 +214,7 @@ const V2_5_11 = '2.5.11';
 const V2_5_13 = '2.5.13';
 /** The version D188 (the Tasks page by agent) and D189 (one phone pairing for all the paired computers) ship in (adjust if it ships later). */
 const V2_5_14 = '2.5.14';
+const V2_5_15 = '2.5.15';
 
 /** Team (D100): the steps on the Team page say this when it is not on screen (D132: Team is always on, so they point to its sidebar icon). */
 const TEAM_OPEN = 'Open Team in the sidebar (the ⚑ icon) to see this. ';
@@ -2328,6 +2329,24 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['v2-phone-computers', 'v2-phone-reach'],
         v2Route: '/settings/phones',
         missing: 'Pair a phone first (Settings › Phones › Pair a phone): the list shows on the phone, and which computers phones can reach shows here.',
+      },
+    ],
+  },
+  {
+    id: 'profile-github',
+    decision: 'D190',
+    version: V2_5_15,
+    title: 'A GitHub account per profile',
+    ui: 'v2',
+    steps: [
+      {
+        id: 'connect',
+        title: 'Connect a profile to GitHub',
+        what: 'Each profile can have its own GitHub account. Connect GitHub signs in with a one-time code on GitHub; then that profile’s agents and terminals use the account for gh and pull requests, commit as it, and push with it. Connect once: the sign-in reaches the other computers the profile may use.',
+        todo: ['Open Settings › Profiles and press Connect GitHub on a profile.'],
+        anchors: ['v2-profile-github'],
+        v2Route: '/settings/profiles',
+        missing: 'Open Settings › Profiles: every profile has Connect GitHub.',
       },
     ],
   },

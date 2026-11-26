@@ -119,6 +119,16 @@ A saved folder (D14) may be **bound** to one profile (`folders.user_profile_id`,
 - **Backup / restore (D168):** the binding is a column of `folders` and the profiles travel with their ids, so a restore keeps it, also "start as a new computer".
 - **Phones** cannot bind or unbind (local only); a phone's folder list follows its profile.
 
+## A profile's GitHub account (D190)
+
+Each profile can be bound to its own GitHub account: Settings › Profiles › **Connect GitHub** (or **GitHub…** once bound; the row shows `@login`).
+
+- **Signing in.** Connect runs gh's device-code login for this profile only, in its own gh folder `<data folder>/github/<profile id>/` (0700): the dialog shows the one-time code and a link to GitHub's page; approve it there. It follows the sign-in once a second; **Cancel** stops it, and it gives up after 15 minutes. Another profile with a password needs that password (from inside the profile, none). An optional **commit email**; empty = GitHub's private `<id>+<login>@users.noreply.github.com`.
+- **What uses it.** The profile's agents (chat and CLI mode) and their terminals start with `GH_CONFIG_DIR` (gh and pull requests as that account), `GIT_AUTHOR_NAME/EMAIL` and `GIT_COMMITTER_NAME/EMAIL` (the GitHub name, else the login, and the email above), and a credential helper given only through the environment (`GIT_CONFIG_COUNT`: the `credential.https://github.com.helper` list reset, then `gh auth git-credential`), so `git push` over HTTPS uses the account. No git config file is written; the developer's own config still applies otherwise. An agent started before the binding keeps its environment until its process restarts. The standalone Terminals page uses the browser's profile's binding. Switchboard's own gh calls in a folder (PR status, CI, Merge, plan PRs, Import issues) use the profile's account when exactly one bound profile has an open agent working there; otherwise the computer's own gh.
+- **On every computer.** The binding (login, name, id, email) travels with the profile (D165). The sign-in itself goes to the paired computers the profile may use (D173): connect once, and the others take it (`POST /peer/v1/github`, `docs/peers.md`). A computer that comes online later takes it when it connects. A computer older than 2.5.15 cannot: the dialog names it ("Connect GitHub on <computer>"). Until a computer is signed in, its agents use its own gh ("Not signed in on this computer yet").
+- **Disconnect** (on any computer) unbinds the profile and signs it out on every paired computer (each removes the profile's gh folder). To revoke the token itself: github.com → Settings → Applications.
+- **Phones** cannot connect or disconnect (local only). See `docs/security.md` → *GitHub accounts per profile (D190)* for what a shared sign-in means.
+
 ## The machine's, by design
 
 - **Terminal conversations not in Switchboard yet** (`GET /api/terminal-sessions`, `/api/terminal-loops`) and History's conversations that are no session: they belong to no profile (they are the machine's), so every profile lists them. Once one is followed (hooked) or continued it is a session of the profile that did it, and only that profile sees it; hooking or continuing one another profile already holds answers 404.
@@ -137,5 +147,7 @@ A saved folder (D14) may be **bound** to one profile (`folders.user_profile_id`,
 | `tests/core/user-profiles-access.test.ts` | D173: the access rule, the bootstrap, the admin rules |
 | `tests/server/peers/user-profile-access.test.ts` | D173 with two real Switchboards: the bootstrap, a non-admin refused, the last admin, Bo limited to A (refused on B, B's agents hidden on A, forwards and moves refused, its agent kept), syncing both ways |
 | `tests/e2e/v2-profiles.spec.ts` | the rail switcher with three profiles and a password |
+| `tests/server/github/profile-github.test.ts` | D190: Connect (the code, the account, `--insecure-storage`), an agent before (nothing) and after (gh folder, author, credential helper), Switchboard's gh in the agent's folder, the email, Disconnect (no `gh auth logout`); Cancel, another profile's password |
+| `tests/server/peers/github-sync.test.ts` | D190 with two real Switchboards: connect on A → B signed in (`--with-token` on stdin) and B's agent uses it, the token in no other file or log, Disconnect on B → A signed out; an older computer named; a profile limited to A never sent to B |
 | `tests/server/user-profiles/folder-binding.test.ts` | D169: bind with the owner's password, the other profile's agent moves; hidden from Bo and Default on every folder route, a new agent, scans, the take-over target listing, a chat's folders, saving it again; a paired computer's request in Bo's profile; unbind; a deleted owner; phones refused |
 | `tests/server/backup/roundtrip.test.ts` | D169: a bound folder stays bound after a restore ("start as a new computer") |

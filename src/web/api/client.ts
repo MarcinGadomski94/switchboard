@@ -3,6 +3,7 @@ import type { AgentDirListing, AgentFileList, AgentFileMeta, AgentFileOpenHow, A
 import type { TurnChanges } from '../../core/turn-changes.ts';
 import type { ProcessKeepInput, ProcessesOverview, SessionProcesses } from '../../core/api.ts';
 import type { UserProfile, UserProfilesView } from '../../core/user-profiles.ts';
+import type { GitHubBindingView } from '../../core/github-binding.ts';
 import type { TerminalInfo, TerminalsView } from '../../core/terminals.ts';
 import type { BackupInspection, BackupLastRun, BackupStatus } from '../../core/backup.ts';
 import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
@@ -373,6 +374,15 @@ export const api = {
   /** D179 follow-up: a removed profile's agents (no live successor) moved to profile `to` (its password when it has one). */
   moveOrphanProfile: (id: string, to: string, password?: string) =>
     request<{ readonly moved: number; readonly to: string }>('POST', `/api/user-profiles/orphans/${encodeURIComponent(id)}/move`, { to, ...(password ? { password } : {}) }),
+  /** D190: a profile's GitHub account (`docs/profiles.md`): the binding, a sign-in in progress. */
+  profileGitHub: (id: string) => request<GitHubBindingView>('GET', `/api/user-profiles/${encodeURIComponent(id)}/github`),
+  /** D190: starts gh's device-code sign-in for the profile (the code comes back in {@link profileGitHub}). */
+  connectProfileGitHub: (id: string, input: { readonly password?: string; readonly email?: string }) => request<GitHubBindingView>('POST', `/api/user-profiles/${encodeURIComponent(id)}/github/connect`, input),
+  cancelProfileGitHub: (id: string, password?: string) => request<GitHubBindingView>('POST', `/api/user-profiles/${encodeURIComponent(id)}/github/cancel`, password ? { password } : {}),
+  setProfileGitHubEmail: (id: string, email: string | null, password?: string) =>
+    request<GitHubBindingView>('PUT', `/api/user-profiles/${encodeURIComponent(id)}/github/email`, { email, ...(password ? { password } : {}) }),
+  /** D190: signs the profile out of GitHub on every paired computer and unbinds it. */
+  disconnectProfileGitHub: (id: string, password?: string) => request<GitHubBindingView>('POST', `/api/user-profiles/${encodeURIComponent(id)}/github/disconnect`, password ? { password } : {}),
   switchUserProfile: (id: string, password?: string) => request<UserProfile>('POST', '/api/user-profiles/switch', { id, ...(password ? { password } : {}) }),
   moveToUserProfile: (sessionId: string, userProfileId: string, password?: string) =>
     request<{ readonly sessionId: string; readonly userProfileId: string }>('PUT', `/api/sessions/${encodeURIComponent(sessionId)}/user-profile`, { userProfileId, ...(password ? { password } : {}) }),

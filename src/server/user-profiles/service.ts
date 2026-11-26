@@ -2,6 +2,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import path from 'node:path';
 import type { FolderBindPreview, InboxItem, Session } from '../../core/api.ts';
 import type { PushPayload } from '../../core/devices.ts';
+import { type GitHubIdentity, readGitHubIdentity } from '../../core/github-binding.ts';
 import { HybridClock } from '../../core/hlc.ts';
 import {
   DEFAULT_USER_PROFILE_ID,
@@ -70,6 +71,9 @@ export interface UserProfileWire {
   readonly computers?: readonly string[] | null;
   /** D176: the computers `computers` was decided for (others stay allowed); `null` = every computer; absent = an older computer (the merge keeps what is here while the list is the same). */
   readonly decidedFor?: readonly string[] | null;
+  /** D190: the GitHub account the profile is bound to; 
+ull = none; absent = an older computer (the merge keeps what is here). */
+  readonly github?: GitHubIdentity | null;
 }
 
 /** D172: the settings key of this computer's own Default's peer-link id (absent: `default-<machine id>`). */
@@ -542,6 +546,8 @@ export class UserProfileService {
       computers: record.computers,
       decidedFor: record.decidedFor,
       allowedHere: profileAllowedOn(record.computers, this.#self, record.decidedFor),
+      // D190
+      github: record.github,
     };
   }
 
@@ -562,6 +568,33 @@ export class UserProfileService {
     await this.ready();
     this.#o.bus.publish('userProfilesChanged', { profiles: await this.list() });
     this.#o.synced?.(records.map((record) => this.#wireOf(record)));
+  }
+
+  /**
+   * D190: may the request's profile `actor` connect or disconnect profile `id`'s GitHub account?
+   * From inside the profile, yes; otherwise with the profile's password (a profile without one:
+   * yes). Throws the profile's own errors (404, 401 wrong password, 429 too many tries).
+   */
+  async authorizeGitHub(id: string, actor: ProfileScope, password: unknown): Promise<UserProfileRecord> {
+    const record = await this.get(id);
+    if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
+    if (actor === id || actor === '*') return record;
+    await this.#check(record, password);
+    return record;
+  }
+
+  /** D190: binds profile `id` to a GitHub account (`null` unbinds it); synced with the profile. */
+  async setGitHub(id: string, github: GitHubIdentity | null): Promise<UserProfileRecord> {
+    const record = await this.get(id);
+    if (!record) throw new UserProfileError(404, 'not-found', `no profile ${id}`);
+    const updated = (await this.#o.store.userProfiles.update(id, { github, clock: this.#clock() })) ?? record;
+    await this.#changed([updated]);
+    return updated;
+  }
+
+  /** D190: a profile's id as paired computers know it (its peer-link id) and back. */
+  linkIdOf(id: string): string {
+    return this.#toLink(id);
   }
 
   /** `POST /api/user-profiles`: a new profile. */
@@ -920,7 +953,7 @@ export class UserProfileService {
         if (wire.mergedInto && this.#localOf(wire.mergedInto) !== DEFAULT_USER_PROFILE_ID) written.push(...(await this.#adoptDefault(wire.mergedInto)));
         continue;
       }
-      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt, admin: wire.admin ?? false, computers: wire.computers ?? null, decidedFor: listDecided })))) continue;
+      if (own && !(wire.clock > own.clock || (wire.clock === own.clock && JSON.stringify(toWire(own)) < JSON.stringify({ ...toWire(own), name: wire.name, color: wire.color, passwordHash: wire.passwordHash, clock: wire.clock, deletedAt: wire.deletedAt, admin: wire.admin ?? false, computers: wire.computers ?? null, decidedFor: listDecided, github: wire.github !== undefined ? wire.github : (own.github ?? null) })))) continue;
       const deletedAt = localId === DEFAULT_USER_PROFILE_ID ? null : wire.deletedAt;
       const next: UserProfileRecord = {
         id: localId,
@@ -936,6 +969,8 @@ export class UserProfileService {
         admin: wire.admin ?? false,
         computers: wire.computers ?? null,
         decidedFor: listDecided,
+        // D190: an older computer sends no binding: the one here stays.
+        github: wire.github !== undefined ? wire.github : (own?.github ?? null),
       };
       await this.#o.store.userProfiles.put(next);
       this.#invalidate();
@@ -1028,7 +1063,7 @@ export class UserProfileService {
     const admin = a.admin || b.admin;
     const { computers, decidedFor } = mergedAccess(a, b);
     if (admin && keepPassword.passwordHash === null) throw new UserProfileError(409, 'needs-password', 'The merged profile is an admin, so it needs a password: keep the password of the one that has one.');
-    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, decidedFor, clock: this.#clock() })) ?? survivor;
+    const updated = (await this.#o.store.userProfiles.update(survivor.id, { name: keepName.name, color: keepColor.color, passwordHash: keepPassword.passwordHash, admin, computers, decidedFor, github: survivor.github ?? gone.github ?? null, clock: this.#clock() })) ?? survivor;
     const tomb = (await this.#o.store.userProfiles.update(gone.id, { deletedAt: new Date(this.#now()).toISOString(), passwordHash: null, mergedInto: this.#toLink(survivor.id), clock: this.#clock() })) ?? gone;
     this.#invalidate();
     await this.#records();
@@ -1056,7 +1091,7 @@ function tagOf(passwordHash: string | null): string {
 }
 
 function toWire(record: UserProfileRecord): UserProfileWire {
-  return { id: record.id, name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, createdAt: record.createdAt, deletedAt: record.deletedAt, admin: record.admin, computers: record.computers, decidedFor: record.decidedFor };
+  return { id: record.id, name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, createdAt: record.createdAt, deletedAt: record.deletedAt, admin: record.admin, computers: record.computers, decidedFor: record.decidedFor, github: record.github };
 }
 
 function readWire(value: unknown): UserProfileWire | null {
@@ -1077,7 +1112,9 @@ function readWire(value: unknown): UserProfileWire | null {
   const computers = readComputerAccess(value['computers'] ?? null) ?? null;
   // D176: absent (an older computer) stays absent: the merge keeps the list's `decidedFor` here. Malformed = decided everywhere (D173).
   const decidedFor = 'decidedFor' in value ? (value['decidedFor'] === null ? null : (readComputerAccess(value['decidedFor']) ?? null)) : undefined;
-  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto, admin, computers, ...(decidedFor !== undefined ? { decidedFor } : {}) };
+  // D190: absent (an older computer) stays absent: the merge keeps the binding here. Malformed = none.
+  const github = 'github' in value ? readGitHubIdentity(value['github']) : undefined;
+  return { id, name, color: typeof value['color'] === 'string' ? value['color'] : 'blue', passwordHash: hash as string | null, clock, createdAt, deletedAt, ...(homeOf ? { homeOf } : {}), mergedInto, admin, computers, ...(decidedFor !== undefined ? { decidedFor } : {}), ...(github !== undefined ? { github } : {}) };
 }
 
 /** D176: two access lists hold the same computers (order aside). */

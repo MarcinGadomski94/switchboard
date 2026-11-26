@@ -37,6 +37,12 @@ describe('D73 device allow-list: every route classified', () => {
 describe('D73 local-only routes', () => {
   it('refuses machine administration and allows the work', () => {
     const refused: Array<[string, string]> = [
+      // D190: a profile's GitHub account is set up on the computer only.
+      ['GET', '/api/user-profiles/p1/github'],
+      ['POST', '/api/user-profiles/p1/github/connect'],
+      ['POST', '/api/user-profiles/p1/github/cancel'],
+      ['PUT', '/api/user-profiles/p1/github/email'],
+      ['POST', '/api/user-profiles/p1/github/disconnect'],
       ['GET', '/api/devices'],
       ['DELETE', '/api/devices/x'],
       ['POST', '/api/machines'],

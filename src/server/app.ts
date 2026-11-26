@@ -32,6 +32,9 @@ import { TakeoverRunner } from './takeover/runner.ts';
 import { TakeoverService } from './takeover/service.ts';
 import { McpService } from './mcp/service.ts';
 import { McpSignInService } from './mcp/sign-in.ts';
+import { registerGitHubBindingRoutes } from './api/github.ts';
+import { GitHubBindings } from './github/bindings.ts';
+import { useGhEnv } from './github/gh-env.ts';
 import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { HELPER_NODE_ARGS, helperScript } from './mcp/helper-bundle.ts';
@@ -583,6 +586,17 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   // D184: its mutes and the claude.ai connectors go to every paired computer (and come from them).
   peers.useMcpSignIn(mcpSignIn);
+  // D190: a profile bound to a GitHub account: its agents (and Switchboard's gh calls for them) run as it; the sign-in syncs to the computers the profile may use.
+  const github = new GitHubBindings({ store: options.store, profiles: userProfiles, dataDir: config.dataDir, gh: config.ghCommand, onError: (error) => app.log.warn(error instanceof Error ? error.message : String(error)) });
+  supervisor.useGitHubEnv((session) => github.envForSession(session));
+  const previousGhEnv = useGhEnv((cwd) => github.ghEnvForPath(cwd));
+  peers.useGitHub(github);
+  github.useUnsynced(() => peers.githubUnsynced());
+  registerGitHubBindingRoutes(app, github);
+  app.addHook('onClose', async () => {
+    github.close();
+    useGhEnv(previousGhEnv);
+  });
   // D189: the phones (never their credentials) go to every paired computer; a phone can switch between them.
   deviceService.useProfileLinks({
     toLink: (id) => (id === 'default' ? userProfiles.selfWireId() : id),
@@ -878,6 +892,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     terminals,
     folders,
     peers,
+    // D190: a terminal of a profile bound to GitHub works as that account (as its agents do).
+    githubEnv: (profileId) => github.envForProfile(profileId),
     // D182: the agent's terminal starts in the agent's folder.
     session: async (id) => {
       const record = await options.store.sessions.get(id);

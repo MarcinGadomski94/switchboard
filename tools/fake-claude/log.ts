@@ -1,7 +1,23 @@
 import { appendFile } from 'node:fs/promises';
 
 /** D127: the process tracker's marker and the .NET build defaults Switchboard sets (never secrets): logged with their values. */
-const LOGGED_KEYS = new Set(['SWITCHBOARD_SESSION', 'MSBUILDDISABLENODEREUSE', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'UseSharedCompilation']);
+const LOGGED_KEYS = new Set([
+  'SWITCHBOARD_SESSION',
+  'MSBUILDDISABLENODEREUSE',
+  'DOTNET_CLI_USE_MSBUILD_SERVER',
+  'UseSharedCompilation',
+  // D190: a profile's GitHub account (a folder, a name, an email, the credential helper; never a token).
+  'GH_CONFIG_DIR',
+  'GIT_AUTHOR_NAME',
+  'GIT_AUTHOR_EMAIL',
+  'GIT_COMMITTER_NAME',
+  'GIT_COMMITTER_EMAIL',
+  'GIT_CONFIG_COUNT',
+  'GIT_CONFIG_KEY_0',
+  'GIT_CONFIG_VALUE_0',
+  'GIT_CONFIG_KEY_1',
+  'GIT_CONFIG_VALUE_1',
+]);
 
 /**
  * `FAKE_CLAUDE_LOG=<file>`: appends one JSON line per event so tests can assert
@@ -32,7 +48,8 @@ export class Logger {
   /**
    * Logs argv and cwd. `env` has the values of `CLAUDE_CONFIG_DIR`, every
    * `FAKE_CLAUDE_*` and (D127) `SWITCHBOARD_SESSION`, `MSBUILDDISABLENODEREUSE`,
-   * `DOTNET_CLI_USE_MSBUILD_SERVER`, `UseSharedCompilation`; `claudeEnvKeys` lists the names (only) of every `CLAUDE*`
+   * `DOTNET_CLI_USE_MSBUILD_SERVER`, `UseSharedCompilation`, (D190) `GH_CONFIG_DIR`, the `GIT_AUTHOR_*` /
+   * `GIT_COMMITTER_*` names and emails and the `GIT_CONFIG_*` credential helper; `claudeEnvKeys` lists the names (only) of every `CLAUDE*`
    * variable, so a test can check that `CLAUDECODE` / `CLAUDE_CODE_*` were dropped
    * without secrets landing in the log.
    */

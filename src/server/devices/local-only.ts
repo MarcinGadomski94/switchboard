@@ -241,7 +241,9 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['*', /^\/api\/sessions\/[^/]+\/turn-changes(?:\/.*)?$/],
   // D165: profiles are managed and switched on the computer; moving an agent between profiles too.
   [WRITE, /^\/api\/user-profiles(?:\/.*)?$/],
-  ['PUT', /^\/api\/sessions\/[^/]+\/user-profile$/],
+  // D190: a profile's GitHub account (its sign-in, the code, the commit email) is set up on the computer only.
+  ['GET', /^\/api\/user-profiles\/[^/]+\/github$/],
+  ['PUT',/^\/api\/sessions\/[^/]+\/user-profile$/],
   // Devices: pairing others, revoking, the access switch.
   ['*', /^\/api\/devices(?:\/.*)?$/],
   // Paired machines: pairing, adding, removing, renaming, listener, shared layout.

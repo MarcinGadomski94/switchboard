@@ -1,6 +1,7 @@
 import { type PlanChecks, checksFromRollup } from '../../core/plans.ts';
 import type { PrViewResult } from '../ci/gh.ts';
 import { type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
+import { ghEnvFor } from '../github/gh-env.ts';
 
 /** What the scheduler learns about one repo of a running item (`docs/plans.md` → *When an item is done*). */
 export interface PlanRepoState {
@@ -64,6 +65,8 @@ export interface PlanGitOptions {
   readonly git?: readonly string[];
   readonly gh: readonly string[];
   readonly env?: NodeJS.ProcessEnv;
+  /** D190: extra environment of a gh call in folder cwd (the GitHub binding of the profile working there). */
+  readonly ghEnv?: (cwd: string) => Promise<Record<string, string>>;
   readonly timeoutMs?: number;
   /**
    * D109: the shared PR watcher's reading (`PrWatcher.read`): an item's PR, its checks and
@@ -78,6 +81,7 @@ export class PlanGit implements PlanGitPort {
   readonly #git: readonly string[];
   readonly #gh: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
+  readonly #ghEnv: ((cwd: string) => Promise<Record<string, string>>) | null;
   readonly #timeout: number;
   readonly #prs: PlanGitOptions['prs'] | null;
 
@@ -86,6 +90,7 @@ export class PlanGit implements PlanGitPort {
     this.#git = options.git ?? ['git'];
     this.#gh = options.gh;
     this.#env = options.env ?? process.env;
+    this.#ghEnv = options.ghEnv ?? null;
     this.#timeout = options.timeoutMs ?? 60_000;
   }
 
@@ -222,8 +227,9 @@ export class PlanGit implements PlanGitPort {
     return runCommand(this.#git, args, { cwd, env: { ...this.#env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' }, timeoutMs: this.#timeout });
   }
 
-  #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
-    return runCommand(this.#gh, args, { cwd, env: { ...this.#env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }, timeoutMs: this.#timeout });
+  async #runGh(cwd: string, args: readonly string[]): Promise<RunResult> {
+    const bound = this.#ghEnv ? await this.#ghEnv(cwd).catch(() => ({})) : await ghEnvFor(cwd);
+    return runCommand(this.#gh, args, { cwd, env: { ...this.#env, ...bound, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' }, timeoutMs: this.#timeout });
   }
 }
 

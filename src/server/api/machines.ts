@@ -117,6 +117,11 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
       peers.testMcpOld(true);
       return reply.code(204).send();
     });
+    // D190: this computer acts as one older than 2.5.15 (no GitHub sign-in exchange: the route answers 404, nothing is sent).
+    app.post('/api/test/peers/github-old', async (_request, reply) => {
+      peers.testGitHubOld(true);
+      return reply.code(204).send();
+    });
     // D189: this computer acts as one older than 2.5.14 (no phones exchange, no handover: the routes answer 404).
     app.post('/api/test/peers/devices-old', async (_request, reply) => {
       peers.testDevicesOld(true);

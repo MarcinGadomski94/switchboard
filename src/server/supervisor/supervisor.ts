@@ -783,6 +783,24 @@ export class SessionSupervisor {
     this.#agentMcp = launch;
   }
 
+  /** D190: the environment of a session's agent from its profile's GitHub binding (gh as that account, the commit author, the push helper); 
+ull = none. */
+  #githubEnv: ((session: SessionRecord) => Promise<Record<string, string>>) | null = null;
+
+  /** D190: every process started from now on gets its profile's GitHub binding (uildApp sets it). A failure is reported and the process starts without it. */
+  useGitHubEnv(env: ((session: SessionRecord) => Promise<Record<string, string>>) | null): void {
+    this.#githubEnv = env;
+  }
+
+  async #githubEnvOf(session: SessionRecord): Promise<Record<string, string>> {
+    try {
+      return (await this.#githubEnv?.(session)) ?? {};
+    } catch (error) {
+      this.#onError(error);
+      return {};
+    }
+  }
+
   /** D80: takes a checkpoint of the session's working trees before each user message goes to its process (`null` = none). */
   useCheckpoints(checkpoints: TurnCheckpoints | null): void {
     this.#checkpoints = checkpoints;
@@ -2660,8 +2678,9 @@ export class SessionSupervisor {
       addDirs: session.extraDirs ?? [],
       settings,
     });
+    const github = await this.#githubEnvOf(session);
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries({ ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id })) {
+    for (const [key, value] of Object.entries({ ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...github, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id })) {
       if (typeof value === 'string') env[key] = value;
     }
     return { command: this.#command, args, env, cwd };
@@ -3435,6 +3454,8 @@ export class SessionSupervisor {
     const instruction = await sessionInstruction(this.#store, prepared);
     // Team (D100) hook (D100-T2): a member's approved access: its API keys in the environment, every value masked in what is recorded of it.
     const teamAccess = await teamAccessEnv(this.#store, session.id);
+    // D190: the profile's GitHub account (gh, the commit author, HTTPS pushes).
+    const github = await this.#githubEnvOf(prepared);
     const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
       claudeStart: start,
@@ -3442,7 +3463,7 @@ export class SessionSupervisor {
       permissionMode,
       cwd,
       // D127: the build defaults (no lingering .NET build servers) and the session's marker, inherited by everything its agent starts.
-      env: { ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id },
+      env: { ...childEnv(this.#env), ...AGENT_BUILD_ENV, ...profileEnv, ...github, ...teamAccess.env, [SESSION_MARKER_ENV]: session.id },
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       // D64: read now, so a change applies to every session started or resumed afterwards.

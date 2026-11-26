@@ -67,6 +67,8 @@ export interface UserProfile {
   readonly decidedFor?: readonly string[] | null;
   /** D173: whether it may be used on this computer ({@link profileAllowedOn}); the switcher lists only these. */
   readonly allowedHere?: boolean;
+  /** D190: the GitHub account the profile is bound to (synced with the profile); `null` = none. */
+  readonly github?: import('./github-binding.ts').GitHubIdentity | null;
 }
 
 /** D176: a computer this one knows only through a paired computer (the access checklist lists it too). */

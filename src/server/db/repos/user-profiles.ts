@@ -1,3 +1,4 @@
+import type { GitHubIdentity } from '../../../core/github-binding.ts';
 import type { UserProfileColor } from '../../../core/user-profiles.ts';
 import type { RepoContext } from '../context.ts';
 import { Table, type TableSpec } from '../table.ts';
@@ -27,6 +28,9 @@ export interface UserProfileRecord {
   readonly computers: readonly string[] | null;
   /** D176 (0061): the computers `computers` was decided for (others stay allowed); `null` = every computer. */
   readonly decidedFor: readonly string[] | null;
+  /** D190 (0064): the GitHub account the profile is bound to (synced with the profile); 
+ull = none. */
+  readonly github: GitHubIdentity | null;
 }
 
 const SPEC: TableSpec<UserProfileRecord> = {
@@ -45,6 +49,7 @@ const SPEC: TableSpec<UserProfileRecord> = {
     admin: ['admin', 'bool'],
     computers: ['computers', 'json'],
     decidedFor: ['decided_for', 'json'],
+    github: ['github', 'json'],
   },
 };
 
@@ -82,16 +87,16 @@ export class UserProfileRepository {
 
   async create(input: Pick<UserProfileRecord, 'id' | 'name' | 'color' | 'passwordHash' | 'clock'>): Promise<UserProfileRecord> {
     const ts = this.#ctx.now();
-    return this.#table.insert({ ...input, createdAt: ts, updatedAt: ts, deletedAt: null, mergedInto: null, admin: false, computers: null, decidedFor: null });
+    return this.#table.insert({ ...input, createdAt: ts, updatedAt: ts, deletedAt: null, mergedInto: null, admin: false, computers: null, decidedFor: null, github: null });
   }
 
-  async update(id: string, patch: Partial<Pick<UserProfileRecord, 'name' | 'color' | 'passwordHash' | 'clock' | 'deletedAt' | 'mergedInto' | 'admin' | 'computers' | 'decidedFor'>>): Promise<UserProfileRecord | null> {
+  async update(id: string, patch: Partial<Pick<UserProfileRecord, 'name' | 'color' | 'passwordHash' | 'clock' | 'deletedAt' | 'mergedInto' | 'admin' | 'computers' | 'decidedFor' | 'github'>>): Promise<UserProfileRecord | null> {
     return this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
   }
 
   /** Writes a paired computer's record as it is (the sync's merge decided it wins). */
   async put(record: UserProfileRecord): Promise<void> {
-    if (this.#table.get(record.id)) this.#table.update(record.id, { name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, deletedAt: record.deletedAt, mergedInto: record.mergedInto, admin: record.admin, computers: record.computers, decidedFor: record.decidedFor, updatedAt: this.#ctx.now() });
+    if (this.#table.get(record.id)) this.#table.update(record.id, { name: record.name, color: record.color, passwordHash: record.passwordHash, clock: record.clock, deletedAt: record.deletedAt, mergedInto: record.mergedInto, admin: record.admin, computers: record.computers, decidedFor: record.decidedFor, github: record.github, updatedAt: this.#ctx.now() });
     else this.#table.insert({ ...record });
   }
 

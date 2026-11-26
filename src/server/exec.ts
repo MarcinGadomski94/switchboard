@@ -9,6 +9,8 @@ export interface RunOptions {
   readonly timeoutMs?: number;
   /** Kill the child once stdout + stderr exceed this many bytes. Default 64 MiB. */
   readonly maxOutputBytes?: number;
+  /** Written to the child's stdin, which is then closed (D190: a token for `gh auth login --with-token`, never on the argv). Default: no stdin. */
+  readonly input?: string;
 }
 
 /** How a finished command ended. */
@@ -64,9 +66,13 @@ export function runCommand(command: readonly string[], args: readonly string[], 
       cwd: options.cwd,
       env: options.env ?? process.env,
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
+    if (options.input !== undefined && child.stdin) {
+      child.stdin.on('error', () => undefined);
+      child.stdin.end(options.input);
+    }
     const stop = (reason: Error): void => {
       if (error === null) error = reason;
       child.kill('SIGTERM');

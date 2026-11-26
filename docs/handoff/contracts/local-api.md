@@ -1322,6 +1322,17 @@ Developer request D73 (`docs/decisions.md` → *Devices*, `docs/devices.md`): ph
 | GET | /handover | — | D189, device listener only: the handover page (it reads `#t=`, POSTs it once); 404 on the UI listener |
 | POST | /device/v1/handover | `{ token }` | D189, device listener only: 200 `{ device: Device }` + `Set-Cookie: __Host-sb_device=…` (this computer's own credential) · 400 `expired` (used, unknown or expired) · 403 `revoked` / `other-login` · 409 `already-set-up` · 429 `rate-limited` (per source, apart from pairing) |
 
+- **D190, additive:** **UserProfile** gains `github?: { login, name: string | null, id, email: string | null } | null` (the bound GitHub account, synced with the profile). Local-only routes (refused to phones, not on the peer API), password as the profile's other changes (none from inside the profile):
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/user-profiles/{id}/github | — | 200 GitHubBindingView `{ identity, author: { name, email } \| null, signedInHere, login: { state: "starting" \| "waiting" \| "done" \| "failed" \| "cancelled", code, url, error } \| null, unsynced?: string[] }` · 404 `not-found` |
+| POST | /api/user-profiles/{id}/github/connect | `{ password?, email? }` | 200 GitHubBindingView (gh's device-code sign-in started; `login.code` / `login.url` once gh printed them) · 401 `wrong-password` · 422 `invalid` · 429 `too-many-tries` |
+| POST | /api/user-profiles/{id}/github/cancel | `{ password? }` | 200 GitHubBindingView |
+| PUT | /api/user-profiles/{id}/github/email | `{ email: string \| null, password? }` | 200 GitHubBindingView · 409 `not-bound` · 422 `invalid` |
+| POST | /api/user-profiles/{id}/github/disconnect | `{ password? }` | 200 GitHubBindingView (unbound; signed out on every paired computer) |
+
+  Peer route `POST /peer/v1/github`: `docs/peers.md`.
 - **D189, additive:** **Device** gains `pairedOn: { id, name } | null` (the computer it was paired on; `null` = this one) and `setUpHere` (`false` until it switched here once); **DevicesView** gains `computers?` (the paired computers phones can reach). Peer routes `POST /peer/v1/devices` and `POST /peer/v1/devices/handover`: `docs/peers.md`.
 - **DeviceAccessState** `{ enabled, port (default 13003), httpsPort (default 8443), listening: "127.0.0.1:<port>" | null, origin: "https://<machine>.<tailnet>.ts.net:8443" | null, https: "ok" | "off" | "no-tailscale" | "no-https" | "serve-failed" | "port-busy", message, actionUrl }` (`message` says what to enable; `actionUrl` a Tailscale page the CLI named, e.g. Serve's consent).
 - **Device** `{ id, name, userAgent, pairedAt, lastSeenAt, push }`: never a credential.

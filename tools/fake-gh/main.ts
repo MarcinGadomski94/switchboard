@@ -52,7 +52,7 @@
  * - `FAKE_GH_LOG=<file>` appends `{"argv":[…],"cwd":"…"}` per call.
  */
 import { spawn } from 'node:child_process';
-import { appendFile, copyFile, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 process.stdout.on('error', () => undefined);
@@ -310,12 +310,114 @@ async function release(command: string | undefined, args: string[]): Promise<nev
   return finish(1, '', `unknown command "release ${command ?? ''}" for "gh"\n`);
 }
 
+/** D190: the fake sign-in of one GH_CONFIG_DIR. */
+interface FakeAuth {
+  readonly login: string;
+  readonly name: string | null;
+  readonly id: number;
+  readonly token: string;
+}
+
+async function readAuth(dir: string): Promise<FakeAuth | null> {
+  try {
+    return JSON.parse(await readFile(path.join(dir, 'fake-auth.json'), 'utf8')) as FakeAuth;
+  } catch {
+    return null;
+  }
+}
+
+async function writeAuth(dir: string, auth: FakeAuth): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, 'fake-auth.json'), JSON.stringify(auth));
+}
+
+function readStdin(): Promise<string> {
+  return new Promise((resolve) => {
+    let text = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk: string) => (text += chunk));
+    process.stdin.on('end', () => resolve(text));
+    process.stdin.on('error', () => resolve(text));
+  });
+}
+
+/**
+ * D190 · `gh auth …` with `GH_CONFIG_DIR` (docs/worktrees.md → *Fake gh*):
+ * - `auth login --web …` prints gh's device-code lines (`FAKE_GH_DEVICE_CODE`, default `ABCD-1234`) on
+ *   stderr, waits `FAKE_GH_LOGIN_DELAY_MS` (default 200), then signs in as `FAKE_GH_LOGIN` (default
+ *   `octo-fake`, id `FAKE_GH_USER_ID` default 4242, name `FAKE_GH_NAME` default `Octo Fake`) with the
+ *   token `FAKE_GH_TOKEN` (default `gho_fake…`); `FAKE_GH_LOGIN_FAIL=<text>` fails it; `FAKE_GH_LOGIN_HANG=1` never ends.
+ * - `auth login --with-token …` reads the token from stdin (appended to `FAKE_GH_STDIN_LOG` when set) and
+ *   signs in as the account `FAKE_GH_TOKENS` (a JSON file `{ "<token>": {login, name, id} }`) maps it to,
+ *   else `octo-fake`.
+ * - `auth status` → signed in or not; `auth token` → the token; `auth logout` → signed out;
+ *   `auth git-credential get` → `username=<login>` + `password=<token>`.
+ */
+async function configAuth(dir: string, command: string | undefined, args: readonly string[]): Promise<never> {
+  const auth = await readAuth(dir);
+  if (command === 'login') {
+    if (args.includes('--with-token')) {
+      const token = (await readStdin()).trim();
+      const stdinLog = process.env['FAKE_GH_STDIN_LOG'];
+      if (stdinLog) await appendFile(stdinLog, `${JSON.stringify({ dir, token })}\n`);
+      if (!/^[A-Za-z0-9_]{10,}$/.test(token)) return finish(1, '', 'error validating token: HTTP 401: Bad credentials\n');
+      let account: { login: string; name: string | null; id: number } = { login: 'octo-fake', name: 'Octo Fake', id: 4242 };
+      const map = process.env['FAKE_GH_TOKENS'];
+      if (map) {
+        try {
+          const known = (JSON.parse(await readFile(map, 'utf8')) as Record<string, { login: string; name: string | null; id: number }>)[token];
+          if (known) account = known;
+        } catch {
+          // No map: the default account.
+        }
+      }
+      await writeAuth(dir, { ...account, token });
+      return finish(0);
+    }
+    process.stderr.write(`! First copy your one-time code: ${process.env['FAKE_GH_DEVICE_CODE'] ?? 'ABCD-1234'}\nOpen this URL to continue in your web browser: https://github.com/login/device\n`);
+    if (process.env['FAKE_GH_LOGIN_HANG'] === '1') {
+      await new Promise(() => undefined);
+    }
+    await new Promise((resolve) => setTimeout(resolve, Number(process.env['FAKE_GH_LOGIN_DELAY_MS'] ?? 200)));
+    if (process.env['FAKE_GH_LOGIN_FAIL']) return finish(1, '', `${process.env['FAKE_GH_LOGIN_FAIL']}\n`);
+    const login = process.env['FAKE_GH_LOGIN'] ?? 'octo-fake';
+    await writeAuth(dir, { login, name: process.env['FAKE_GH_NAME'] ?? 'Octo Fake', id: Number(process.env['FAKE_GH_USER_ID'] ?? 4242), token: process.env['FAKE_GH_TOKEN'] ?? 'gho_fakeTokenForTests0123456789' });
+    return finish(0, '', `✓ Authentication complete.\n✓ Logged in as ${login}\n`);
+  }
+  if (command === 'status') {
+    if (!auth) return finish(1, '', 'You are not logged into any GitHub hosts. To log in, run: gh auth login\n');
+    return finish(0, `github.com\n  ✓ Logged in to github.com account ${auth.login} (${dir})\n`);
+  }
+  if (command === 'token') {
+    if (!auth) return finish(1, '', 'no oauth token found for github.com\n');
+    return finish(0, `${auth.token}\n`);
+  }
+  if (command === 'logout') {
+    if (!auth) return finish(1, '', 'not logged in to any hosts\n');
+    await rm(path.join(dir, 'fake-auth.json'), { force: true });
+    return finish(0, '', `✓ Logged out of github.com account ${auth.login}\n`);
+  }
+  if (command === 'git-credential') {
+    if (!auth) return finish(1);
+    return finish(0, `protocol=https\nhost=github.com\nusername=${auth.login}\npassword=${auth.token}\n`);
+  }
+  return finish(1, '', `unknown command "auth ${command ?? ''}" for "gh"\n`);
+}
+
 async function main(): Promise<never> {
   const args = process.argv.slice(2);
   const logFile = process.env['FAKE_GH_LOG'];
-  if (logFile) await appendFile(logFile, `${JSON.stringify({ argv: args, cwd: process.cwd() })}\n`);
+  if (logFile) await appendFile(logFile, `${JSON.stringify({ argv: args, cwd: process.cwd(), ...(process.env['GH_CONFIG_DIR'] ? { ghConfigDir: process.env['GH_CONFIG_DIR'] } : {}) })}\n`);
   const [first, second, ...rest] = args;
   if (first === '--version') return finish(0, 'gh version 0.0.0-fake (fake-gh)\n');
+  // D190: with GH_CONFIG_DIR, the sign-in lives in that folder (`fake-auth.json`), as gh's own would.
+  const configDir = process.env['GH_CONFIG_DIR'];
+  if (configDir && first === 'auth') return configAuth(configDir, second, rest);
+  if (configDir && first === 'api' && second === 'user') {
+    const auth = await readAuth(configDir);
+    if (!auth) return finish(1, '', 'gh: To get started with GitHub CLI, please run:  gh auth login\n');
+    return finish(0, `${JSON.stringify({ login: auth.login, name: auth.name, id: auth.id, email: null })}\n`);
+  }
   if (first === 'auth' && second === 'status') {
     if (process.env['FAKE_GH_SIGNED_OUT'] === '1') {
       return finish(1, '', 'You are not logged into any GitHub hosts. To log in, run: gh auth login\n');

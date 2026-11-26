@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { type GitHubBindingView, noreplyEmail } from '../../../core/github-binding.ts';
 import { type OrphanProfile, USER_PROFILE_COLORS, type UserProfile } from '../../../core/user-profiles.ts';
 import { ApiError, api, machineApi } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
@@ -158,6 +159,7 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, known, onSwitch, on
   const [deleting, setDeleting] = useState(false);
   const [merging, setMerging] = useState(false);
   const [access, setAccess] = useState(false);
+  const [github, setGitHub] = useState(false);
   const others = all.filter((other) => other.id !== profile.id);
   // D173: an admin manages every profile; while there is no admin, a profile with a password may make itself the first.
   const bootstrap = !anyAdmin && active && profile.hasPassword;
@@ -175,6 +177,11 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, known, onSwitch, on
           </span>
         ) : null}
         {profile.allowedHere === false ? <span className="v2-chip-mini">{W.notHere}</span> : null}
+        {profile.github ? (
+          <span className="v2-chip-mini" data-testid="v2-profile-github-chip">
+            {W.githubChip(profile.github.login)}
+          </span>
+        ) : null}
         {profile.computers !== undefined ? (
           <span className="v2-muted v2-profile-computers" data-testid="v2-profile-computers" data-tour="v2-profile-access">
             {' '}
@@ -192,6 +199,9 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, known, onSwitch, on
           {W.switchAction}
         </Button>
       ) : null}
+      <Button size="sm" onClick={() => setGitHub(true)} data-testid="v2-profile-github" data-tour="v2-profile-github">
+        {profile.github ? W.github : W.githubConnect}
+      </Button>
       <Button size="sm" onClick={() => setEditing(true)} data-testid="v2-profile-edit">
         {W.rename}
       </Button>
@@ -207,6 +217,7 @@ function ProfileRow({ profile, all, active, actor, anyAdmin, known, onSwitch, on
       ) : null}
       {merging ? <MergeProfileDialog profile={profile} others={others} onClose={() => setMerging(false)} onChanged={onChanged} /> : null}
       {editing ? <EditProfileDialog profile={profile} active={active} onClose={() => setEditing(false)} onChanged={onChanged} /> : null}
+      {github ? <GitHubDialog profile={profile} active={active} onClose={() => setGitHub(false)} onChanged={onChanged} /> : null}
       {deleting ? <DeleteProfileDialog profile={profile} onClose={() => setDeleting(false)} onChanged={onChanged} /> : null}
       {access && actor ? <AccessDialog profile={profile} actor={actor} bootstrap={bootstrap && actor.admin !== true} known={known} onClose={() => setAccess(false)} onChanged={onChanged} /> : null}
     </li>
@@ -528,6 +539,169 @@ function DeleteProfileDialog({ profile, onClose, onChanged }: { readonly profile
     >
       <p>{W.deleteText}</p>
       {profile.hasPassword ? <Field label={W.passwordOf(profile.name)} type="password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} /> : null}
+      {error ? (
+        <p className="v2-field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Dialog>
+  );
+}
+
+/**
+ * D190 · *Connect GitHub* / *GitHub…*: the profile's GitHub account. Connect runs gh's device-code
+ * sign-in on this computer (the code and GitHub's page shown here, Cancel, a timeout); connected, it
+ * shows the account and the commit author, the commit email, and Disconnect (signs out everywhere).
+ * Another profile with a password needs that password.
+ */
+function GitHubDialog({ profile, active, onClose, onChanged }: { readonly profile: UserProfile; readonly active: boolean; readonly onClose: () => void; readonly onChanged: () => void }) {
+  const toast = useToast();
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { data: loaded, reload } = useApi(() => api.profileGitHub(profile.id), [profile.id]);
+  const [view, setView] = useState<GitHubBindingView | null>(null);
+  const current = view ?? loaded;
+  const needPassword = profile.hasPassword && !active;
+  const pw = needPassword ? password : undefined;
+  const pending = current?.login?.state === 'starting' || current?.login?.state === 'waiting';
+
+  // While gh waits for the developer, follow it once a second; tell how it ended.
+  useEffect(() => {
+    if (!pending) return undefined;
+    const timer = setInterval(() => {
+      api.profileGitHub(profile.id).then(
+        (next) => {
+          setView(next);
+          const state = next.login?.state;
+          if (state === 'done' && next.identity) {
+            toast({ text: W.githubDone(next.identity.login) });
+            onChanged();
+          } else if (state === 'failed') setError(W.githubFailed(next.login?.error ?? ''));
+          else if (state === 'cancelled') setError(W.githubCancelled);
+        },
+        () => undefined,
+      );
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pending, profile.id, toast, onChanged]);
+
+  const act = async (run: () => Promise<GitHubBindingView>, after?: (next: GitHubBindingView) => void): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await run();
+      setView(next);
+      after?.(next);
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const identity = current?.identity ?? null;
+  const emailValue = email ?? identity?.email ?? '';
+  const emailOrNull = emailValue.trim() === '' ? null : emailValue.trim();
+  const code = current?.login?.code ?? null;
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={W.githubTitle(profile.name)}
+      testId="v2-profile-github-dialog"
+      footer={
+        <>
+          {pending ? (
+            <Button disabled={busy} onClick={() => void act(() => api.cancelProfileGitHub(profile.id, pw))} data-testid="v2-profile-github-cancel">
+              {W.cancel}
+            </Button>
+          ) : (
+            <Button onClick={onClose}>{W.cancel}</Button>
+          )}
+          {identity && !pending ? (
+            <Button
+              variant="danger"
+              disabled={busy || (needPassword && !password)}
+              onClick={() =>
+                void act(
+                  () => api.disconnectProfileGitHub(profile.id, pw),
+                  () => {
+                    toast({ text: W.githubDisconnected(profile.name) });
+                    onChanged();
+                    reload();
+                  },
+                )
+              }
+              data-testid="v2-profile-github-disconnect"
+            >
+              {W.githubDisconnect}
+            </Button>
+          ) : null}
+          {!pending ? (
+            <Button
+              variant="primary"
+              disabled={busy || (needPassword && !password)}
+              onClick={() => void act(() => api.connectProfileGitHub(profile.id, { ...(pw ? { password: pw } : {}), ...(emailOrNull ? { email: emailOrNull } : {}) }))}
+              data-testid="v2-profile-github-start"
+            >
+              {identity ? W.githubConnect : W.githubStart}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <p>{W.githubIntro}</p>
+      {identity ? (
+        <div data-testid="v2-profile-github-connected">
+          <p>
+            <b>{W.githubConnected(identity.login)}</b>
+            {current?.author ? <span className="v2-muted"> · {W.githubAuthor(current.author.name, current.author.email)}</span> : null}
+          </p>
+          {current && !current.signedInHere ? <p className="v2-muted">{W.githubNotHere}</p> : null}
+          {current?.unsynced && current.unsynced.length > 0 ? (
+            <p className="v2-muted" data-testid="v2-profile-github-older">
+              {W.githubOlder(current.unsynced)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {pending ? (
+        <div data-testid="v2-profile-github-code">
+          {code ? (
+            <>
+              <p>{W.githubCode}</p>
+              <p>
+                <code data-testid="v2-profile-github-code-value">{code}</code>{' '}
+                <Button size="sm" onClick={() => void navigator.clipboard?.writeText(code).catch(() => undefined)}>
+                  {W.githubCopy}
+                </Button>{' '}
+                {current?.login?.url ? (
+                  <a href={current.login.url} target="_blank" rel="noreferrer noopener" data-testid="v2-profile-github-link">
+                    {W.githubOpen}
+                  </a>
+                ) : null}
+              </p>
+              <p className="v2-muted">{W.githubWaiting}</p>
+            </>
+          ) : (
+            <p className="v2-muted">{W.githubStarting}</p>
+          )}
+        </div>
+      ) : (
+        <>
+          <Field label={W.githubEmail} type="email" value={emailValue} onChange={(event) => setEmail(event.currentTarget.value)} data-testid="v2-profile-github-email" />
+          <p className="v2-muted">{identity ? W.githubEmailHint(noreplyEmail(identity)) : W.githubEmailHintNew}</p>
+          {identity && emailValue !== (identity.email ?? '') ? (
+            <Button size="sm" disabled={busy || (needPassword && !password)} onClick={() => void act(() => api.setProfileGitHubEmail(profile.id, emailOrNull, pw), () => onChanged())} data-testid="v2-profile-github-save-email">
+              {W.githubSaveEmail}
+            </Button>
+          ) : null}
+          {needPassword ? <Field label={W.passwordOf(profile.name)} type="password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} data-testid="v2-profile-github-password" /> : null}
+          <p className="v2-muted">{W.githubShared}</p>
+          {identity ? <p className="v2-muted">{W.githubDisconnectNote}</p> : null}
+        </>
+      )}
       {error ? (
         <p className="v2-field-error" role="alert">
           {error}

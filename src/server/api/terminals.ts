@@ -63,9 +63,12 @@ export async function registerTerminalRoutes(
     readonly session?: (id: string) => Promise<AgentTerminalSession | null>;
     /** D182: how long an agent's terminal outlives its last tab (tests shorten it). */
     readonly agentTerminalGraceMs?: number;
+    /** D190: the GitHub environment of a profile bound to a GitHub account (`{}` when not bound). */
+    readonly githubEnv?: (profileId: string) => Promise<Record<string, string>>;
   },
 ): Promise<void> {
   const { terminals, folders, peers } = options;
+  const githubEnvOf = async (profileId: string): Promise<Record<string, string>> => (options.githubEnv ? await options.githubEnv(profileId).catch(() => ({})) : {});
 
   const send = (reply: FastifyReply, error: unknown): FastifyReply => {
     if (error instanceof TerminalError) return reply.code(error.status).header('cache-control', 'no-store').send({ error: error.code, message: error.message });
@@ -116,7 +119,9 @@ export async function registerTerminalRoutes(
       if (!program) throw new TerminalError(422, 'no-shell', `${shell} is not installed on this computer.`);
       const cwd = await startFolder(body);
       const { cols, rows } = terminalSize(body['cols'], body['rows']);
-      const info = await terminals.create({ program, cwd, owner: scope === '*' ? null : scope, cols, rows });
+      // D190: the profile's GitHub account, when it has one (the standalone terminal is the browser's profile's).
+      const env = scope !== '*' ? await githubEnvOf(scope) : {};
+      const info = await terminals.create({ program, cwd, owner: scope === '*' ? null : scope, cols, rows, env });
       return reply.code(201).header('cache-control', 'no-store').send(info);
     } catch (error) {
       return send(reply, error);
@@ -143,7 +148,9 @@ export async function registerTerminalRoutes(
       if (!program) throw new TerminalError(422, 'no-shell', `${shell} is not installed on this computer.`);
       const { cols, rows } = terminalSize(body['cols'], body['rows']);
       const owner = scope === '*' ? (record.userProfileId ?? null) : scope;
-      const info = await terminals.create({ program, cwd, owner, cols, rows, agent: { sessionId: request.params.id, closeUnattendedMs: options.agentTerminalGraceMs ?? AGENT_TERMINAL_GRACE_MS } });
+      // D190: the agent's profile's GitHub account, as the agent itself has.
+      const env = owner ? await githubEnvOf(owner) : {};
+      const info = await terminals.create({ program, cwd, owner, cols, rows, env, agent: { sessionId: request.params.id, closeUnattendedMs: options.agentTerminalGraceMs ?? AGENT_TERMINAL_GRACE_MS } });
       return reply.code(201).header('cache-control', 'no-store').send(info);
     } catch (error) {
       return send(reply, error);

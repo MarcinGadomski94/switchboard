@@ -56,6 +56,8 @@ export interface PeerHandlers {
   userProfiles(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /** D184 · `POST /peer/v1/mcp-sign-in`: the caller's MCP sign-in mute records and claude.ai connectors (merged); answers this computer's. */
   mcpSignIn(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
+  /** D190 · `POST /peer/v1/github`: the caller's shared GitHub sign-ins (merged); answers this computer's for the caller. */
+  githubSync(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /** D189 · `POST /peer/v1/devices`: the caller's phones and revokes (no credentials); answers this computer's. */
   devicesSync(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
   /** D189 · `POST /peer/v1/devices/handover`: expect a phone (its record and a one-time token's hash); answers this computer's device origin. */
@@ -150,6 +152,11 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
   // D184: the MCP sign-in mutes and claude.ai connectors (pairing auth like every route here).
   app.post('/peer/v1/mcp-sign-in', async (request, reply) => {
     const answer = await handlers.mcpSignIn(request.peerMachine as MachineRecord, request.body);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
+  });
+  // D190: a profile's GitHub sign-in (the token: this route only; pairing auth like every route here).
+  app.post('/peer/v1/github', async (request, reply) => {
+    const answer = await handlers.githubSync(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
   // D189: the phones (no credentials) and a phone's handover offer (pairing auth like every route here).

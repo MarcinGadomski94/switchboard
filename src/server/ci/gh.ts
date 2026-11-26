@@ -1,6 +1,7 @@
 import { ISSUE_BODY_MAX, ISSUE_IMPORT_MAX, PR_WATCH_FIELDS, type PrReading, parsePrReading } from '../../core/ci.ts';
 import { isNoPullRequest } from '../../core/worktrees.ts';
 import { type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
+import { ghEnvFor } from '../github/gh-env.ts';
 
 /** A merge method gh takes (`gh pr merge --squash | --merge | --rebase`). */
 export type GhMergeMethod = 'squash' | 'merge' | 'rebase';
@@ -41,6 +42,8 @@ export interface CiGhPort {
 export interface CiGhOptions {
   readonly gh: readonly string[];
   readonly env?: NodeJS.ProcessEnv;
+  /** D190: extra environment of a call in folder cwd (the GitHub binding of the profile working there: GH_CONFIG_DIR). */
+  readonly ghEnv?: (cwd: string) => Promise<Record<string, string>>;
   readonly timeoutMs?: number;
 }
 
@@ -52,16 +55,19 @@ function record(value: unknown): Record<string, unknown> | null {
 export class CiGh implements CiGhPort {
   readonly #gh: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
+  readonly #ghEnv: ((cwd: string) => Promise<Record<string, string>>) | null;
   readonly #timeout: number;
 
   constructor(options: CiGhOptions) {
     this.#gh = options.gh;
     this.#env = options.env ?? process.env;
+    this.#ghEnv = options.ghEnv ?? null;
     this.#timeout = options.timeoutMs ?? 60_000;
   }
 
-  #run(cwd: string, args: readonly string[], maxOutputBytes?: number): Promise<RunResult> {
-    return runCommand(this.#gh, args, { cwd, env: { ...this.#env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' }, timeoutMs: this.#timeout, ...(maxOutputBytes ? { maxOutputBytes } : {}) });
+  async #run(cwd: string, args: readonly string[], maxOutputBytes?: number): Promise<RunResult> {
+    const bound = this.#ghEnv ? await this.#ghEnv(cwd).catch(() => ({})) : await ghEnvFor(cwd);
+    return runCommand(this.#gh, args, { cwd, env: { ...this.#env, ...bound, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' }, timeoutMs: this.#timeout, ...(maxOutputBytes ? { maxOutputBytes } : {}) });
   }
 
   async viewPr(cwd: string, selector: string): Promise<PrViewResult> {
